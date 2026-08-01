@@ -1,0 +1,47 @@
+name: mcp-lib-dev
+
+services:
+  mcp-soulseek:
+    build:
+      context: .
+      dockerfile: services/soulseek-mcp/Dockerfile
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8081
+      SLSKD_URL: http://slskd:5030
+      SLSKD_API_KEY: ${SLSKD_API_KEY:-development-key-change-me}
+    volumes:
+      - ./data/soulseek:/data
+      - ./data/downloads:/downloads
+    ports:
+      - 127.0.0.1:8081:8081
+    depends_on:
+      - slskd
+
+  mcp-traxx:
+    build:
+      context: .
+      dockerfile: services/traxx-mcp/Dockerfile
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8082
+      TRAXX_URL: ${TRAXX_URL:-}
+      TRAXX_TOKEN: ${TRAXX_TOKEN:-}
+    volumes:
+      - ./data/traxx:/data
+      - ./data/downloads:/downloads:ro
+    ports:
+      - 127.0.0.1:8082:8082
+
+  slskd:
+    image: slskd/slskd:0.25.1
+    environment:
+      SLSKD_REMOTE_CONFIGURATION: 'true'
+    volumes:
+      - ./data/slskd:/app
+      - ./data/downloads:/downloads
+      - ./data/incomplete:/incomplete
+      - ./data/shares:/music:ro
+    ports:
+      - 127.0.0.1:5030:5030
+      - 50300:50300
