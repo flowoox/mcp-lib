@@ -2,38 +2,58 @@
 
 ## Netzwerk
 
-- Control Plane, MCP-Server und slskd-Web-UI binden im Compose-Standard nur an `127.0.0.1`.
-- Nur der Soulseek-Peer-Port `50300/tcp` ist extern veröffentlicht.
+- Die MCP-Server und die optionale slskd-Web-UI binden im Compose-Standard nur an `127.0.0.1`.
+- Nur der Soulseek-Peer-Port `50300/tcp` wird für Peer-Verbindungen am Host veröffentlicht.
 - Für Fernzugriff NetBird, WireGuard oder einen authentisierten Reverse Proxy verwenden.
-- API-Keys und Bearer-Tokens nicht über unverschlüsseltes, fremdes Netzwerk übertragen.
+- MCP-Endpunkte nicht ungeschützt ins Internet stellen.
+- API-Keys und Bearer-Tokens niemals über ein unverschlüsseltes fremdes Netzwerk übertragen.
 
-## Secrets
+## Secret-Isolation
+
+Jeder Dienst erhält nur die Zugangsdaten, die er benötigt:
+
+| Secret | Besitzer |
+|---|---|
+| `SLSKD_API_KEY` | `mcp-soulseek` |
+| Soulseek Benutzer/Passwort | `slskd` |
+| `TRAXX_TOKEN` | `mcp-traxx` |
+
+Ein Orchestrator wie `traxx-releaseradar` benötigt weder den slskd-Key noch den Traxx-Token. Er ruft ausschließlich die MCP-Tools auf. Dadurch landen Zielsystem-Credentials nicht in der Produktdatenbank oder im Web-UI-Prozess.
 
 - `.env` wird ignoriert und darf nicht committet werden.
-- `APP_SECRET`, Dashboard-Passwort, slskd-Web-Passwort und API-Key müssen zufällig sein.
-- Spotify-Tokens werden verschlüsselt gespeichert; die Sicherheit hängt direkt von `APP_SECRET` ab.
-- Ein Wechsel von `APP_SECRET` macht bestehende Spotify-Tokens unlesbar und erfordert erneutes Verbinden.
+- slskd-Web-Passwort und API-Key müssen zufällig und lang sein.
+- Für Traxx einen dedizierten Token mit minimal notwendigen Upload-/Music-Rechten verwenden.
+- Secrets in Produktion über Docker Secrets, Kubernetes Secrets, SOPS oder einen Vault bereitstellen.
 
 ## Least Privilege
 
-- Für Traxx einen dedizierten Token mit Upload-/Music-Rechten verwenden.
-- slskd-Key nur im privaten Docker-Netz bzw. mit CIDR-Begrenzung einsetzen.
-- `SLSKD_REMOTE_CONFIGURATION` bleibt im Stack deaktiviert.
-- Das Traxx-MCP kann nur Dateien unter `DOWNLOADS_DIR` lesen.
+- `SLSKD_REMOTE_CONFIGURATION` bleibt im Beispiel deaktiviert.
+- Das Traxx-MCP erhält das Download-Volume nur lesend.
+- Der Soulseek-MCP besitzt nur seinen eigenen Kandidaten-Cache.
+- Der Release Radar besitzt keine direkten Zielsystem-Zugangsdaten.
+- Container laufen als unprivilegierter Benutzer.
 
 ## Datei- und Pfadschutz
 
 - Remote-Kandidaten akzeptieren nur bekannte Audio- und Sidecar-Erweiterungen.
 - EXE, MSI, BAT, CMD, PowerShell, VBS, JS, JAR, LNK und ähnliche ausführbare Formate werden entfernt.
 - Zielpfade werden segmentweise bereinigt; `..` und absolute Pfade sind unzulässig.
-- Traxx-Imports lösen Pfade kanonisch auf und prüfen, dass sie innerhalb des Download-Roots liegen.
+- Traxx-Imports lösen Pfade kanonisch auf und prüfen, dass sie innerhalb von `DOWNLOADS_DIR` liegen.
+- Ein Orchestrator sollte den von `queue_album_folder` zurückgegebenen `local_path` unverändert weiterverwenden.
 
 ## Rechte-Gate
 
-Das Gate verhindert unbeabsichtigte Vollautomatik und verlangt für Download/Import eine angegebene Rechtebasis. Es ersetzt keine rechtliche Prüfung. Betreiber sind dafür verantwortlich, Soulseek und Traxx ausschließlich für Inhalte zu verwenden, die sie besitzen, lizenziert haben, gemeinfrei sind oder für die eine ausdrückliche Erlaubnis besteht.
+Download- und Import-Tools verlangen eine bestätigte Rechtebasis. Bei `licensed`, `artist-permission` und `other-documented-permission` ist zusätzlich eine Referenz erforderlich.
 
-## Web-UI
+Das Gate verhindert unbeabsichtigte Seiteneffekte, ersetzt aber keine rechtliche Prüfung. Betreiber sind dafür verantwortlich, Soulseek und Traxx ausschließlich für Inhalte zu verwenden, die sie besitzen, lizenziert haben, gemeinfrei sind oder für die eine ausdrückliche Erlaubnis besteht.
 
-- Dashboard-Basic-Auth aktivieren.
-- Bei Veröffentlichung hinter einem Reverse Proxy zwingend TLS, zusätzliche SSO-/WAF-Authentisierung und Origin-/CSRF-Schutz am Proxy vorsehen.
-- Standardmäßig nur über localhost oder Management-VPN verwenden.
+## MCP-Authentisierung
+
+Der aktuelle lokale MVP schützt die MCPs primär über Netzwerkisolation. Vor einer Veröffentlichung über Host- oder Standortgrenzen sollte eine der folgenden Varianten ergänzt werden:
+
+- mTLS zwischen Orchestrator und MCP,
+- OAuth beziehungsweise MCP Authorization,
+- ein Reverse Proxy mit Service-Token,
+- eine private Overlay-Verbindung mit zusätzlicher Firewall-Regel.
+
+Die MCP-Schnittstelle ist eine privilegierte Maschinensteuerung und darf nicht wie eine öffentliche Such-API behandelt werden.
