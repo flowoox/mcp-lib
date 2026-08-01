@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from .config import get_settings
+from .config import TraxxSettings, get_traxx_settings
 from .rights import validate_rights
 from .traxx import TraxxClient, inspect_audio_file
 from .utils import resolve_contained_path
 
+LOGGER = logging.getLogger(__name__)
 
-def create_server() -> FastMCP:
-    settings = get_settings()
+
+def create_server(settings: TraxxSettings | None = None) -> FastMCP:
+    settings = settings or get_traxx_settings()
     client = TraxxClient(
         base_url=settings.traxx_url,
         token=settings.traxx_token,
@@ -113,7 +116,13 @@ def create_server() -> FastMCP:
 
 
 def main() -> None:
-    create_server().run(transport="streamable-http")
+    settings = get_traxx_settings()
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    LOGGER.info("Starting Traxx MCP on %s:%s", settings.mcp_host, settings.mcp_port)
+    create_server(settings).run(transport="streamable-http")
 
 
 if __name__ == "__main__":
