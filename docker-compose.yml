@@ -1,0 +1,70 @@
+name: mcp-lib
+
+x-app-common: &app-common
+  build:
+    context: .
+  restart: unless-stopped
+  env_file:
+    - .env
+  volumes:
+    - ./data/state:/data
+    - ./data/downloads:/downloads
+  networks:
+    - music-automation
+  depends_on:
+    slskd:
+      condition: service_started
+
+services:
+  slskd:
+    image: slskd/slskd:latest
+    restart: unless-stopped
+    environment:
+      SLSKD_REMOTE_CONFIGURATION: "false"
+      SLSKD_SHARED_DIR: /music
+      SLSKD_DOWNLOADS_DIR: /downloads
+      SLSKD_INCOMPLETE_DIR: /incomplete
+      SLSKD_SLSK_USERNAME: ${SLSKD_SLSK_USERNAME}
+      SLSKD_SLSK_PASSWORD: ${SLSKD_SLSK_PASSWORD}
+      SLSKD_SLSK_LISTEN_PORT: ${SLSKD_SLSK_LISTEN_PORT:-50300}
+      SLSKD_API_KEY: ${SLSKD_API_KEY}
+      SLSKD_USERNAME: ${SLSKD_USERNAME:-admin}
+      SLSKD_PASSWORD: ${SLSKD_PASSWORD}
+    volumes:
+      - ./data/slskd:/app
+      - ./data/downloads:/downloads
+      - ./data/incomplete:/incomplete
+      - ./data/shares:/music:ro
+    ports:
+      - "127.0.0.1:5030:5030"
+      - "${SLSKD_SLSK_LISTEN_PORT:-50300}:${SLSKD_SLSK_LISTEN_PORT:-50300}"
+    networks:
+      - music-automation
+
+  control-plane:
+    <<: *app-common
+    command: ["music-control-plane"]
+    ports:
+      - "127.0.0.1:${CONTROL_PORT:-8080}:${CONTROL_PORT:-8080}"
+
+  mcp-soulseek:
+    <<: *app-common
+    command: ["mcp-soulseek"]
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8081
+    ports:
+      - "127.0.0.1:8081:8081"
+
+  mcp-traxx:
+    <<: *app-common
+    command: ["mcp-traxx"]
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8082
+    ports:
+      - "127.0.0.1:8082:8082"
+
+networks:
+  music-automation:
+    driver: bridge
