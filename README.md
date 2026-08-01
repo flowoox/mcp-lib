@@ -1,160 +1,73 @@
 # mcp-lib
 
-Containerisierte MCP-Sammlung für den Musik-Workflow:
+Wiederverwendbare, unabhängig deploybare MCP-Dienste für Musiksysteme.
+
+Dieses Repository enthält **keine Produktlogik, kein Spotify-OAuth, keinen Scheduler und kein Web-UI**. Diese anwendungsspezifische Orchestrierung liegt im separaten Repository `flowoox/traxx-releaseradar`.
+
+## Dienste
+
+| Dienst | Verantwortung | Standard-Endpunkt |
+|---|---|---|
+| `mcp-soulseek` | slskd durchsuchen, vollständige Albumordner bewerten und als einen Download-Batch einreihen | `http://127.0.0.1:8081/mcp` |
+| `mcp-traxx` | Traxx/BeMusic über die native API und TUS ansprechen, Tracks beziehungsweise Albumordner importieren | `http://127.0.0.1:8082/mcp` |
+| `slskd` | optionaler Soulseek-Daemon für den lokalen Beispiel-Stack | `http://127.0.0.1:5030` |
 
 ```text
-Spotify-Profilanalyse
-        ↓
-5 neue Albumempfehlungen pro Tag
-        ↓
-slskd / Soulseek: vollständigen Remote-Ordner auswählen
-        ↓
-Album als ein Download-Batch in /downloads ablegen
-        ↓
-Traxx / BeMusic: TUS-Upload, Metadaten lesen, Artist/Album matchen, Tracks anlegen
+beliebiger MCP-Client / Orchestrator
+              │
+       Streamable HTTP
+       ┌──────┴──────┐
+       │             │
+ mcp-soulseek    mcp-traxx
+       │             │
+     slskd       Traxx/BeMusic
+       │             │
+       └──── /downloads ────┘
 ```
 
-Das Repository enthält zwei getrennte MCP-Server und ein kleines Control-Plane-Web-UI:
-
-| Dienst | Aufgabe | Standardadresse |
-|---|---|---|
-| `mcp-soulseek` | Albumordner suchen, bewerten und als vollständigen slskd-Batch laden | `http://127.0.0.1:8081/mcp` |
-| `mcp-traxx` | Traxx/BeMusic API, TUS-Upload und Albumordner-Import | `http://127.0.0.1:8082/mcp` |
-| `control-plane` | Spotify OAuth, Benutzerwahl, täglicher Flow, Queue und Status | `http://127.0.0.1:8080` |
-| `slskd` | Soulseek-Daemon und Web-UI | `http://127.0.0.1:5030` |
-
-## Was der MVP bereits kann
-
-- Mehrere Spotify-Benutzer verbinden und einen aktiven Benutzer wählen.
-- Private Top-Artists und Top-Tracks über `user-top-read` analysieren.
-- Bereits häufig gehörte, gespeicherte und früher vorgeschlagene Alben ausfiltern.
-- Standardmäßig täglich fünf neue, zum Geschmack passende Alben vorschlagen.
-- slskd-Suchergebnisse nach **echtem Remote-Ordner** gruppieren.
-- `CD1`, `CD2`, `Disc 1`, `Disk 2` als ein Multi-Disc-Album zusammenführen.
-- FLAC/lossless, vollständige Trackzahl, freie Slots, Geschwindigkeit und Queue bewerten.
-- Alle Audiodateien plus Cover, CUE, LOG, M3U und weitere sichere Beilagen als **einen Batch** laden.
-- Ausführbare und scriptfähige Dateien aus Kandidaten entfernen.
-- Downloads pollen und abgeschlossene Albumordner erkennen.
-- Traxx 3.1.6 über den vorhandenen TUS-Endpunkt und die native `/api/v1`-API ansprechen.
-- Metadaten lokal mit Mutagen und serverseitig mit BeMusic/getID3 auslesen.
-- Alle lokalen Pfade auf das konfigurierte `/downloads`-Verzeichnis begrenzen.
-- Seiteneffekte mit einer expliziten Rechtebasis absichern.
+Die MCPs kennen weder Spotify-Benutzer noch Empfehlungshistorie oder tägliche Flows. Dadurch können sie später genauso von ChatGPT, Claude, OpenWebUI, PocketOps, n8n oder einem anderen Produkt verwendet werden.
 
 ## Schnellstart
 
 ```bash
 cp .env.example .env
-openssl rand -hex 32      # als APP_SECRET eintragen
-openssl rand -base64 36   # für Dashboard-, slskd- und API-Kennwörter verwenden
-mkdir -p data/{state,downloads,incomplete,shares,slskd}
+# Soulseek-, slskd- und Traxx-Zugangswerte eintragen
 docker compose up -d --build
 ```
 
 Danach:
 
-1. `http://127.0.0.1:5030` öffnen und den slskd-/Soulseek-Status prüfen.
-2. `http://127.0.0.1:8080` öffnen.
-3. Spotify-Profil verbinden.
-4. `Jetzt entdecken` ausführen.
-5. Ein vorgeschlagenes Album mit passender Rechtebasis freigeben.
-6. Nach abgeschlossenem Download den Traxx-Import prüfen oder starten.
-
-Der Soulseek-Listen-Port `50300/tcp` wird absichtlich am Host veröffentlicht. HTTP-UI und MCP-Ports sind im Compose-Standard ausschließlich an `127.0.0.1` gebunden.
-
-## Spotify einrichten
-
-In einer Spotify Developer App muss der Callback exakt dem Wert aus `.env` entsprechen:
-
-```env
-SPOTIFY_CLIENT_ID=...
-SPOTIFY_REDIRECT_URI=http://127.0.0.1:8080/spotify/callback
+```text
+Soulseek MCP  http://127.0.0.1:8081/mcp
+Traxx MCP     http://127.0.0.1:8082/mcp
+slskd UI      http://127.0.0.1:5030
 ```
 
-Jeder gewünschte Spotify-Benutzer verbindet sein Profil einmal per OAuth. Die Access- und Refresh-Tokens werden mit einem aus `APP_SECRET` abgeleiteten Fernet-Schlüssel verschlüsselt in SQLite gespeichert. Ein beliebiges öffentliches Spotify-Profil reicht nicht aus, weil private Top-Items die Einwilligung des jeweiligen Benutzers erfordern.
+Die HTTP-Ports sind im Beispiel nur an Loopback gebunden. Der Soulseek-Listen-Port wird für Peer-Verbindungen veröffentlicht.
 
-## slskd einrichten
+## Container
 
-Mindestens diese Werte setzen:
+Der gemeinsame Dockerfile besitzt zwei getrennte Targets:
 
-```env
-SLSKD_API_KEY=MINDESTENS_16_ZEICHEN_BESSER_32
-SLSKD_USERNAME=admin
-SLSKD_PASSWORD=LANGES_WEB_PASSWORT
-SLSKD_SLSK_USERNAME=dein_soulseek_name
-SLSKD_SLSK_PASSWORD=dein_soulseek_passwort
+```bash
+docker build --target soulseek -t mcp-soulseek .
+docker build --target traxx -t mcp-traxx .
 ```
 
-Der MCP sendet den Key als `X-API-Key`. Die Automatisierung verwendet:
+Die CI veröffentlicht daraus getrennte Images:
 
-- `POST /api/v0/searches`
-- `GET /api/v0/searches/{id}?includeResponses=true`
-- `POST /api/v0/transfers/downloads/batches`
-- `GET /api/v0/transfers/downloads/batches/{id}`
-- `GET /api/v0/users/{username}/browse`
-
-Ein Album wird nicht aus einzelnen unabhängigen Treffern zusammengesetzt. Es wird ein vollständiger, konsistenter Ordner eines Peers ausgewählt und als Batch übergeben.
-
-## Traxx / BeMusic einrichten
-
-```env
-TRAXX_URL=https://traxx.app.wohnhaas.ch
-TRAXX_TOKEN=...
-TRAXX_TUS_ENDPOINT=/api/v1/tus/
+```text
+ghcr.io/flowoox/mcp-soulseek:<tag>
+ghcr.io/flowoox/mcp-traxx:<tag>
 ```
 
-Der Token benötigt in BeMusic Berechtigungen zum Hochladen und Erstellen/Aktualisieren von Musik, Artists und Alben.
+Ein Produkt sollte diese Images versioniert referenzieren und nicht Python-Interna aus diesem Repository importieren.
 
-Die vorhandene Traxx-Codebasis stellt bereits bereit:
+## Soulseek MCP
 
-- TUS unter `/api/v1/tus/`
-- `POST /api/v1/tracks`
-- `POST /api/v1/tracks/{fileEntry}/extract-metadata`
-- Artist-, Album-, Track- und Playlist-Routen unter `/api/v1`
-- Spotify-/Deezer-Metadatenimport unter `/api/v1/import-media/single-item`
+Der Dienst gruppiert Suchantworten nach tatsächlichem Remote-Ordner und Peer. `CD1`, `CD2`, `Disc 1`, `Disk 2` und ähnliche Unterordner werden als ein Multi-Disc-Album behandelt. Ausführbare oder scriptfähige Dateien werden aus Kandidaten entfernt.
 
-### Ein verbleibender Live-Abgleich
-
-Die konkrete Traxx-Instanz muss einmal zeigen, wie der TUS-Upload die `FileEntry`-ID bzw. die anschließend als `Track.src` verwendbare URL zurückgibt. Der Adapter erkennt verbreitete Header-/JSON-Felder und numerische TUS-IDs automatisch. Falls die Instanz nur eine ID liefert, wird nach dem ersten Probe-Upload eine Vorlage gesetzt:
-
-```env
-TRAXX_FILE_URL_TEMPLATE=/DEIN/PFAD/{file_entry_id}
-```
-
-Bis diese Zuordnung bestätigt ist, bleibt der Albumimport standardmäßig im Dry-Run bzw. meldet die betroffenen Dateien als `unresolved`, anstatt kaputte Track-Einträge zu erzeugen. Details stehen in [`docs/TRAXX.md`](docs/TRAXX.md).
-
-## Automatik und Rechte-Gate
-
-Die tägliche **Discovery** ist standardmäßig aktiv. Automatischer Download und Import sind absichtlich aus:
-
-```env
-AUTO_DOWNLOAD=false
-AUTO_IMPORT=false
-AUTHORIZED_LIBRARY=false
-```
-
-Für eine Bibliothek, deren Inhalte vollständig eigene Kopien, lizenziert, gemeinfrei oder ausdrücklich freigegeben sind, kann die Automatik explizit aktiviert werden:
-
-```env
-AUTHORIZED_LIBRARY=true
-AUTO_DOWNLOAD=true
-AUTO_IMPORT=true
-DEFAULT_RIGHTS_BASIS=licensed
-DEFAULT_RIGHTS_REFERENCE=interne-lizenz-oder-katalogreferenz
-```
-
-Zulässige Rechtebasen:
-
-- `owned-copy`
-- `licensed`
-- `public-domain`
-- `artist-permission`
-- `other-documented-permission`
-
-`licensed`, `artist-permission` und `other-documented-permission` verlangen eine Referenz. Das Gate ist sowohl im Web-UI als auch in beiden MCP-Seiteneffekten aktiv.
-
-## MCP-Tools
-
-### Soulseek MCP
+### Tools
 
 - `health`
 - `search_album`
@@ -164,7 +77,28 @@ Zulässige Rechtebasen:
 - `get_download_batch`
 - `browse_user`
 
-### Traxx MCP
+`queue_album_folder` lädt alle unterstützten Dateien des ausgewählten Kandidaten als **einen slskd-Batch**. Der Kandidaten-Cache ist ausschließlich lokaler Zustand des Soulseek-MCPs.
+
+Wichtige Variablen:
+
+```env
+SLSKD_URL=http://slskd:5030
+SLSKD_API_KEY=...
+STATE_DB=/data/soulseek-mcp.sqlite3
+DOWNLOADS_DIR=/downloads
+MCP_PORT=8081
+```
+
+## Traxx / BeMusic MCP
+
+Der Dienst kapselt die vorhandene Traxx-/BeMusic-API:
+
+- TUS-Upload unter `/api/v1/tus/`
+- Track-, Artist-, Album- und Playlist-Routen unter `/api/v1`
+- serverseitige Metadatenextraktion
+- Spotify-/Deezer-Metadatenimport
+
+### Tools
 
 - `health`
 - `list_tracks`
@@ -174,22 +108,57 @@ Zulässige Rechtebasen:
 - `import_album_folder`
 - `import_spotify_metadata`
 
-Beide Server nutzen Streamable HTTP und liegen standardmäßig unter `/mcp`.
+Lokale Pfade werden auf `DOWNLOADS_DIR` begrenzt. Ein Live-Import lädt Audiodateien per TUS hoch, liest Metadaten, ordnet Artist und Album zu und erstellt anschließend Track-Datensätze.
+
+Wichtige Variablen:
+
+```env
+TRAXX_URL=https://traxx.example
+TRAXX_TOKEN=...
+TRAXX_TUS_ENDPOINT=/api/v1/tus/
+DOWNLOADS_DIR=/downloads
+MCP_PORT=8082
+```
+
+Die konkrete Traxx-Installation muss einmal zeigen, wie ihr TUS-Endpunkt die endgültige `FileEntry`-ID beziehungsweise die als `Track.src` nutzbare URL zurückgibt. Falls nötig, wird dafür `TRAXX_FILE_URL_TEMPLATE` gesetzt. Bis diese Zuordnung feststeht, kann `import_album_folder` im Dry-Run verwendet werden.
+
+## Rechte-Gate
+
+Download- und Import-Tools verlangen eine explizite Rechtebestätigung. Unterstützte Grundlagen:
+
+- `owned-copy`
+- `licensed`
+- `public-domain`
+- `artist-permission`
+- `other-documented-permission`
+
+Für lizenzierte oder ausdrücklich erlaubte Inhalte muss eine Referenz mitgegeben werden. Das Gate schützt den MCP unabhängig davon, welcher Client ihn aufruft.
 
 ## Entwicklung
 
 ```bash
 python -m venv .venv
 . .venv/bin/activate
-pip install -e '.[dev]'
+python -m pip install -e '.[dev]'
 make check
 ```
 
-Die Tests decken aktuell Album-/Multi-Disc-Gruppierung, Kandidatenfilter, Rechte-Gate, Spotify-Ranking, Pfadschutz und Downloadstatus ab.
+Die Tests prüfen unter anderem Multi-Disc-Gruppierung, Kandidatenfilter, Rechte-Gate, TUS-Auflösung, Pfadbegrenzung und den service-lokalen Kandidaten-Cache.
 
-## Repository-Konvention für zukünftige MCPs
+## Konvention für weitere MCPs
 
-Gemeinsame Clients, Authentisierung, State und Sicherheitsfunktionen bleiben unter `src/mcp_lib/`. Ein neuer MCP erhält ein eigenes Modul `mcp_<name>.py`, einen Console-Entry-Point in `pyproject.toml`, einen separaten Compose-Service und eine kurze Dokumentation unter `docs/`.
+Jeder MCP erhält:
+
+1. ein eigenes Servermodul `mcp_<name>.py`,
+2. eigene Settings und nur den dafür notwendigen Zustand,
+3. einen Console-Entry-Point,
+4. ein separates Docker-Target beziehungsweise Image,
+5. einen dokumentierten Tool-Vertrag,
+6. keine Abhängigkeit von einem konkreten Produkt oder dessen UI.
+
+## Zugehöriges Produkt
+
+`flowoox/traxx-releaseradar` ist der erste Orchestrator. Dort liegen Spotify-Profilanalyse, Benutzerwahl, täglicher Zeitplan, Empfehlungshistorie, Queue-Status und Web-UI. Die Kommunikation mit diesem Repository erfolgt ausschließlich über MCP Streamable HTTP.
 
 ## Dokumentation
 
