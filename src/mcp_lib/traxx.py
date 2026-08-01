@@ -10,7 +10,7 @@ import httpx
 from mutagen import File as MutagenFile
 
 from .rights import validate_rights
-from .tus import TusUploadResult, TusUploader
+from .tus import TusUploader, TusUploadResult
 from .utils import get_case_insensitive, resolve_contained_path
 
 AUDIO_EXTENSIONS = {".flac", ".wav", ".aiff", ".aif", ".ape", ".wv", ".mp3", ".m4a", ".ogg", ".opus"}

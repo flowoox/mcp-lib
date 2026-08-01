@@ -4,9 +4,10 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable
+from typing import Any
 
 SAFE_SEGMENT_RE = re.compile(r"[^\w .()\[\]{}&+'-]+", re.UNICODE)
 MULTISPACE_RE = re.compile(r"\s+")

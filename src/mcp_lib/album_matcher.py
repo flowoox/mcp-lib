@@ -177,7 +177,7 @@ def _score_candidate(
         return -1000, ["no supported audio files"]
 
     preference = {extension.casefold(): index for index, extension in enumerate(preferred_formats)}
-    best_rank = min((preference.get(extension, len(preference) + 5) for extension in formats))
+    best_rank = min(preference.get(extension, len(preference) + 5) for extension in formats)
     format_bonus = max(0, 25 - (best_rank * 2.5))
     score += format_bonus
     reasons.append(f"format: {', '.join(sorted(formats))}")
