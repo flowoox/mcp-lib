@@ -1,21 +1,50 @@
 name: mcp-lib
 
-x-app-common: &app-common
-  build:
-    context: .
-  restart: unless-stopped
-  env_file:
-    - .env
-  volumes:
-    - ./data/state:/data
-    - ./data/downloads:/downloads
-  networks:
-    - music-automation
-  depends_on:
-    slskd:
-      condition: service_started
-
 services:
+  mcp-soulseek:
+    build:
+      context: .
+      target: soulseek
+    image: ghcr.io/flowoox/mcp-soulseek:${MCP_IMAGE_TAG:-main}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8081
+      STATE_DB: /data/soulseek-mcp.sqlite3
+      DOWNLOADS_DIR: /downloads
+      SLSKD_URL: http://slskd:5030
+    volumes:
+      - soulseek-mcp-state:/data
+      - downloads:/downloads
+    ports:
+      - "127.0.0.1:8081:8081"
+    networks:
+      - music-automation
+    depends_on:
+      slskd:
+        condition: service_started
+
+  mcp-traxx:
+    build:
+      context: .
+      target: traxx
+    image: ghcr.io/flowoox/mcp-traxx:${MCP_IMAGE_TAG:-main}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8082
+      DOWNLOADS_DIR: /downloads
+    volumes:
+      - downloads:/downloads:ro
+    ports:
+      - "127.0.0.1:8082:8082"
+    networks:
+      - music-automation
+
   slskd:
     image: slskd/slskd:latest
     restart: unless-stopped
@@ -31,39 +60,22 @@ services:
       SLSKD_USERNAME: ${SLSKD_USERNAME:-admin}
       SLSKD_PASSWORD: ${SLSKD_PASSWORD}
     volumes:
-      - ./data/slskd:/app
-      - ./data/downloads:/downloads
-      - ./data/incomplete:/incomplete
-      - ./data/shares:/music:ro
+      - slskd-state:/app
+      - downloads:/downloads
+      - incomplete:/incomplete
+      - shares:/music:ro
     ports:
       - "127.0.0.1:5030:5030"
       - "${SLSKD_SLSK_LISTEN_PORT:-50300}:${SLSKD_SLSK_LISTEN_PORT:-50300}"
     networks:
       - music-automation
 
-  control-plane:
-    <<: *app-common
-    command: ["music-control-plane"]
-    ports:
-      - "127.0.0.1:${CONTROL_PORT:-8080}:${CONTROL_PORT:-8080}"
-
-  mcp-soulseek:
-    <<: *app-common
-    command: ["mcp-soulseek"]
-    environment:
-      MCP_HOST: 0.0.0.0
-      MCP_PORT: 8081
-    ports:
-      - "127.0.0.1:8081:8081"
-
-  mcp-traxx:
-    <<: *app-common
-    command: ["mcp-traxx"]
-    environment:
-      MCP_HOST: 0.0.0.0
-      MCP_PORT: 8082
-    ports:
-      - "127.0.0.1:8082:8082"
+volumes:
+  soulseek-mcp-state:
+  slskd-state:
+  downloads:
+  incomplete:
+  shares:
 
 networks:
   music-automation:
