@@ -7,7 +7,10 @@ from pathlib import Path
 
 INVALID_SEGMENT = re.compile(r"[^\w .()\[\]{}&+,'!-]+", re.UNICODE)
 SPACE_RE = re.compile(r"\s+")
-DISC_SEGMENT_RE = re.compile(r"^(?:cd|disc|disk|part)\s*[-_. ]*([0-9]{1,2})$", re.I)
+DISC_SEGMENT_RE = re.compile(
+    r"^(?:cd|disc|disk|part)\s*[-_. ]*([0-9]{1,2})$",
+    re.IGNORECASE,
+)
 
 
 def normalize_text(value: str) -> str:
