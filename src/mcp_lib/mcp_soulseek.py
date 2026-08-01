@@ -109,6 +109,9 @@ def create_server(settings: SoulseekSettings | None = None) -> FastMCP:
             external_id=external_id or stable_id("manual-album", candidate_id),
         )
         batch_id = client.batch_id(result)
+        if not batch_id and isinstance(result, dict):
+            requested_batch_id = result.get("requestedBatchId")
+            batch_id = str(requested_batch_id) if requested_batch_id else None
         local_path = str((settings.downloads_dir / PurePosixPath(safe_destination)).resolve())
         return {
             "rights": {"basis": rights.basis, "reference": rights.reference},
