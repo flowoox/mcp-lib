@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+
+from mcp_common.store import AtomicJsonStore
+from pydantic import BaseModel, Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class RuntimeConfig(BaseModel):
+    base_url: str = "http://slskd:5030"
+    api_key: str = ""
+    search_timeout: int = Field(default=20, ge=3, le=180)
+    result_limit: int = Field(default=300, ge=1, le=2000)
+    minimum_tracks: int = Field(default=4, ge=1, le=150)
+    preferred_formats: list[str] = Field(
+        default_factory=lambda: ["flac", "wav", "alac", "aiff", "ape", "wv", "mp3", "m4a", "ogg", "opus"]
+    )
+
+    @field_validator("base_url")
+    @classmethod
+    def normalize_url(cls, value: str) -> str:
+        return value.strip().rstrip("/")
+
+    @field_validator("preferred_formats", mode="before")
+    @classmethod
+    def parse_formats(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [part.strip().casefold() for part in value.replace(" ", ",").split(",") if part.strip()]
+        return value
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=None, case_sensitive=False, extra="ignore")
+
+    mcp_host: str = "0.0.0.0"
+    mcp_port: int = 8081
+    soulseek_config_file: Path = Path("/data/config.json")
+    soulseek_candidate_file: Path = Path("/data/candidates.json")
+    downloads_dir: Path = Path("/downloads")
+
+    slskd_url: str = "http://slskd:5030"
+    slskd_api_key: str = ""
+    slskd_search_timeout: int = 20
+    slskd_result_limit: int = 300
+    slskd_minimum_tracks: int = 4
+    preferred_audio_formats: str = "flac,wav,alac,aiff,ape,wv,mp3,m4a,ogg,opus"
+
+    def initial_runtime_config(self) -> RuntimeConfig:
+        return RuntimeConfig(
+            base_url=self.slskd_url,
+            api_key=self.slskd_api_key,
+            search_timeout=self.slskd_search_timeout,
+            result_limit=self.slskd_result_limit,
+            minimum_tracks=self.slskd_minimum_tracks,
+            preferred_formats=self.preferred_audio_formats,
+        )
+
+
+class RuntimeConfigStore:
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        initial = settings.initial_runtime_config().model_dump(mode="json")
+        self.store = AtomicJsonStore(settings.soulseek_config_file, default=initial)
+        if not settings.soulseek_config_file.exists():
+            self.store.write(initial)
+
+    def get(self) -> RuntimeConfig:
+        raw = self.store.read()
+        merged = self.settings.initial_runtime_config().model_dump(mode="json")
+        merged.update(raw)
+        return RuntimeConfig.model_validate(merged)
+
+    def save(self, config: RuntimeConfig) -> RuntimeConfig:
+        self.store.write(config.model_dump(mode="json"))
+        return config
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    settings = Settings()
+    settings.soulseek_config_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.soulseek_candidate_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.downloads_dir.mkdir(parents=True, exist_ok=True)
+    return settings
