@@ -1,4 +1,4 @@
-.PHONY: install test lint check compose up down logs
+.PHONY: install test lint check compose build build-soulseek build-traxx up down logs
 
 install:
 	python -m pip install -e '.[dev]'
@@ -14,6 +14,14 @@ check: lint test
 
 compose:
 	docker compose config
+
+build: build-soulseek build-traxx
+
+build-soulseek:
+	docker build --target soulseek -t mcp-soulseek:local .
+
+build-traxx:
+	docker build --target traxx -t mcp-traxx:local .
 
 up:
 	docker compose up -d --build
