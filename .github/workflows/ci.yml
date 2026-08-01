@@ -37,12 +37,14 @@ jobs:
   docker:
     name: Docker and Compose validation
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Validate Compose model
         run: |
           cp .env.example .env
           docker compose config
-      - name: Build runtime image
-        run: docker build -t mcp-lib:test .
+      - name: Build Soulseek MCP image
+        run: docker build --target soulseek -t mcp-soulseek:test .
+      - name: Build Traxx MCP image
+        run: docker build --target traxx -t mcp-traxx:test .
