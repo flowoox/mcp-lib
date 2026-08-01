@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-
 ALLOWED_RIGHTS_BASES = {
     "owned-copy",
     "licensed",
