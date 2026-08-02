@@ -10,10 +10,50 @@ from mcp_common.paths import DISC_SEGMENT_RE, normalize_text, stable_id, token_o
 
 from .models import AlbumCandidate, RemoteFile
 
-AUDIO_EXTENSIONS = {"flac", "wav", "alac", "aiff", "aif", "ape", "wv", "mp3", "m4a", "ogg", "opus"}
-SIDECAR_EXTENSIONS = {"cue", "log", "jpg", "jpeg", "png", "webp", "pdf", "m3u", "m3u8", "txt", "nfo"}
-BLOCKED_EXTENSIONS = {"exe", "msi", "bat", "cmd", "com", "scr", "ps1", "vbs", "js", "jar", "lnk", "apk", "sh"}
+AUDIO_EXTENSIONS = {
+    "flac",
+    "wav",
+    "alac",
+    "aiff",
+    "aif",
+    "ape",
+    "wv",
+    "mp3",
+    "m4a",
+    "aac",
+    "ogg",
+    "opus",
+}
 LOSSLESS_EXTENSIONS = {"flac", "wav", "alac", "aiff", "aif", "ape", "wv"}
+LOSSY_EXTENSIONS = AUDIO_EXTENSIONS - LOSSLESS_EXTENSIONS
+SIDECAR_EXTENSIONS = {
+    "cue",
+    "log",
+    "jpg",
+    "jpeg",
+    "png",
+    "webp",
+    "pdf",
+    "m3u",
+    "m3u8",
+    "txt",
+    "nfo",
+}
+BLOCKED_EXTENSIONS = {
+    "exe",
+    "msi",
+    "bat",
+    "cmd",
+    "com",
+    "scr",
+    "ps1",
+    "vbs",
+    "js",
+    "jar",
+    "lnk",
+    "apk",
+    "sh",
+}
 
 
 def normalize_remote_path(filename: str) -> PurePosixPath:
@@ -64,7 +104,9 @@ def extract_search_responses(payload: Any) -> list[dict[str, Any]]:
 
 
 def _remote_file(raw: dict[str, Any]) -> RemoteFile | None:
-    filename = str(get_case_insensitive(raw, "filename", "fileName", "name", default="") or "").strip()
+    filename = str(
+        get_case_insensitive(raw, "filename", "fileName", "name", default="") or ""
+    ).strip()
     if not filename:
         return None
     path = normalize_remote_path(filename)
@@ -93,7 +135,43 @@ def _remote_file(raw: dict[str, Any]) -> RemoteFile | None:
     )
 
 
-def _score_candidate(*, artist: str, album: str, folder: str, files: list[RemoteFile], preferred_formats: list[str], free_upload_slots: bool | None, upload_speed: int | None, queue_length: int | None) -> tuple[float, list[str]]:
+def bitrate_kbps(file: RemoteFile) -> int | None:
+    """Normalize slskd bitrate values expressed as kbps or bits per second."""
+    if not file.bit_rate or file.bit_rate <= 0:
+        return None
+    return round(file.bit_rate / 1000) if file.bit_rate > 10_000 else file.bit_rate
+
+
+def is_high_quality_audio(
+    file: RemoteFile,
+    *,
+    lossless_only: bool,
+    minimum_lossy_bitrate_kbps: int,
+) -> bool:
+    if file.extension in LOSSLESS_EXTENSIONS:
+        return True
+    if lossless_only or file.extension not in LOSSY_EXTENSIONS:
+        return False
+    bitrate = bitrate_kbps(file)
+    return bitrate is not None and bitrate >= minimum_lossy_bitrate_kbps
+
+
+def _audio_track_key(file: RemoteFile) -> str:
+    path = normalize_remote_path(file.filename)
+    return path.with_suffix("").as_posix().casefold()
+
+
+def _score_candidate(
+    *,
+    artist: str,
+    album: str,
+    folder: str,
+    files: list[RemoteFile],
+    preferred_formats: list[str],
+    free_upload_slots: bool | None,
+    upload_speed: int | None,
+    queue_length: int | None,
+) -> tuple[float, list[str]]:
     reasons: list[str] = []
     score = token_overlap(album, folder) * 45 + token_overlap(artist, folder) * 22
     normalized_folder = normalize_text(folder)
@@ -105,25 +183,36 @@ def _score_candidate(*, artist: str, album: str, folder: str, files: list[Remote
     if normalized_artist and normalized_artist in normalized_folder:
         score += 12
         reasons.append("artist matches folder")
+
     audio_files = [file for file in files if file.extension in AUDIO_EXTENSIONS]
     formats = {file.extension for file in audio_files}
     if not formats:
         return -1000, ["no supported audio files"]
-    preference = {extension.casefold(): index for index, extension in enumerate(preferred_formats)}
-    best_rank = min(preference.get(extension, len(preference) + 5) for extension in formats)
+    preference = {
+        extension.casefold(): index for index, extension in enumerate(preferred_formats)
+    }
+    best_rank = min(
+        preference.get(extension, len(preference) + 5) for extension in formats
+    )
     score += max(0, 25 - best_rank * 2.5)
     reasons.append(f"format: {', '.join(sorted(formats))}")
     if formats <= LOSSLESS_EXTENSIONS:
-        score += 18
-        reasons.append("lossless source")
+        score += 28
+        reasons.append("lossless-only source")
     if len(formats) == 1:
         score += 7
         reasons.append("consistent audio format")
     track_count = len(audio_files)
-    score += 15 if 6 <= track_count <= 30 else 8 if 4 <= track_count <= 60 else -min(abs(track_count - 14), 20)
+    score += (
+        15
+        if 6 <= track_count <= 30
+        else 8
+        if 4 <= track_count <= 60
+        else -min(abs(track_count - 14), 20)
+    )
     reasons.append(f"{track_count} audio files")
     if any((file.bit_depth or 0) >= 24 for file in audio_files):
-        score += 4
+        score += 6
         reasons.append("high-resolution bit depth")
     if free_upload_slots is True:
         score += 12
@@ -140,13 +229,38 @@ def _score_candidate(*, artist: str, album: str, folder: str, files: list[Remote
     return round(score, 3), reasons
 
 
-def build_album_candidates(*, payload: Any, artist: str, album: str, search_id: str | None, preferred_formats: list[str], minimum_tracks: int = 4) -> list[AlbumCandidate]:
-    grouped: dict[tuple[str, str], dict[str, Any]] = defaultdict(lambda: {"files": {}, "discs": set(), "free_upload_slots": None, "upload_speed": None, "queue_length": None})
+def build_album_candidates(
+    *,
+    payload: Any,
+    artist: str,
+    album: str,
+    search_id: str | None,
+    preferred_formats: list[str],
+    minimum_tracks: int = 4,
+    lossless_only: bool = True,
+    minimum_lossy_bitrate_kbps: int = 320,
+) -> list[AlbumCandidate]:
+    grouped: dict[tuple[str, str], dict[str, Any]] = defaultdict(
+        lambda: {
+            "files": {},
+            "discs": set(),
+            "free_upload_slots": None,
+            "upload_speed": None,
+            "queue_length": None,
+        }
+    )
     for response in extract_search_responses(payload):
-        username = str(get_case_insensitive(response, "username", "userName", "user", default="") or "").strip()
+        username = str(
+            get_case_insensitive(
+                response, "username", "userName", "user", default=""
+            )
+            or ""
+        ).strip()
         if not username:
             continue
-        free_slots = get_case_insensitive(response, "hasFreeUploadSlot", "freeUploadSlots", "freeSlot")
+        free_slots = get_case_insensitive(
+            response, "hasFreeUploadSlot", "freeUploadSlots", "freeSlot"
+        )
         if isinstance(free_slots, int) and not isinstance(free_slots, bool):
             free_slots = free_slots > 0
         try:
@@ -169,24 +283,86 @@ def build_album_candidates(*, payload: Any, artist: str, album: str, search_id: 
             group["files"][remote.filename] = remote
             if disc is not None:
                 group["discs"].add(disc)
-            group.update(free_upload_slots=free_slots, upload_speed=speed, queue_length=queue)
+            group.update(
+                free_upload_slots=free_slots,
+                upload_speed=speed,
+                queue_length=queue,
+            )
+
     candidates: list[AlbumCandidate] = []
     for (username, folder), group in grouped.items():
-        files = list(group["files"].values())
-        audio = [file for file in files if file.extension in AUDIO_EXTENSIONS]
-        if len(audio) < minimum_tracks or len(audio) > 150:
+        all_files = list(group["files"].values())
+        all_audio = [file for file in all_files if file.extension in AUDIO_EXTENSIONS]
+        accepted_audio = [
+            file
+            for file in all_audio
+            if is_high_quality_audio(
+                file,
+                lossless_only=lossless_only,
+                minimum_lossy_bitrate_kbps=minimum_lossy_bitrate_kbps,
+            )
+        ]
+        accepted_keys = {_audio_track_key(file) for file in accepted_audio}
+        unique_rejected = [
+            file for file in all_audio if _audio_track_key(file) not in accepted_keys
+        ]
+        if unique_rejected:
             continue
-        score, reasons = _score_candidate(artist=artist, album=album, folder=folder, files=files, preferred_formats=preferred_formats, free_upload_slots=group["free_upload_slots"], upload_speed=group["upload_speed"], queue_length=group["queue_length"])
-        candidates.append(AlbumCandidate(
-            candidate_id=stable_id("slskd-album", username, folder, *sorted(f"{file.filename}:{file.size}" for file in files)),
-            search_id=search_id,
-            username=username,
-            folder=folder,
+        if len(accepted_audio) < minimum_tracks or len(accepted_audio) > 150:
+            continue
+
+        sidecars = [file for file in all_files if file.extension in SIDECAR_EXTENSIONS]
+        files = accepted_audio + sidecars
+        score, reasons = _score_candidate(
             artist=artist,
             album=album,
-            files=sorted(files, key=lambda item: normalize_remote_path(item.filename).as_posix()),
-            audio_file_count=len(audio), total_file_count=len(files), disc_count=max(1, len(group["discs"])),
-            formats=sorted({file.extension for file in audio}), total_bytes=sum(file.size for file in files),
-            free_upload_slots=group["free_upload_slots"], upload_speed=group["upload_speed"], queue_length=group["queue_length"], score=score, score_reasons=reasons,
-        ))
-    return sorted(candidates, key=lambda item: (item.score, item.free_upload_slots is True, item.upload_speed or 0), reverse=True)
+            folder=folder,
+            files=files,
+            preferred_formats=preferred_formats,
+            free_upload_slots=group["free_upload_slots"],
+            upload_speed=group["upload_speed"],
+            queue_length=group["queue_length"],
+        )
+        reasons.append(
+            "quality gate: lossless only"
+            if lossless_only
+            else f"quality gate: lossy >= {minimum_lossy_bitrate_kbps} kbps"
+        )
+        candidates.append(
+            AlbumCandidate(
+                candidate_id=stable_id(
+                    "slskd-album",
+                    username,
+                    folder,
+                    *sorted(f"{file.filename}:{file.size}" for file in files),
+                ),
+                search_id=search_id,
+                username=username,
+                folder=folder,
+                artist=artist,
+                album=album,
+                files=sorted(
+                    files,
+                    key=lambda item: normalize_remote_path(item.filename).as_posix(),
+                ),
+                audio_file_count=len(accepted_audio),
+                total_file_count=len(files),
+                disc_count=max(1, len(group["discs"])),
+                formats=sorted({file.extension for file in accepted_audio}),
+                total_bytes=sum(file.size for file in files),
+                free_upload_slots=group["free_upload_slots"],
+                upload_speed=group["upload_speed"],
+                queue_length=group["queue_length"],
+                score=score,
+                score_reasons=reasons,
+            )
+        )
+    return sorted(
+        candidates,
+        key=lambda item: (
+            item.score,
+            item.free_upload_slots is True,
+            item.upload_speed or 0,
+        ),
+        reverse=True,
+    )
