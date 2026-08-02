@@ -1,8 +1,8 @@
 FROM python:3.12-slim AS runtime
 
-ARG VERSION=0.1.0
+ARG VERSION=0.2.0
 LABEL org.opencontainers.image.title="flowoox Traxx MCP" \
-      org.opencontainers.image.description="MCP connector for Traxx/BeMusic TUS uploads and media APIs" \
+      org.opencontainers.image.description="MCP connector for Traxx/BeMusic TUS uploads, metadata normalization and cover embedding" \
       org.opencontainers.image.source="https://github.com/flowoox/mcp-lib" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.licenses="MIT"
