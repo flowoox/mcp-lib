@@ -1,0 +1,51 @@
+name: Fix PR 5 metadata lint once
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'feat/soulseek-webui-runtime-config-v0.2.0'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apply deterministic Ruff fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('services/traxx-mcp/src/traxx_mcp/metadata.py')
+          text = path.read_text()
+          text = text.replace(
+              '    ID3,\n    ID3NoHeaderError,\n    TALB,',
+              '    ID3,\n    TALB,'
+          )
+          text = text.replace(
+              '    TRCK,\n)',
+              '    TRCK,\n    ID3NoHeaderError,\n)'
+          )
+          text = text.replace(
+              'for key in tags.keys()',
+              'for key in tags'
+          )
+          path.write_text(text)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add services/traxx-mcp/src/traxx_mcp/metadata.py
+          if git diff --cached --quiet; then
+            echo 'Already fixed.'
+            exit 0
+          fi
+          git commit -m 'style: satisfy Traxx metadata lint'
+          git push origin "HEAD:${{ github.head_ref }}"
