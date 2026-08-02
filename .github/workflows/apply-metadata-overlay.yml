@@ -1,0 +1,36 @@
+name: Apply final Traxx metadata overlay
+
+on:
+  push:
+    branches:
+      - feat/soulseek-webui-runtime-config-v0.2.0
+    paths:
+      - metadata-overlay/READY
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/soulseek-webui-runtime-config-v0.2.0
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify and apply metadata implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode metadata-overlay/archive.b64 > /tmp/metadata-overlay.tgz
+          echo 'd133667811f4d0c777b241d333e3e16129d10073eb1d45482d0bf9fef0955c0e  /tmp/metadata-overlay.tgz' | sha256sum -c -
+          tar -xzf /tmp/metadata-overlay.tgz -C .
+          rm -rf metadata-overlay .snapshot-refresh
+          rm -f .github/workflows/apply-metadata-overlay.yml .github/workflows/dev-source-snapshot.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: normalize album metadata and embed covers before Traxx import'
+          git push origin HEAD:feat/soulseek-webui-runtime-config-v0.2.0
