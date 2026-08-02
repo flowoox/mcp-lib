@@ -75,8 +75,38 @@ def create_server() -> FastMCP:
         return await client().diagnose_upload(resolved)
 
     @mcp.tool()
-    async def import_album_folder(path: str, rights_confirmed: bool, rights_basis: str, rights_reference: str = "", dry_run: bool = True) -> dict[str, Any]:
-        return await client().import_album_folder(path, dry_run=dry_run, rights_confirmed=rights_confirmed, rights_basis=rights_basis, rights_reference=rights_reference)
+    async def import_album_folder(
+        path: str,
+        rights_confirmed: bool,
+        rights_basis: str,
+        rights_reference: str = "",
+        dry_run: bool = True,
+        artist: str = "",
+        album: str = "",
+        release_date: str = "",
+        cover_url: str = "",
+        genres: list[str] | None = None,
+        track_hints: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Normalize local tags and import a complete album into Traxx.
+
+        Album-level metadata supplied by the orchestrator overrides unreliable
+        Soulseek tags. Track hints are matched by disc/track number and the
+        selected cover is embedded in the local source files before upload.
+        """
+        return await client().import_album_folder(
+            path,
+            dry_run=dry_run,
+            rights_confirmed=rights_confirmed,
+            rights_basis=rights_basis,
+            rights_reference=rights_reference,
+            artist=artist,
+            album=album,
+            release_date=release_date,
+            cover_url=cover_url,
+            genres=genres,
+            track_hints=track_hints,
+        )
 
     @mcp.tool()
     async def import_external_metadata(model_type: str, provider: str, external_id: str, import_similar_artists: bool = False, import_albums: bool = False, import_lyrics: bool = False) -> Any:
