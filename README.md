@@ -6,8 +6,8 @@ nicht in dieses Repository.
 ## Images
 
 ```text
-ghcr.io/flowoox/mcp-soulseek:0.1.0
-ghcr.io/flowoox/mcp-spulseek:0.1.0  # Kompatibilitätsalias für den Tippfehler
+ghcr.io/flowoox/mcp-soulseek:0.2.0
+ghcr.io/flowoox/mcp-spulseek:0.2.0  # Kompatibilitätsalias für den Tippfehler
 ghcr.io/flowoox/mcp-traxx:0.1.0
 ```
 
@@ -15,9 +15,7 @@ ghcr.io/flowoox/mcp-traxx:0.1.0
 
 ### Soulseek MCP
 
-Wrapper für `slskd`. Sucht und bewertet vollständige Albumordner, fasst
-`CD1`, `CD2`, `Disc 1` und ähnliche Unterordner zusammen und lädt alle
-unterstützten Dateien eines ausgewählten Ordners als einen Batch.
+Wrapper für `slskd`. Konfiguriert Soulseek-Konto, Webzugang und API-Key über MCP, schreibt die überwachte `slskd.yml`, sucht und bewertet vollständige Albumordner, fasst `CD1`, `CD2`, `Disc 1` und ähnliche Unterordner zusammen und lädt alle unterstützten Dateien eines ausgewählten Ordners als einen Batch.
 
 ### Traxx MCP
 

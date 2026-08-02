@@ -13,6 +13,7 @@ services:
     volumes:
       - ./data/soulseek:/data
       - ./data/downloads:/downloads
+      - ./data/slskd:/slskd
     ports:
       - 127.0.0.1:8081:8081
     depends_on:

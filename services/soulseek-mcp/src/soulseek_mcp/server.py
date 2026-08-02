@@ -8,15 +8,20 @@ from mcp_common.rights import validate_rights
 from .client import SlskdClient, classify_batch
 from .config import RuntimeConfig, RuntimeConfigStore, get_settings
 from .repository import CandidateRepository
+from .slskd_config import SlskdConfigurationWriter
 
 
 def create_server() -> FastMCP:
     settings = get_settings()
     configs = RuntimeConfigStore(settings)
     candidates = CandidateRepository(settings.soulseek_candidate_file)
+    slskd_config = SlskdConfigurationWriter(settings.slskd_config_path)
     mcp = FastMCP(
         "Soulseek Album MCP",
-        instructions="Search complete slskd album folders and queue a selected folder as one download batch.",
+        instructions=(
+            "Configure slskd and search complete album folders. Queue a selected "
+            "folder as one download batch."
+        ),
         host=settings.mcp_host,
         port=settings.mcp_port,
         stateless_http=True,
@@ -27,8 +32,26 @@ def create_server() -> FastMCP:
         return SlskdClient(configs.get())
 
     @mcp.tool()
-    async def configure_slskd(base_url: str, api_key: str = "", search_timeout: int = 20, result_limit: int = 300, minimum_tracks: int = 4, preferred_formats: str = "flac,wav,alac,aiff,ape,wv,mp3,m4a,ogg,opus") -> dict[str, Any]:
-        """Persist slskd connector settings. The API key is never returned."""
+    async def configure_slskd(
+        base_url: str,
+        api_key: str = "",
+        search_timeout: int = 20,
+        result_limit: int = 300,
+        minimum_tracks: int = 4,
+        preferred_formats: str = (
+            "flac,wav,alac,aiff,ape,wv,mp3,m4a,ogg,opus"
+        ),
+        soulseek_username: str = "",
+        soulseek_password: str = "",
+        web_username: str = "",
+        web_password: str = "",
+        listen_port: int = 50300,
+    ) -> dict[str, Any]:
+        """Persist API/search settings and optionally update slskd's watched YAML.
+
+        Soulseek, web, and API secrets are accepted only as input and are never
+        returned in the tool result.
+        """
         current = configs.get()
         config = RuntimeConfig(
             base_url=base_url or current.base_url,
@@ -39,16 +62,37 @@ def create_server() -> FastMCP:
             preferred_formats=preferred_formats,
         )
         configs.save(config)
+
+        account_requested = any(
+            (
+                soulseek_username,
+                soulseek_password,
+                web_username,
+                web_password,
+            )
+        )
+        if account_requested:
+            slskd_config.write(
+                soulseek_username=soulseek_username,
+                soulseek_password=soulseek_password,
+                api_key=config.api_key,
+                web_username=web_username,
+                web_password=web_password,
+                listen_port=listen_port,
+            )
+
         result = config.model_dump(mode="json")
         result["api_key"] = "***" if config.api_key else ""
+        result["account_configured"] = account_requested
         result["ok"] = True
         return result
 
     @mcp.tool()
     async def get_configuration() -> dict[str, Any]:
-        """Return the effective connector configuration with the secret masked."""
+        """Return effective connector settings with all secrets masked."""
         result = configs.get().model_dump(mode="json")
         result["api_key"] = "***" if result.get("api_key") else ""
+        result["slskd_yaml_present"] = settings.slskd_config_path.is_file()
         return result
 
     @mcp.tool()
@@ -57,11 +101,25 @@ def create_server() -> FastMCP:
         return await client().health()
 
     @mcp.tool()
-    async def search_album(artist: str, album: str, max_candidates: int = 10, timeout_seconds: int | None = None) -> dict[str, Any]:
+    async def search_album(
+        artist: str,
+        album: str,
+        max_candidates: int = 10,
+        timeout_seconds: int | None = None,
+    ) -> dict[str, Any]:
         """Search and rank complete album folders, including multi-disc subfolders."""
-        search_id, found, _ = await client().search_album(artist=artist, album=album, timeout_seconds=timeout_seconds, max_candidates=max_candidates)
+        search_id, found, _ = await client().search_album(
+            artist=artist,
+            album=album,
+            timeout_seconds=timeout_seconds,
+            max_candidates=max_candidates,
+        )
         candidates.save_many(found)
-        return {"search_id": search_id, "candidate_count": len(found), "candidates": [item.model_dump(mode="json") for item in found]}
+        return {
+            "search_id": search_id,
+            "candidate_count": len(found),
+            "candidates": [item.model_dump(mode="json") for item in found],
+        }
 
     @mcp.tool()
     async def get_album_candidate(candidate_id: str) -> dict[str, Any]:
@@ -72,13 +130,28 @@ def create_server() -> FastMCP:
         return candidate.model_dump(mode="json")
 
     @mcp.tool()
-    async def queue_album_folder(candidate_id: str, rights_confirmed: bool, rights_basis: str, rights_reference: str = "", destination: str | None = None, external_id: str | None = None) -> dict[str, Any]:
-        """Queue every safe file of an authorized album candidate as one slskd batch."""
-        rights = validate_rights(confirmed=rights_confirmed, basis=rights_basis, reference=rights_reference)
+    async def queue_album_folder(
+        candidate_id: str,
+        rights_confirmed: bool,
+        rights_basis: str,
+        rights_reference: str = "",
+        destination: str | None = None,
+        external_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Queue every safe file of an authorized album candidate as one batch."""
+        rights = validate_rights(
+            confirmed=rights_confirmed,
+            basis=rights_basis,
+            reference=rights_reference,
+        )
         candidate = candidates.get(candidate_id)
         if not candidate:
             raise ValueError(f"Unknown or expired candidate: {candidate_id}")
-        result = await client().queue_candidate(candidate, destination=destination, external_id=external_id)
+        result = await client().queue_candidate(
+            candidate,
+            destination=destination,
+            external_id=external_id,
+        )
         result["candidate_id"] = candidate_id
         result["rights"] = rights.as_dict()
         return result
@@ -92,12 +165,24 @@ def create_server() -> FastMCP:
     async def get_download_batch(batch_id: str) -> dict[str, Any]:
         """Return raw and normalized status for one slskd batch."""
         payload = await client().get_batch(batch_id)
-        return {"batch_id": batch_id, "state": classify_batch(payload), "batch": payload}
+        return {
+            "batch_id": batch_id,
+            "state": classify_batch(payload),
+            "batch": payload,
+        }
 
     @mcp.tool()
-    async def wait_for_download(batch_id: str, timeout_seconds: int = 3600, poll_seconds: int = 10) -> dict[str, Any]:
+    async def wait_for_download(
+        batch_id: str,
+        timeout_seconds: int = 3600,
+        poll_seconds: int = 10,
+    ) -> dict[str, Any]:
         """Poll a batch until it completes, fails, or reaches the timeout."""
-        return await client().wait_for_batch(batch_id, timeout_seconds=timeout_seconds, poll_seconds=poll_seconds)
+        return await client().wait_for_batch(
+            batch_id,
+            timeout_seconds=timeout_seconds,
+            poll_seconds=poll_seconds,
+        )
 
     @mcp.tool()
     async def browse_user(username: str) -> Any:

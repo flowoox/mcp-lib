@@ -1,6 +1,6 @@
 FROM python:3.12-slim AS runtime
 
-ARG VERSION=0.1.0
+ARG VERSION=0.2.0
 LABEL org.opencontainers.image.title="flowoox Soulseek MCP" \
       org.opencontainers.image.description="MCP service for complete Soulseek/slskd album folders" \
       org.opencontainers.image.source="https://github.com/flowoox/mcp-lib" \
@@ -14,7 +14,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     MCP_PORT=8081 \
     SOULSEEK_CONFIG_FILE=/data/config.json \
     SOULSEEK_CANDIDATE_FILE=/data/candidates.json \
-    DOWNLOADS_DIR=/downloads
+    DOWNLOADS_DIR=/downloads \
+    SLSKD_CONFIG_PATH=/slskd/slskd.yml
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
@@ -28,8 +29,8 @@ RUN python -m pip install --upgrade pip \
 
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --create-home app \
-    && mkdir -p /data /downloads \
-    && chown -R app:app /data /downloads
+    && mkdir -p /data /downloads /slskd \
+    && chown -R app:app /data /downloads /slskd
 
 USER app
 WORKDIR /app
