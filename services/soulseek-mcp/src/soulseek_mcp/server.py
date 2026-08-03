@@ -7,6 +7,7 @@ from mcp_common.rights import validate_rights
 
 from .client import SlskdClient, classify_batch
 from .config import RuntimeConfig, RuntimeConfigStore, get_settings
+from .contract import capabilities
 from .repository import CandidateRepository
 from .slskd_config import SlskdConfigurationWriter
 
@@ -27,6 +28,11 @@ def create_server() -> FastMCP:
         stateless_http=True,
         json_response=True,
     )
+
+    @mcp.tool()
+    async def get_capabilities() -> dict[str, Any]:
+        """Return the stable MCP contract and supported features."""
+        return capabilities()
 
     def client() -> SlskdClient:
         return SlskdClient(configs.get())
