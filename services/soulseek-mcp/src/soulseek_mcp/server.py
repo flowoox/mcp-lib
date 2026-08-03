@@ -38,19 +38,20 @@ def create_server() -> FastMCP:
         search_timeout: int = 20,
         result_limit: int = 300,
         minimum_tracks: int = 4,
-        preferred_formats: str = (
-            "flac,wav,alac,aiff,ape,wv,mp3,m4a,ogg,opus"
-        ),
+        preferred_formats: str = "flac,wav,alac,aiff,aif,ape,wv",
+        lossless_only: bool = True,
+        minimum_lossy_bitrate_kbps: int = 320,
         soulseek_username: str = "",
         soulseek_password: str = "",
         web_username: str = "",
         web_password: str = "",
         listen_port: int = 50300,
     ) -> dict[str, Any]:
-        """Persist API/search settings and optionally update slskd's watched YAML.
+        """Persist API, search, quality and optional account settings.
 
-        Soulseek, web, and API secrets are accepted only as input and are never
-        returned in the tool result.
+        By default only lossless formats are accepted. When lossless_only is
+        disabled, every lossy file must report at least
+        minimum_lossy_bitrate_kbps. Secrets are input-only and never returned.
         """
         current = configs.get()
         config = RuntimeConfig(
@@ -60,16 +61,13 @@ def create_server() -> FastMCP:
             result_limit=result_limit,
             minimum_tracks=minimum_tracks,
             preferred_formats=preferred_formats,
+            lossless_only=lossless_only,
+            minimum_lossy_bitrate_kbps=minimum_lossy_bitrate_kbps,
         )
         configs.save(config)
 
         account_requested = any(
-            (
-                soulseek_username,
-                soulseek_password,
-                web_username,
-                web_password,
-            )
+            (soulseek_username, soulseek_password, web_username, web_password)
         )
         if account_requested:
             slskd_config.write(
