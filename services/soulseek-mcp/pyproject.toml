@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "flowoox-mcp-soulseek"
-version = "0.2.0"
+version = "0.3.0"
 description = "Independent MCP service for complete Soulseek/slskd album folders."
 readme = "README.md"
 requires-python = ">=3.12"

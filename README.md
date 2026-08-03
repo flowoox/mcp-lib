@@ -6,10 +6,21 @@ nicht in dieses Repository.
 ## Images
 
 ```text
-ghcr.io/flowoox/mcp-soulseek:0.2.0
-ghcr.io/flowoox/mcp-spulseek:0.2.0  # Kompatibilitätsalias für den Tippfehler
-ghcr.io/flowoox/mcp-traxx:0.1.0
+ghcr.io/flowoox/mcp-soulseek:0.3.0
+ghcr.io/flowoox/mcp-spulseek:0.3.0  # Kompatibilitätsalias für den Tippfehler
+ghcr.io/flowoox/mcp-traxx:0.3.0
 ```
+
+## Vertragsfamilie
+
+Jeder Dienst veröffentlicht über `get_capabilities` einen stabilen MCP-Vertrag:
+
+```text
+flowoox.music-acquisition v1.x
+flowoox.music-library-import v1.x
+```
+
+Service-/Image-Versionen und Vertragsversionen sind getrennt. Innerhalb v1 sind additive Tools und Felder kompatibel; semantische Brüche erfordern einen neuen Vertrags-Major. Beide Dienste verwenden für die Übergabe relativer Albumartefakte das Schema `shared-volume`.
 
 ## Dienste
 
