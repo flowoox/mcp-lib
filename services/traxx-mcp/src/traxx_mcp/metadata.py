@@ -13,7 +13,6 @@ from mutagen.flac import FLAC, Picture
 from mutagen.id3 import (
     APIC,
     ID3,
-    ID3NoHeaderError,
     TALB,
     TCON,
     TDRC,
@@ -22,6 +21,7 @@ from mutagen.id3 import (
     TPE2,
     TPOS,
     TRCK,
+    ID3NoHeaderError,
 )
 from mutagen.mp4 import MP4, MP4Cover
 from mutagen.wave import WAVE
@@ -157,7 +157,7 @@ def _has_cover(audio: Any, suffix: str) -> bool:
             return bool((audio.tags or {}).get("covr"))
         if suffix in {".mp3", ".wav", ".aif", ".aiff"}:
             tags = getattr(audio, "tags", None)
-            return bool(tags and any(str(key).startswith("APIC") for key in tags.keys()))
+            return bool(tags and any(str(key).startswith("APIC") for key in tags))
         tags = getattr(audio, "tags", None) or {}
         return bool(tags.get("metadata_block_picture") or tags.get("coverart"))
     except Exception:
