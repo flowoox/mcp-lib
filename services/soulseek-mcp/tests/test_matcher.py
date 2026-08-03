@@ -1,26 +1,153 @@
 from soulseek_mcp.matcher import build_album_candidates
 
 
+def files_payload(files):
+    return {"responses": [{"username": "peer", "files": files}]}
+
+
 def test_groups_multi_disc_album_and_blocks_executables():
-    payload = {
-        "responses": [{
-            "username": "peer",
-            "hasFreeUploadSlot": True,
-            "uploadSpeed": 1000000,
-            "files": [
-                {"filename": r"Artist\\Album\\CD1\\01.flac", "size": 10},
-                {"filename": r"Artist\\Album\\CD1\\02.flac", "size": 10},
-                {"filename": r"Artist\\Album\\CD2\\03.flac", "size": 10},
-                {"filename": r"Artist\\Album\\CD2\\04.flac", "size": 10},
-                {"filename": r"Artist\\Album\\cover.jpg", "size": 2},
-                {"filename": r"Artist\\Album\\evil.exe", "size": 2},
-            ],
-        }]
-    }
-    candidates = build_album_candidates(payload=payload, artist="Artist", album="Album", search_id="s1", preferred_formats=["flac", "mp3"], minimum_tracks=4)
+    payload = files_payload(
+        [
+            {"filename": r"Artist\Album\CD1\01.flac", "size": 10},
+            {"filename": r"Artist\Album\CD1\02.flac", "size": 10},
+            {"filename": r"Artist\Album\CD2\03.flac", "size": 10},
+            {"filename": r"Artist\Album\CD2\04.flac", "size": 10},
+            {"filename": r"Artist\Album\cover.jpg", "size": 2},
+            {"filename": r"Artist\Album\evil.exe", "size": 2},
+        ]
+    )
+    candidates = build_album_candidates(
+        payload=payload,
+        artist="Artist",
+        album="Album",
+        search_id="s1",
+        preferred_formats=["flac", "wav"],
+        minimum_tracks=4,
+    )
     assert len(candidates) == 1
     candidate = candidates[0]
     assert candidate.disc_count == 2
     assert candidate.audio_file_count == 4
     assert candidate.total_file_count == 5
+    assert candidate.formats == ["flac"]
     assert all(not item.filename.endswith(".exe") for item in candidate.files)
+
+
+def test_rejects_mp3_by_default_even_at_320_kbps():
+    payload = files_payload(
+        [
+            {
+                "filename": rf"Artist\Album\{number:02}.mp3",
+                "size": 10,
+                "bitRate": 320,
+            }
+            for number in range(1, 5)
+        ]
+    )
+    assert (
+        build_album_candidates(
+            payload=payload,
+            artist="Artist",
+            album="Album",
+            search_id="s1",
+            preferred_formats=["flac", "mp3"],
+            minimum_tracks=4,
+        )
+        == []
+    )
+
+
+def test_optional_lossy_fallback_requires_320_kbps():
+    payload_320 = files_payload(
+        [
+            {
+                "filename": rf"Artist\Album\{number:02}.mp3",
+                "size": 10,
+                "bitRate": 320000,
+            }
+            for number in range(1, 5)
+        ]
+    )
+    candidates = build_album_candidates(
+        payload=payload_320,
+        artist="Artist",
+        album="Album",
+        search_id="s1",
+        preferred_formats=["mp3"],
+        minimum_tracks=4,
+        lossless_only=False,
+        minimum_lossy_bitrate_kbps=320,
+    )
+    assert len(candidates) == 1
+    assert candidates[0].formats == ["mp3"]
+
+    payload_256 = files_payload(
+        [
+            {
+                "filename": rf"Artist\Album\{number:02}.mp3",
+                "size": 10,
+                "bitRate": 256,
+            }
+            for number in range(1, 5)
+        ]
+    )
+    assert (
+        build_album_candidates(
+            payload=payload_256,
+            artist="Artist",
+            album="Album",
+            search_id="s1",
+            preferred_formats=["mp3"],
+            minimum_tracks=4,
+            lossless_only=False,
+            minimum_lossy_bitrate_kbps=320,
+        )
+        == []
+    )
+
+
+def test_drops_lossy_duplicate_when_lossless_track_exists():
+    files = []
+    for number in range(1, 5):
+        files.extend(
+            [
+                {"filename": rf"Artist\Album\{number:02}.flac", "size": 100},
+                {
+                    "filename": rf"Artist\Album\{number:02}.mp3",
+                    "size": 10,
+                    "bitRate": 128,
+                },
+            ]
+        )
+    candidates = build_album_candidates(
+        payload=files_payload(files),
+        artist="Artist",
+        album="Album",
+        search_id="s1",
+        preferred_formats=["flac"],
+        minimum_tracks=4,
+    )
+    assert len(candidates) == 1
+    assert candidates[0].formats == ["flac"]
+    assert all(item.extension != "mp3" for item in candidates[0].files)
+
+
+def test_rejects_album_with_unique_low_quality_track():
+    files = [
+        {"filename": rf"Artist\Album\{number:02}.flac", "size": 100}
+        for number in range(1, 4)
+    ]
+    files.append(
+        {"filename": r"Artist\Album\04.mp3", "size": 10, "bitRate": 128}
+    )
+    assert (
+        build_album_candidates(
+            payload=files_payload(files),
+            artist="Artist",
+            album="Album",
+            search_id="s1",
+            preferred_formats=["flac"],
+            minimum_tracks=4,
+        )
+        == []
+    )

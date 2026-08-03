@@ -1,20 +1,33 @@
 # Soulseek MCP
 
-Unabhängiger MCP-Server für `slskd`.
+Eigenständiger MCP-Service für slskd/Soulseek.
 
-## Werkzeuge
+## Aufgaben
 
-- `configure_slskd`
-- `get_configuration`
-- `health`
-- `search_album`
-- `get_album_candidate`
-- `queue_album_folder`
-- `list_downloads`
-- `get_download_batch`
-- `wait_for_download`
-- `browse_user`
+- slskd-API und Suchparameter persistent konfigurieren
+- Soulseek- sowie slskd-Webzugang in die überwachte `slskd.yml` schreiben
+- vollständige Albumordner und Multi-Disc-Strukturen bewerten
+- sichere komplette Ordner als einen Download-Batch anlegen
+- Downloadstatus normalisieren
 
-Die Suche gruppiert nach Benutzer und echtem Remote-Ordner. Disc-Unterordner
-werden zusammengeführt. Ausführbare Dateien und Skripte werden nie in den
-Download-Batch übernommen.
+Die `slskd.yml` liegt auf einem gemeinsamen persistenten Volume, wird atomar mit
+Dateirechten `0600` geschrieben und enthält zwangsläufig die Soulseek-Zugangsdaten,
+weil slskd selbst diese Datei liest. MCP-Antworten geben keine dieser Secrets zurück.
+
+## Relevante Tools
+
+```text
+configure_slskd
+get_configuration
+health
+search_album
+get_album_candidate
+queue_album_folder
+get_download_batch
+wait_for_download
+browse_user
+```
+
+`configure_slskd` bleibt mit bisherigen Clients kompatibel. Die zusätzlichen
+Felder `soulseek_username`, `soulseek_password`, `web_username`, `web_password`
+und `listen_port` aktivieren die vollständige Web-UI-basierte Ersteinrichtung.

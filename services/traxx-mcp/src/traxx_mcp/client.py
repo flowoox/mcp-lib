@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
 
 import httpx
 from mcp_common.http import get_case_insensitive
-from mcp_common.paths import resolve_contained_path
+from mcp_common.paths import normalize_text, resolve_contained_path
 from mcp_common.rights import validate_rights
 
 from .config import RuntimeConfig
-from .metadata import AUDIO_EXTENSIONS, inspect_audio_file
+from .metadata import (
+    AUDIO_EXTENSIONS,
+    cover_mime_type,
+    ensure_audio_metadata,
+    find_local_cover,
+    inspect_audio_file,
+)
 from .tus import TusUploader, TusUploadResult, recursive_find
 
 
@@ -41,6 +48,35 @@ def normalize_genres(value: Any, fallback: list[str] | None = None) -> list[str]
                 output.append(name)
         return output or list(fallback or [])
     return list(fallback or [])
+
+
+def iter_dicts(value: Any):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from iter_dicts(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from iter_dicts(child)
+
+
+def extract_items(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in ("data", "items", "artists", "albums", "tracks"):
+        value = get_case_insensitive(payload, key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    pagination = get_case_insensitive(payload, "pagination")
+    if isinstance(pagination, dict):
+        return extract_items(pagination)
+    for mapping in iter_dicts(payload):
+        value = get_case_insensitive(mapping, "data", "items")
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    return []
 
 
 class TraxxClient:
@@ -252,6 +288,128 @@ class TraxxClient:
     async def create_track(self, payload: dict[str, Any]) -> Any:
         return await self.request("POST", "/api/v1/tracks", json=payload)
 
+    async def _find_exact_resource(self, resource: str, name: str) -> int | None:
+        payload = await self.list_resource(resource, page=1, per_page=50, query=name)
+        expected = normalize_text(name)
+        for item in extract_items(payload):
+            current = str(get_case_insensitive(item, "name", "title", default=""))
+            if normalize_text(current) != expected:
+                continue
+            value = get_case_insensitive(item, "id")
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    async def ensure_artist(
+        self,
+        name: str,
+        *,
+        image: str = "",
+        genres: list[str] | None = None,
+    ) -> int:
+        existing = await self._find_exact_resource("artists", name)
+        if existing:
+            return existing
+        created = await self.request(
+            "POST",
+            "/api/v1/artists",
+            json={
+                "name": name,
+                "image_small": image or None,
+                "genres": list(genres or []),
+                "disabled": False,
+            },
+        )
+        value = recursive_find(created, {"id"})
+        if value is None:
+            raise TraxxError(f"Traxx created artist {name!r} without returning an id")
+        return int(value)
+
+    async def ensure_album(
+        self,
+        name: str,
+        *,
+        artist_id: int,
+        release_date: str = "",
+        image: str = "",
+    ) -> int:
+        payload = await self.list_resource("albums", page=1, per_page=50, query=name)
+        expected = normalize_text(name)
+        for item in extract_items(payload):
+            current = str(get_case_insensitive(item, "name", "title", default=""))
+            if normalize_text(current) != expected:
+                continue
+            value = get_case_insensitive(item, "id")
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
+        date_value = release_date if re.fullmatch(r"\d{4}-\d{2}-\d{2}", release_date) else ""
+        if not date_value and re.fullmatch(r"\d{4}", release_date):
+            date_value = f"{release_date}-01-01"
+        created = await self.request(
+            "POST",
+            "/api/v1/albums",
+            json={
+                "name": name,
+                "release_date": date_value or None,
+                "image": image or None,
+                "artists": [artist_id],
+            },
+        )
+        value = recursive_find(created, {"id"})
+        if value is None:
+            raise TraxxError(f"Traxx created album {name!r} without returning an id")
+        return int(value)
+
+    async def _load_cover(
+        self,
+        album_root: Path,
+        cover_url: str,
+    ) -> tuple[bytes | None, str, Path | None]:
+        if cover_url:
+            try:
+                async with httpx.AsyncClient(
+                    verify=self.config.verify_tls,
+                    timeout=min(60, self.config.timeout_seconds),
+                    follow_redirects=True,
+                ) as client:
+                    response = await client.get(cover_url)
+                response.raise_for_status()
+                if len(response.content) > 20 * 1024 * 1024:
+                    raise TraxxError("Album cover exceeds 20 MiB")
+                mime = response.headers.get("content-type", "").split(";", 1)[0]
+                if not mime.startswith("image/"):
+                    mime = cover_mime_type(None, response.content)
+                suffix = ".png" if mime == "image/png" else ".jpg"
+                saved = album_root / f"cover{suffix}"
+                saved.write_bytes(response.content)
+                return response.content, mime, saved
+            except Exception:
+                # A local cover remains a valid fallback.
+                pass
+        local = find_local_cover(album_root)
+        if local:
+            data = local.read_bytes()
+            return data, cover_mime_type(local, data), local
+        return None, "image/jpeg", None
+
+    async def _cover_url_for_traxx(
+        self,
+        *,
+        external_url: str,
+        local_cover: Path | None,
+    ) -> str:
+        if external_url:
+            return external_url
+        if not local_cover:
+            return ""
+        upload = await self.upload_file(local_cover, upload_type="image")
+        discovery = await self.discover_file_entry(upload)
+        return str(discovery.get("file_url") or "")
+
     async def import_album_folder(
         self,
         folder: str | Path,
@@ -260,6 +418,12 @@ class TraxxClient:
         rights_confirmed: bool,
         rights_basis: str,
         rights_reference: str = "",
+        artist: str = "",
+        album: str = "",
+        release_date: str = "",
+        cover_url: str = "",
+        genres: list[str] | None = None,
+        track_hints: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         rights = validate_rights(
             confirmed=rights_confirmed,
@@ -276,6 +440,11 @@ class TraxxClient:
         )
         if not files:
             raise TraxxError(f"No supported audio files found in {resolved}")
+
+        first_local = inspect_audio_file(files[0])
+        expected_artist = artist.strip() or first_local.artist
+        expected_album = album.strip() or first_local.album or resolved.name
+        cover_data, cover_mime, cover_path = await self._load_cover(resolved, cover_url)
         inspection = [
             {"path": str(path), "metadata": inspect_audio_file(path).as_dict()}
             for path in files
@@ -286,8 +455,47 @@ class TraxxClient:
                 "folder": str(resolved),
                 "track_count": len(files),
                 "rights": rights.as_dict(),
+                "expected": {
+                    "artist": expected_artist,
+                    "album": expected_album,
+                    "release_date": release_date,
+                    "cover": str(cover_path) if cover_path else cover_url,
+                },
                 "tracks": inspection,
             }
+
+        tag_results: list[dict[str, Any]] = []
+        for path in files:
+            tag_results.append(
+                ensure_audio_metadata(
+                    path,
+                    album_root=resolved,
+                    artist=expected_artist,
+                    album=expected_album,
+                    release_date=release_date,
+                    genres=list(genres or []),
+                    track_hints=track_hints,
+                    cover_data=cover_data,
+                    cover_mime=cover_mime,
+                ).as_dict()
+            )
+
+        traxx_cover_url = await self._cover_url_for_traxx(
+            external_url=cover_url,
+            local_cover=cover_path,
+        )
+        artist_id = await self.ensure_artist(
+            expected_artist,
+            image=traxx_cover_url,
+            genres=list(genres or []),
+        )
+        album_id = await self.ensure_album(
+            expected_album,
+            artist_id=artist_id,
+            release_date=release_date,
+            image=traxx_cover_url,
+        )
+
         imported: list[dict[str, Any]] = []
         unresolved: list[dict[str, Any]] = []
         for path in files:
@@ -317,17 +525,12 @@ class TraxxClient:
                     if isinstance(extracted, dict)
                     else {}
                 )
-                artist_id = self.extract_resource_id(metadata, "artist")
-                album_id = self.extract_resource_id(metadata, "album")
-                if not file_url or not artist_id:
+                if not file_url:
                     unresolved.append(
                         {
                             "path": str(path),
                             "stage": "track-create",
-                            "reason": (
-                                "A playable uploaded-file URL and matched artist id "
-                                "are required"
-                            ),
+                            "reason": "A playable uploaded-file URL is required",
                             "upload": upload.as_dict(),
                             "discovery": discovery,
                             "metadata": metadata,
@@ -367,23 +570,22 @@ class TraxxClient:
                     "duration": max(1, duration),
                     "number": max(1, number),
                     "artists": [artist_id],
+                    "album_id": album_id,
                     "src": file_url,
                     "genres": normalize_genres(
                         get_case_insensitive(metadata, "genres"),
-                        fallback=local.genres,
+                        fallback=local.genres or list(genres or []),
                     ),
                 }
-                if album_id:
-                    payload["album_id"] = album_id
-                image = get_case_insensitive(metadata, "image")
-                if isinstance(image, dict) and image.get("url"):
-                    payload["image"] = image["url"]
+                if traxx_cover_url:
+                    payload["image"] = traxx_cover_url
                 created = await self.create_track(payload)
                 imported.append(
                     {
                         "path": str(path),
                         "file_entry_id": file_id,
                         "track": created,
+                        "metadata": local.as_dict(),
                     }
                 )
             except Exception as exc:
@@ -401,6 +603,10 @@ class TraxxClient:
             "imported_count": len(imported),
             "unresolved_count": len(unresolved),
             "rights": rights.as_dict(),
+            "artist_id": artist_id,
+            "album_id": album_id,
+            "cover_url": traxx_cover_url,
+            "tag_results": tag_results,
             "imported": imported,
             "unresolved": unresolved,
         }

@@ -15,8 +15,10 @@ class RuntimeConfig(BaseModel):
     result_limit: int = Field(default=300, ge=1, le=2000)
     minimum_tracks: int = Field(default=4, ge=1, le=150)
     preferred_formats: list[str] = Field(
-        default_factory=lambda: ["flac", "wav", "alac", "aiff", "ape", "wv", "mp3", "m4a", "ogg", "opus"]
+        default_factory=lambda: ["flac", "wav", "alac", "aiff", "aif", "ape", "wv"]
     )
+    lossless_only: bool = True
+    minimum_lossy_bitrate_kbps: int = Field(default=320, ge=128, le=1411)
 
     @field_validator("base_url")
     @classmethod
@@ -27,7 +29,11 @@ class RuntimeConfig(BaseModel):
     @classmethod
     def parse_formats(cls, value: object) -> object:
         if isinstance(value, str):
-            return [part.strip().casefold() for part in value.replace(" ", ",").split(",") if part.strip()]
+            return [
+                part.strip().casefold()
+                for part in value.replace(" ", ",").split(",")
+                if part.strip()
+            ]
         return value
 
 
@@ -39,13 +45,16 @@ class Settings(BaseSettings):
     soulseek_config_file: Path = Path("/data/config.json")
     soulseek_candidate_file: Path = Path("/data/candidates.json")
     downloads_dir: Path = Path("/downloads")
+    slskd_config_path: Path = Path("/slskd/slskd.yml")
 
     slskd_url: str = "http://slskd:5030"
     slskd_api_key: str = ""
     slskd_search_timeout: int = 20
     slskd_result_limit: int = 300
     slskd_minimum_tracks: int = 4
-    preferred_audio_formats: str = "flac,wav,alac,aiff,ape,wv,mp3,m4a,ogg,opus"
+    preferred_audio_formats: str = "flac,wav,alac,aiff,aif,ape,wv"
+    lossless_only: bool = True
+    minimum_lossy_bitrate_kbps: int = 320
 
     def initial_runtime_config(self) -> RuntimeConfig:
         return RuntimeConfig(
@@ -55,6 +64,8 @@ class Settings(BaseSettings):
             result_limit=self.slskd_result_limit,
             minimum_tracks=self.slskd_minimum_tracks,
             preferred_formats=self.preferred_audio_formats,
+            lossless_only=self.lossless_only,
+            minimum_lossy_bitrate_kbps=self.minimum_lossy_bitrate_kbps,
         )
 
 
@@ -83,4 +94,5 @@ def get_settings() -> Settings:
     settings.soulseek_config_file.parent.mkdir(parents=True, exist_ok=True)
     settings.soulseek_candidate_file.parent.mkdir(parents=True, exist_ok=True)
     settings.downloads_dir.mkdir(parents=True, exist_ok=True)
+    settings.slskd_config_path.parent.mkdir(parents=True, exist_ok=True)
     return settings
