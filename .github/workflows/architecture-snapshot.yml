@@ -1,0 +1,25 @@
+name: MCP architecture source snapshot
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    if: github.head_ref == 'chore/architecture-freeze-snapshot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package current source
+        run: tar --exclude=.git -czf /tmp/mcp-lib-architecture.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp-lib-architecture-source
+          path: /tmp/mcp-lib-architecture.tgz
+          if-no-files-found: error
+          retention-days: 1
