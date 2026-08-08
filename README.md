@@ -6,10 +6,13 @@ nicht in dieses Repository.
 ## Images
 
 ```text
-ghcr.io/flowoox/mcp-soulseek:0.3.0
-ghcr.io/flowoox/mcp-spulseek:0.3.0  # Kompatibilitätsalias für den Tippfehler
-ghcr.io/flowoox/mcp-traxx:0.3.0
+ghcr.io/flowoox/mcp-soulseek:0.3.1
+ghcr.io/flowoox/mcp-spulseek:0.3.1  # Kompatibilitätsalias für den Tippfehler
+ghcr.io/flowoox/mcp-traxx:0.3.1
 ```
+
+Die versionierten Images werden nur nach erfolgreichem Lint-, Test-, Compile-
+und Container-Build-Gate von `main` veröffentlicht.
 
 ## Vertragsfamilie
 
@@ -26,14 +29,18 @@ Service-/Image-Versionen und Vertragsversionen sind getrennt. Innerhalb v1 sind 
 
 ### Soulseek MCP
 
-Wrapper für `slskd`. Konfiguriert Soulseek-Konto, Webzugang und API-Key über MCP, schreibt die überwachte `slskd.yml`, sucht und bewertet vollständige Albumordner, fasst `CD1`, `CD2`, `Disc 1` und ähnliche Unterordner zusammen und lädt alle unterstützten Dateien eines ausgewählten Ordners als einen Batch.
+Wrapper für `slskd`. Konfiguriert Soulseek-Konto, Webzugang und API-Key über MCP, schreibt die überwachte `slskd.yml`, sucht und bewertet vollständige Albumordner, fasst `CD1`, `CD2`, `Disc 1` und ähnliche Unterordner zusammen und lädt alle unterstützten Dateien eines ausgewählten Ordners als einen Batch. Die erwartete Trackzahl wird exakt geprüft. Deterministische Batch-IDs und ein bestehender-Batch-Check machen Wiederholungen nach Timeouts oder Prozessabbrüchen idempotent.
 
 ### Traxx MCP
 
 Wrapper für Traxx/BeMusic 3.x. Nutzt den nativen TUS-Endpunkt, die vorhandene
-Metadatenextraktion sowie die Artist-, Album- und Track-API. Ein Diagnose-Tool
-protokolliert TUS-Antworten, damit Instanzunterschiede ohne Änderungen am
-Orchestrator abgeglichen werden können.
+Metadatenextraktion sowie die Artist-, Album- und Track-API. Track- und
+Album-Artists werden getrennt behandelt, mehrere Gastkünstler bleiben erhalten
+und ein lokal gespeichertes Cover wird gegenüber externen Hotlinks bevorzugt.
+Ein persistentes Import-Ledger verhindert doppelte abgeschlossene Importe;
+teilweise oder noch nicht konfigurierte Importe bleiben erneut ausführbar. Ein
+Diagnose-Tool protokolliert TUS-Antworten, damit Instanzunterschiede ohne
+Änderungen am Orchestrator abgeglichen werden können.
 
 ## Lokal entwickeln
 

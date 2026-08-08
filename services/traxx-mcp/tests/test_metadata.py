@@ -6,6 +6,7 @@ from pathlib import Path
 
 from traxx_mcp.client import extract_items, normalize_genres
 from traxx_mcp.metadata import (
+    TrackHint,
     clean_title_from_filename,
     ensure_audio_metadata,
     find_local_cover,
@@ -93,3 +94,72 @@ def test_writes_fallback_tags_and_embeds_cover(tmp_path: Path):
     assert metadata.disc_number == 1
     assert metadata.release_date.startswith("2026")
     assert metadata.has_cover is True
+
+
+def test_track_artist_and_album_artist_are_written_separately(tmp_path: Path):
+    from mutagen.wave import WAVE
+
+    album = tmp_path / "Album"
+    album.mkdir()
+    path = album / "01 - Duet.wav"
+    make_wav(path)
+
+    ensure_audio_metadata(
+        path,
+        album_root=album,
+        artist="Album Artist",
+        album="Correct Album",
+        track_hints=[
+            {
+                "title": "Duet",
+                "number": 1,
+                "disc_number": 1,
+                "artist": "Guest Artist",
+            }
+        ],
+    )
+
+    metadata = inspect_audio_file(path)
+    tags = WAVE(path).tags
+    assert tags is not None
+    assert metadata.artist == "Guest Artist"
+    assert str(tags["TPE1"].text[0]) == "Guest Artist"
+    assert str(tags["TPE2"].text[0]) == "Album Artist"
+
+
+def test_track_hint_preserves_all_featured_artists() -> None:
+    hint = TrackHint.from_mapping(
+        {
+            "title": "Collaboration",
+            "number": 1,
+            "artists": ["Main Artist", {"name": "Guest Artist"}],
+        }
+    )
+    assert hint.artist == "Main Artist"
+    assert hint.artists == ["Main Artist", "Guest Artist"]
+
+
+def test_wav_tpe1_contains_all_track_artists(tmp_path: Path) -> None:
+    from mutagen.wave import WAVE
+
+    album = tmp_path / "Album"
+    album.mkdir()
+    path = album / "01 - Collaboration.wav"
+    make_wav(path)
+    ensure_audio_metadata(
+        path,
+        album_root=album,
+        artist="Album Artist",
+        album="Album",
+        track_hints=[
+            {
+                "title": "Collaboration",
+                "number": 1,
+                "artists": ["Main Artist", "Guest Artist"],
+            }
+        ],
+    )
+    tags = WAVE(path).tags
+    assert tags is not None
+    assert list(tags["TPE1"].text) == ["Main Artist", "Guest Artist"]
+    assert list(tags["TPE2"].text) == ["Album Artist"]

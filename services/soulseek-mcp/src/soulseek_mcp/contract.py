@@ -5,7 +5,7 @@ from typing import Any
 from . import __version__
 
 CONTRACT_NAME = "flowoox.music-acquisition"
-CONTRACT_VERSION = "1.0"
+CONTRACT_VERSION = "1.2"
 
 
 def capabilities() -> dict[str, Any]:
@@ -25,6 +25,8 @@ def capabilities() -> dict[str, Any]:
             "lossy_minimum_bitrate": True,
             "rights_validation": True,
             "status_polling": True,
+            "idempotent_queue": True,
+            "expected_track_count_validation": True,
         },
         "audio_formats": {
             "lossless": ["flac", "wav", "alac", "aiff", "aif", "ape", "wv"],

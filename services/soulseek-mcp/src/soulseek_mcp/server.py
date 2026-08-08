@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -17,6 +18,7 @@ def create_server() -> FastMCP:
     configs = RuntimeConfigStore(settings)
     candidates = CandidateRepository(settings.soulseek_candidate_file)
     slskd_config = SlskdConfigurationWriter(settings.slskd_config_path)
+    queue_locks: dict[str, asyncio.Lock] = {}
     mcp = FastMCP(
         "Soulseek Album MCP",
         instructions=(
@@ -108,6 +110,7 @@ def create_server() -> FastMCP:
     async def search_album(
         artist: str,
         album: str,
+        expected_track_count: int | None = None,
         max_candidates: int = 10,
         timeout_seconds: int | None = None,
     ) -> dict[str, Any]:
@@ -115,6 +118,7 @@ def create_server() -> FastMCP:
         search_id, found, _ = await client().search_album(
             artist=artist,
             album=album,
+            expected_track_count=expected_track_count,
             timeout_seconds=timeout_seconds,
             max_candidates=max_candidates,
         )
@@ -148,14 +152,24 @@ def create_server() -> FastMCP:
             basis=rights_basis,
             reference=rights_reference,
         )
-        candidate = candidates.get(candidate_id)
-        if not candidate:
-            raise ValueError(f"Unknown or expired candidate: {candidate_id}")
-        result = await client().queue_candidate(
-            candidate,
-            destination=destination,
-            external_id=external_id,
-        )
+        lock_key = f"{external_id or candidate_id}:{candidate_id}"
+        lock = queue_locks.setdefault(lock_key, asyncio.Lock())
+        async with lock:
+            candidate = candidates.get(candidate_id)
+            if not candidate:
+                result = await client().get_existing_operation_batch(
+                    candidate_id=candidate_id,
+                    external_id=external_id,
+                    destination=destination,
+                )
+                if result is None:
+                    raise ValueError(f"Unknown or expired candidate: {candidate_id}")
+            else:
+                result = await client().queue_candidate(
+                    candidate,
+                    destination=destination,
+                    external_id=external_id,
+                )
         result["candidate_id"] = candidate_id
         result["rights"] = rights.as_dict()
         return result

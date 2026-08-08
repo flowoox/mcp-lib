@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     mcp_host: str = "0.0.0.0"
     mcp_port: int = 8082
     traxx_config_file: Path = Path("/data/config.json")
+    traxx_import_ledger_file: Path = Path("/data/imports.json")
     downloads_dir: Path = Path("/downloads")
 
     traxx_url: str = ""
@@ -79,5 +80,6 @@ class RuntimeConfigStore:
 def get_settings() -> Settings:
     settings = Settings()
     settings.traxx_config_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.traxx_import_ledger_file.parent.mkdir(parents=True, exist_ok=True)
     settings.downloads_dir.mkdir(parents=True, exist_ok=True)
     return settings

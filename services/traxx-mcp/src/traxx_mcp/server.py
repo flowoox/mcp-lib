@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp_common.paths import resolve_contained_path
+from mcp_common.store import AtomicJsonStore
 
 from .client import TraxxClient
 from .config import RuntimeConfig, RuntimeConfigStore, get_settings
@@ -14,6 +16,8 @@ from .metadata import inspect_audio_file
 def create_server() -> FastMCP:
     settings = get_settings()
     configs = RuntimeConfigStore(settings)
+    import_ledger = AtomicJsonStore(settings.traxx_import_ledger_file, default={})
+    import_locks: dict[str, asyncio.Lock] = {}
     mcp = FastMCP(
         "Traxx BeMusic MCP",
         instructions=(
@@ -32,7 +36,11 @@ def create_server() -> FastMCP:
         return capabilities()
 
     def client() -> TraxxClient:
-        return TraxxClient(configs.get(), downloads_dir=settings.downloads_dir)
+        return TraxxClient(
+            configs.get(),
+            downloads_dir=settings.downloads_dir,
+            import_ledger=import_ledger,
+        )
 
     @mcp.tool()
     async def configure_traxx(
@@ -127,6 +135,7 @@ def create_server() -> FastMCP:
         cover_url: str = "",
         genres: list[str] | None = None,
         track_hints: list[dict[str, Any]] | None = None,
+        idempotency_key: str = "",
     ) -> dict[str, Any]:
         """Normalize local tags and import a complete album into Traxx.
 
@@ -134,19 +143,23 @@ def create_server() -> FastMCP:
         Soulseek tags. Track hints are matched by disc/track number and the
         selected cover is embedded in the local source files before upload.
         """
-        return await client().import_album_folder(
-            path,
-            dry_run=dry_run,
-            rights_confirmed=rights_confirmed,
-            rights_basis=rights_basis,
-            rights_reference=rights_reference,
-            artist=artist,
-            album=album,
-            release_date=release_date,
-            cover_url=cover_url,
-            genres=genres,
-            track_hints=track_hints,
-        )
+        lock_key = idempotency_key.strip() or f"legacy:{path}"
+        lock = import_locks.setdefault(lock_key, asyncio.Lock())
+        async with lock:
+            return await client().import_album_folder(
+                path,
+                dry_run=dry_run,
+                rights_confirmed=rights_confirmed,
+                rights_basis=rights_basis,
+                rights_reference=rights_reference,
+                artist=artist,
+                album=album,
+                release_date=release_date,
+                cover_url=cover_url,
+                genres=genres,
+                track_hints=track_hints,
+                idempotency_key=idempotency_key,
+            )
 
     @mcp.tool()
     async def import_external_metadata(
