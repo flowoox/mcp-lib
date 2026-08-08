@@ -11,6 +11,9 @@ ghcr.io/flowoox/mcp-spulseek:0.3.1  # Kompatibilitätsalias für den Tippfehler
 ghcr.io/flowoox/mcp-traxx:0.3.1
 ```
 
+Die versionierten Images werden nur nach erfolgreichem Lint-, Test-, Compile-
+und Container-Build-Gate von `main` veröffentlicht.
+
 ## Vertragsfamilie
 
 Jeder Dienst veröffentlicht über `get_capabilities` einen stabilen MCP-Vertrag:
