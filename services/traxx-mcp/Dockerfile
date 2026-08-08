@@ -1,6 +1,6 @@
 FROM python:3.12-slim AS runtime
 
-ARG VERSION=0.3.0
+ARG VERSION=0.3.1
 LABEL org.opencontainers.image.title="flowoox Traxx MCP" \
       org.opencontainers.image.description="MCP connector for Traxx/BeMusic TUS uploads, metadata normalization and cover embedding" \
       org.opencontainers.image.source="https://github.com/flowoox/mcp-lib" \
@@ -33,4 +33,6 @@ RUN groupadd --gid 10001 app \
 USER app
 WORKDIR /app
 EXPOSE 8082
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import socket; connection = socket.create_connection(('127.0.0.1', 8082), 3); connection.close()"
 CMD ["mcp-traxx"]

@@ -237,6 +237,7 @@ def build_album_candidates(
     search_id: str | None,
     preferred_formats: list[str],
     minimum_tracks: int = 4,
+    expected_track_count: int | None = None,
     lossless_only: bool = True,
     minimum_lossy_bitrate_kbps: int = 320,
 ) -> list[AlbumCandidate]:
@@ -293,7 +294,7 @@ def build_album_candidates(
     for (username, folder), group in grouped.items():
         all_files = list(group["files"].values())
         all_audio = [file for file in all_files if file.extension in AUDIO_EXTENSIONS]
-        accepted_audio = [
+        high_quality_audio = [
             file
             for file in all_audio
             if is_high_quality_audio(
@@ -302,13 +303,47 @@ def build_album_candidates(
                 minimum_lossy_bitrate_kbps=minimum_lossy_bitrate_kbps,
             )
         ]
-        accepted_keys = {_audio_track_key(file) for file in accepted_audio}
+        preference = {
+            extension.casefold(): index
+            for index, extension in enumerate(preferred_formats)
+        }
+        selected_by_track: dict[str, RemoteFile] = {}
+        for file in high_quality_audio:
+            key = _audio_track_key(file)
+            current = selected_by_track.get(key)
+            rank = (
+                preference.get(file.extension, len(preference) + 5),
+                -(file.bit_depth or 0),
+                -(file.sample_rate or 0),
+                -file.size,
+            )
+            if current is None:
+                selected_by_track[key] = file
+                continue
+            current_rank = (
+                preference.get(current.extension, len(preference) + 5),
+                -(current.bit_depth or 0),
+                -(current.sample_rate or 0),
+                -current.size,
+            )
+            if rank < current_rank:
+                selected_by_track[key] = file
+        accepted_audio = sorted(
+            selected_by_track.values(),
+            key=lambda item: normalize_remote_path(item.filename).as_posix(),
+        )
+        accepted_keys = set(selected_by_track)
         unique_rejected = [
             file for file in all_audio if _audio_track_key(file) not in accepted_keys
         ]
         if unique_rejected:
             continue
-        if len(accepted_audio) < minimum_tracks or len(accepted_audio) > 150:
+        track_count = len(accepted_audio)
+        if track_count > 150:
+            continue
+        if expected_track_count and track_count != expected_track_count:
+            continue
+        if not expected_track_count and track_count < minimum_tracks:
             continue
 
         sidecars = [file for file in all_files if file.extension in SIDECAR_EXTENSIONS]
@@ -328,6 +363,8 @@ def build_album_candidates(
             if lossless_only
             else f"quality gate: lossy >= {minimum_lossy_bitrate_kbps} kbps"
         )
+        if expected_track_count:
+            reasons.append(f"track count matches expected: {expected_track_count}")
         candidates.append(
             AlbumCandidate(
                 candidate_id=stable_id(

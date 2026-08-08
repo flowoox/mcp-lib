@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import mimetypes
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -77,9 +77,23 @@ class TrackHint:
     number: int
     disc_number: int = 1
     artist: str = ""
+    artists: list[str] = field(default_factory=list)
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> TrackHint:
+        artists: list[str] = []
+        raw_artists = value.get("artists")
+        if isinstance(raw_artists, list):
+            for item in raw_artists:
+                if isinstance(item, dict):
+                    name = str(item.get("name") or "").strip()
+                else:
+                    name = str(item or "").strip()
+                if name and name not in artists:
+                    artists.append(name)
+        primary = str(value.get("artist") or "").strip()
+        if primary and primary not in artists:
+            artists.insert(0, primary)
         return cls(
             title=str(value.get("title") or value.get("name") or "").strip(),
             number=parse_number(str(value.get("number") or value.get("track_number") or "")),
@@ -87,7 +101,8 @@ class TrackHint:
                 str(value.get("disc_number") or value.get("disc") or ""),
                 default=1,
             ),
-            artist=str(value.get("artist") or "").strip(),
+            artist=artists[0] if artists else primary,
+            artists=artists,
         )
 
 
@@ -189,7 +204,7 @@ def inspect_audio_file(path: Path) -> LocalAudioMetadata:
         genres = [part.strip() for part in genre_value.split(",") if part.strip()]
         return LocalAudioMetadata(
             title=_id3_text(tags, "TIT2") or clean_title_from_filename(path),
-            artist=_id3_text(tags, "TPE2") or _id3_text(tags, "TPE1") or "Unknown Artist",
+            artist=_id3_text(tags, "TPE1") or _id3_text(tags, "TPE2") or "Unknown Artist",
             album=_id3_text(tags, "TALB") or path.parent.name,
             duration_ms=duration_ms,
             track_number=parse_number(_id3_text(tags, "TRCK"), default=inferred_track),
@@ -212,7 +227,7 @@ def inspect_audio_file(path: Path) -> LocalAudioMetadata:
         disc_number = int(disk[0][0]) if disk else inferred_disc
         return LocalAudioMetadata(
             title=mp4_first("\xa9nam") or clean_title_from_filename(path),
-            artist=mp4_first("aART") or mp4_first("\xa9ART") or "Unknown Artist",
+            artist=mp4_first("\xa9ART") or mp4_first("aART") or "Unknown Artist",
             album=mp4_first("\xa9alb") or path.parent.name,
             duration_ms=duration_ms,
             track_number=track_number,
@@ -231,7 +246,7 @@ def inspect_audio_file(path: Path) -> LocalAudioMetadata:
         genres = [str(item).strip() for item in genres_raw if str(item).strip()]
     return LocalAudioMetadata(
         title=first_tag(tags, "title") or clean_title_from_filename(path),
-        artist=first_tag(tags, "albumartist", "artist") or "Unknown Artist",
+        artist=first_tag(tags, "artist", "albumartist") or "Unknown Artist",
         album=first_tag(tags, "album") or path.parent.name,
         duration_ms=duration_ms,
         track_number=parse_number(
@@ -303,7 +318,8 @@ def _set_easy_tags(
     path: Path,
     *,
     title: str,
-    artist: str,
+    artists: list[str],
+    album_artist: str,
     album: str,
     track_number: int,
     disc_number: int,
@@ -325,8 +341,8 @@ def _set_easy_tags(
         for frame in ("TIT2", "TPE1", "TPE2", "TALB", "TRCK", "TPOS", "TDRC", "TCON"):
             tags.delall(frame)
         tags.add(TIT2(encoding=3, text=[title]))
-        tags.add(TPE1(encoding=3, text=[artist]))
-        tags.add(TPE2(encoding=3, text=[artist]))
+        tags.add(TPE1(encoding=3, text=artists))
+        tags.add(TPE2(encoding=3, text=[album_artist]))
         tags.add(TALB(encoding=3, text=[album]))
         tags.add(TRCK(encoding=3, text=[str(track_number)]))
         tags.add(TPOS(encoding=3, text=[str(disc_number)]))
@@ -344,8 +360,8 @@ def _set_easy_tags(
         if audio.tags is None:
             audio.add_tags()
         audio["\xa9nam"] = [title]
-        audio["\xa9ART"] = [artist]
-        audio["aART"] = [artist]
+        audio["\xa9ART"] = artists
+        audio["aART"] = [album_artist]
         audio["\xa9alb"] = [album]
         audio["trkn"] = [(track_number, 0)]
         audio["disk"] = [(disc_number, 0)]
@@ -362,8 +378,8 @@ def _set_easy_tags(
     if audio.tags is None:
         audio.add_tags()
     audio["title"] = [title]
-    audio["artist"] = [artist]
-    audio["albumartist"] = [artist]
+    audio["artist"] = artists
+    audio["albumartist"] = [album_artist]
     audio["album"] = [album]
     audio["tracknumber"] = [str(track_number)]
     audio["discnumber"] = [str(disc_number)]
@@ -455,14 +471,19 @@ def ensure_audio_metadata(
     title = hint.title if hint and hint.title else before.title
     track_number = hint.number if hint else before.track_number or inferred_track
     disc_number = hint.disc_number if hint else before.disc_number or inferred_disc
-    track_artist = hint.artist if hint and hint.artist else artist or before.artist
+    track_artists = list(hint.artists) if hint and hint.artists else []
+    if not track_artists and hint and hint.artist:
+        track_artists = [hint.artist]
+    if not track_artists:
+        track_artists = [artist or before.artist or "Unknown Artist"]
     effective_genres = list(genres or before.genres)
     warnings: list[str] = []
 
     _set_easy_tags(
         path,
         title=title,
-        artist=track_artist,
+        artists=track_artists,
+        album_artist=artist or before.artist,
         album=album,
         track_number=max(1, track_number),
         disc_number=max(1, disc_number),

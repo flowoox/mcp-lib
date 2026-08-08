@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
@@ -9,10 +10,13 @@ import httpx
 from mcp_common.http import get_case_insensitive
 from mcp_common.paths import normalize_text, resolve_contained_path
 from mcp_common.rights import validate_rights
+from mcp_common.store import AtomicJsonStore
 
 from .config import RuntimeConfig
 from .metadata import (
     AUDIO_EXTENSIONS,
+    TrackHint,
+    choose_track_hint,
     cover_mime_type,
     ensure_audio_metadata,
     find_local_cover,
@@ -80,9 +84,16 @@ def extract_items(payload: Any) -> list[dict[str, Any]]:
 
 
 class TraxxClient:
-    def __init__(self, config: RuntimeConfig, *, downloads_dir: Path):
+    def __init__(
+        self,
+        config: RuntimeConfig,
+        *,
+        downloads_dir: Path,
+        import_ledger: AtomicJsonStore | None = None,
+    ):
         self.config = config
         self.downloads_dir = downloads_dir
+        self.import_ledger = import_ledger
 
     @property
     def headers(self) -> dict[str, str]:
@@ -288,6 +299,63 @@ class TraxxClient:
     async def create_track(self, payload: dict[str, Any]) -> Any:
         return await self.request("POST", "/api/v1/tracks", json=payload)
 
+    @staticmethod
+    def _resource_ids(value: Any, *keys: str) -> set[int]:
+        output: set[int] = set()
+        if isinstance(value, dict):
+            for key in keys:
+                nested = get_case_insensitive(value, key)
+                if isinstance(nested, list):
+                    for item in nested:
+                        if isinstance(item, dict):
+                            raw = get_case_insensitive(item, "id")
+                        else:
+                            raw = item
+                        try:
+                            output.add(int(raw))
+                        except (TypeError, ValueError):
+                            pass
+                elif isinstance(nested, dict):
+                    raw = get_case_insensitive(nested, "id")
+                    try:
+                        output.add(int(raw))
+                    except (TypeError, ValueError):
+                        pass
+                elif nested is not None:
+                    try:
+                        output.add(int(nested))
+                    except (TypeError, ValueError):
+                        pass
+        return output
+
+    async def _find_existing_track(
+        self, *, name: str, album_id: int, number: int
+    ) -> dict[str, Any] | None:
+        payload = await self.list_resource("tracks", page=1, per_page=100, query=name)
+        expected = normalize_text(name)
+        for item in extract_items(payload):
+            current = str(get_case_insensitive(item, "name", "title", default=""))
+            if normalize_text(current) != expected:
+                continue
+            album_ids = self._resource_ids(item, "album_id", "albumId", "album")
+            if album_ids and album_id not in album_ids:
+                continue
+            raw_number = get_case_insensitive(
+                item, "number", "track_number", "trackNumber"
+            )
+            try:
+                existing_number = int(str(raw_number).split("/", 1)[0])
+            except (TypeError, ValueError):
+                existing_number = 0
+            if existing_number and existing_number != number:
+                continue
+            if not album_ids:
+                # Without an album reference an identically named song is not a
+                # safe deduplication match.
+                continue
+            return item
+        return None
+
     async def _find_exact_resource(self, resource: str, name: str) -> int | None:
         payload = await self.list_resource(resource, page=1, per_page=50, query=name)
         expected = normalize_text(name)
@@ -341,6 +409,11 @@ class TraxxClient:
             current = str(get_case_insensitive(item, "name", "title", default=""))
             if normalize_text(current) != expected:
                 continue
+            artist_ids = self._resource_ids(
+                item, "artist_id", "artistId", "artists", "artist"
+            )
+            if not artist_ids or artist_id not in artist_ids:
+                continue
             value = get_case_insensitive(item, "id")
             try:
                 return int(value)
@@ -368,7 +441,13 @@ class TraxxClient:
         self,
         album_root: Path,
         cover_url: str,
+        *,
+        persist: bool = True,
     ) -> tuple[bytes | None, str, Path | None]:
+        local = find_local_cover(album_root)
+        if local:
+            data = local.read_bytes()
+            return data, cover_mime_type(local, data), local
         if cover_url:
             try:
                 async with httpx.AsyncClient(
@@ -385,15 +464,12 @@ class TraxxClient:
                     mime = cover_mime_type(None, response.content)
                 suffix = ".png" if mime == "image/png" else ".jpg"
                 saved = album_root / f"cover{suffix}"
-                saved.write_bytes(response.content)
-                return response.content, mime, saved
+                if persist:
+                    saved.write_bytes(response.content)
+                    return response.content, mime, saved
+                return response.content, mime, None
             except Exception:
-                # A local cover remains a valid fallback.
                 pass
-        local = find_local_cover(album_root)
-        if local:
-            data = local.read_bytes()
-            return data, cover_mime_type(local, data), local
         return None, "image/jpeg", None
 
     async def _cover_url_for_traxx(
@@ -402,15 +478,101 @@ class TraxxClient:
         external_url: str,
         local_cover: Path | None,
     ) -> str:
-        if external_url:
-            return external_url
-        if not local_cover:
-            return ""
-        upload = await self.upload_file(local_cover, upload_type="image")
-        discovery = await self.discover_file_entry(upload)
-        return str(discovery.get("file_url") or "")
+        if local_cover:
+            try:
+                upload = await self.upload_file(local_cover, upload_type="image")
+                discovery = await self.discover_file_entry(upload)
+                uploaded = str(discovery.get("file_url") or "")
+                if uploaded:
+                    return uploaded
+            except Exception:
+                if not external_url:
+                    raise
+        return external_url
 
     async def import_album_folder(
+        self,
+        folder: str | Path,
+        *,
+        dry_run: bool,
+        rights_confirmed: bool,
+        rights_basis: str,
+        rights_reference: str = "",
+        artist: str = "",
+        album: str = "",
+        release_date: str = "",
+        cover_url: str = "",
+        genres: list[str] | None = None,
+        track_hints: list[dict[str, Any]] | None = None,
+        idempotency_key: str = "",
+    ) -> dict[str, Any]:
+        key = idempotency_key.strip()
+        if len(key) > 256 or "\x00" in key:
+            raise ValueError("Invalid import idempotency key")
+        if dry_run or not key or self.import_ledger is None:
+            return await self._import_album_folder_once(
+                folder,
+                dry_run=dry_run,
+                rights_confirmed=rights_confirmed,
+                rights_basis=rights_basis,
+                rights_reference=rights_reference,
+                artist=artist,
+                album=album,
+                release_date=release_date,
+                cover_url=cover_url,
+                genres=genres,
+                track_hints=track_hints,
+            )
+
+        ledger = self.import_ledger.read()
+        previous = ledger.get(key)
+        if isinstance(previous, dict) and previous.get("status") == "completed":
+            result = previous.get("result")
+            if isinstance(result, dict):
+                return {**result, "idempotent": True}
+
+        ledger[key] = {
+            "status": "processing",
+            "folder": str(folder),
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+        self.import_ledger.write(ledger)
+        try:
+            result = await self._import_album_folder_once(
+                folder,
+                dry_run=False,
+                rights_confirmed=rights_confirmed,
+                rights_basis=rights_basis,
+                rights_reference=rights_reference,
+                artist=artist,
+                album=album,
+                release_date=release_date,
+                cover_url=cover_url,
+                genres=genres,
+                track_hints=track_hints,
+            )
+        except Exception as exc:
+            ledger = self.import_ledger.read()
+            ledger[key] = {
+                "status": "failed",
+                "folder": str(folder),
+                "error": str(exc),
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+            self.import_ledger.write(ledger)
+            raise
+        unresolved_count = int(result.get("unresolved_count") or 0)
+        ledger = self.import_ledger.read()
+        ledger[key] = {
+            "status": "needs_configuration" if unresolved_count else "completed",
+            "folder": str(folder),
+            "result": result,
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+        self.import_ledger.write(ledger)
+        return {**result, "idempotent": False}
+
+    async def _import_album_folder_once(
         self,
         folder: str | Path,
         *,
@@ -444,7 +606,9 @@ class TraxxClient:
         first_local = inspect_audio_file(files[0])
         expected_artist = artist.strip() or first_local.artist
         expected_album = album.strip() or first_local.album or resolved.name
-        cover_data, cover_mime, cover_path = await self._load_cover(resolved, cover_url)
+        cover_data, cover_mime, cover_path = await self._load_cover(
+            resolved, cover_url, persist=not dry_run
+        )
         inspection = [
             {"path": str(path), "metadata": inspect_audio_file(path).as_dict()}
             for path in files
@@ -464,6 +628,9 @@ class TraxxClient:
                 "tracks": inspection,
             }
 
+        parsed_track_hints = [
+            TrackHint.from_mapping(item) for item in (track_hints or [])
+        ]
         tag_results: list[dict[str, Any]] = []
         for path in files:
             tag_results.append(
@@ -501,6 +668,46 @@ class TraxxClient:
         for path in files:
             local = inspect_audio_file(path)
             try:
+                hint = choose_track_hint(
+                    path, album_root=resolved, hints=parsed_track_hints
+                )
+                track_artist_names = list(hint.artists) if hint and hint.artists else []
+                if not track_artist_names and hint and hint.artist:
+                    track_artist_names = [hint.artist]
+                if not track_artist_names:
+                    track_artist_names = [local.artist or expected_artist]
+                normalized_names: set[str] = set()
+                track_artist_ids: list[int] = []
+                for name in track_artist_names:
+                    normalized = normalize_text(name)
+                    if not normalized or normalized in normalized_names:
+                        continue
+                    normalized_names.add(normalized)
+                    if normalized == normalize_text(expected_artist):
+                        current_artist_id = artist_id
+                    else:
+                        current_artist_id = await self.ensure_artist(
+                            name,
+                            genres=local.genres or list(genres or []),
+                        )
+                    track_artist_ids.append(current_artist_id)
+                if not track_artist_ids:
+                    track_artist_ids = [artist_id]
+                existing_track = await self._find_existing_track(
+                    name=local.title,
+                    album_id=album_id,
+                    number=max(1, local.track_number),
+                )
+                if existing_track is not None:
+                    imported.append(
+                        {
+                            "path": str(path),
+                            "existing": True,
+                            "track": existing_track,
+                            "metadata": local.as_dict(),
+                        }
+                    )
+                    continue
                 upload = await self.upload_file(path)
                 discovery = await self.discover_file_entry(upload)
                 file_id = discovery.get("file_entry_id")
@@ -569,7 +776,7 @@ class TraxxClient:
                     "name": title,
                     "duration": max(1, duration),
                     "number": max(1, number),
-                    "artists": [artist_id],
+                    "artists": track_artist_ids,
                     "album_id": album_id,
                     "src": file_url,
                     "genres": normalize_genres(

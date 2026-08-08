@@ -40,6 +40,16 @@ class SlskdError(RuntimeError):
     pass
 
 
+def deterministic_batch_id(candidate_id: str, external_id: str | None = None) -> str:
+    operation_key = external_id or stable_id("album", candidate_id)
+    return str(
+        uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"flowoox:soulseek:{operation_key}:{candidate_id}",
+        )
+    )
+
+
 def walk_dicts(value: Any):
     if isinstance(value, dict):
         yield value
@@ -99,6 +109,7 @@ class SlskdClient:
         *,
         json: Any = None,
         params: dict[str, Any] | None = None,
+        allow_not_found: bool = False,
     ) -> Any:
         async with httpx.AsyncClient(
             base_url=self.config.base_url,
@@ -106,6 +117,8 @@ class SlskdClient:
             timeout=self.timeout,
         ) as client:
             response = await client.request(method, path, json=json, params=params)
+        if response.status_code == 404 and allow_not_found:
+            return None
         if response.status_code >= 400:
             raise SlskdError(
                 f"slskd {method} {path} failed ({response.status_code}): "
@@ -133,6 +146,7 @@ class SlskdClient:
         *,
         artist: str,
         album: str,
+        expected_track_count: int | None = None,
         timeout_seconds: int | None = None,
         max_candidates: int = 20,
     ) -> tuple[str, list[AlbumCandidate], dict[str, Any]]:
@@ -143,7 +157,9 @@ class SlskdClient:
             "filterResponses": True,
             "maximumPeerQueueLength": 1000000,
             "minimumPeerUploadSpeed": 0,
-            "minimumResponseFileCount": self.config.minimum_tracks,
+            "minimumResponseFileCount": max(
+                self.config.minimum_tracks, expected_track_count or 0
+            ),
             "responseLimit": self.config.result_limit,
             "searchTimeout": timeout_seconds,
         }
@@ -184,6 +200,7 @@ class SlskdClient:
             search_id=search_id,
             preferred_formats=self.config.preferred_formats,
             minimum_tracks=self.config.minimum_tracks,
+            expected_track_count=expected_track_count,
             lossless_only=self.config.lossless_only,
             minimum_lossy_bitrate_kbps=self.config.minimum_lossy_bitrate_kbps,
         )
@@ -192,6 +209,35 @@ class SlskdClient:
             candidates[:max_candidates],
             result if isinstance(result, dict) else {"result": result},
         )
+
+    async def get_existing_operation_batch(
+        self,
+        *,
+        candidate_id: str,
+        external_id: str | None = None,
+        destination: str | None = None,
+    ) -> dict[str, Any] | None:
+        requested_id = deterministic_batch_id(candidate_id, external_id)
+        batch_path = (
+            "/api/v0/transfers/downloads/batches/"
+            f"{quote(requested_id, safe='')}"
+        )
+        existing = await self.request(
+            "GET",
+            batch_path,
+            allow_not_found=True,
+        )
+        if existing is None:
+            return None
+        output = existing if isinstance(existing, dict) else {"result": existing}
+        output.setdefault("batch_id", requested_id)
+        output.setdefault("requestedBatchId", requested_id)
+        if destination:
+            normalized_destination = sanitize_destination(destination)
+            output.setdefault("artifact_path", normalized_destination)
+            output.setdefault("destination", normalized_destination)
+        output["idempotent"] = True
+        return output
 
     async def queue_candidate(
         self,
@@ -205,7 +251,16 @@ class SlskdClient:
             if destination
             else safe_relative_destination(candidate.artist, candidate.album)
         )
-        requested_id = str(uuid.uuid4())
+        operation_key = external_id or stable_id("album", candidate.candidate_id)
+        requested_id = deterministic_batch_id(candidate.candidate_id, external_id)
+        existing = await self.get_existing_operation_batch(
+            candidate_id=candidate.candidate_id,
+            external_id=external_id,
+            destination=destination,
+        )
+        if existing is not None:
+            return existing
+
         payload = {
             "id": requested_id,
             "searchId": candidate.search_id,
@@ -216,16 +271,18 @@ class SlskdClient:
             ],
             "options": {
                 "destination": destination,
-                "externalId": external_id
-                or stable_id("album", candidate.candidate_id),
+                "externalId": operation_key,
             },
         }
         result = await self.request(
             "POST", "/api/v0/transfers/downloads/batches", json=payload
         )
         output = result if isinstance(result, dict) else {"result": result}
+        output.setdefault("batch_id", requested_id)
         output.setdefault("requestedBatchId", requested_id)
+        output.setdefault("artifact_path", destination)
         output.setdefault("destination", destination)
+        output.setdefault("idempotent", False)
         return output
 
     async def list_downloads(self) -> Any:

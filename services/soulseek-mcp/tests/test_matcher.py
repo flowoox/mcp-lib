@@ -151,3 +151,65 @@ def test_rejects_album_with_unique_low_quality_track():
         )
         == []
     )
+
+
+def test_expected_track_count_rejects_incomplete_and_wrong_edition():
+    exact = files_payload(
+        [
+            {"filename": rf"Artist\Album\{number:02}.flac", "size": 100}
+            for number in range(1, 11)
+        ]
+    )
+    candidates = build_album_candidates(
+        payload=exact,
+        artist="Artist",
+        album="Album",
+        search_id="s1",
+        preferred_formats=["flac"],
+        minimum_tracks=4,
+        expected_track_count=10,
+    )
+    assert len(candidates) == 1
+    assert candidates[0].audio_file_count == 10
+    assert "track count matches expected: 10" in candidates[0].score_reasons
+
+    for actual in (9, 11):
+        payload = files_payload(
+            [
+                {"filename": rf"Artist\Album\{number:02}.flac", "size": 100}
+                for number in range(1, actual + 1)
+            ]
+        )
+        assert build_album_candidates(
+            payload=payload,
+            artist="Artist",
+            album="Album",
+            search_id="s1",
+            preferred_formats=["flac"],
+            minimum_tracks=4,
+            expected_track_count=10,
+        ) == []
+
+
+def test_prefers_one_lossless_variant_per_track_before_count_validation() -> None:
+    files = []
+    for number in range(1, 5):
+        files.extend(
+            [
+                {"filename": rf"Artist\Album\{number:02}.wav", "size": 200},
+                {"filename": rf"Artist\Album\{number:02}.flac", "size": 100},
+            ]
+        )
+    candidates = build_album_candidates(
+        payload=files_payload(files),
+        artist="Artist",
+        album="Album",
+        search_id="s1",
+        preferred_formats=["flac", "wav"],
+        minimum_tracks=4,
+        expected_track_count=4,
+    )
+    assert len(candidates) == 1
+    assert candidates[0].audio_file_count == 4
+    assert candidates[0].formats == ["flac"]
+    assert all(item.extension != "wav" for item in candidates[0].files)
