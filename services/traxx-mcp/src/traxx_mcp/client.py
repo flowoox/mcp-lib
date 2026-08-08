@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -307,25 +308,16 @@ class TraxxClient:
                 nested = get_case_insensitive(value, key)
                 if isinstance(nested, list):
                     for item in nested:
-                        if isinstance(item, dict):
-                            raw = get_case_insensitive(item, "id")
-                        else:
-                            raw = item
-                        try:
+                        raw = get_case_insensitive(item, "id") if isinstance(item, dict) else item
+                        with contextlib.suppress(TypeError, ValueError):
                             output.add(int(raw))
-                        except (TypeError, ValueError):
-                            pass
                 elif isinstance(nested, dict):
                     raw = get_case_insensitive(nested, "id")
-                    try:
+                    with contextlib.suppress(TypeError, ValueError):
                         output.add(int(raw))
-                    except (TypeError, ValueError):
-                        pass
                 elif nested is not None:
-                    try:
+                    with contextlib.suppress(TypeError, ValueError):
                         output.add(int(nested))
-                    except (TypeError, ValueError):
-                        pass
         return output
 
     async def _find_existing_track(

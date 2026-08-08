@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from mcp_common.store import AtomicJsonStore
+
 from traxx_mcp.client import TraxxClient
 from traxx_mcp.config import RuntimeConfig
 

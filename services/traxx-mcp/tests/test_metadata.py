@@ -6,12 +6,12 @@ from pathlib import Path
 
 from traxx_mcp.client import extract_items, normalize_genres
 from traxx_mcp.metadata import (
+    TrackHint,
     clean_title_from_filename,
     ensure_audio_metadata,
     find_local_cover,
     infer_track_numbers,
     inspect_audio_file,
-    TrackHint,
 )
 
 PNG_1X1 = base64.b64decode(
