@@ -91,16 +91,22 @@ class TraxxClient:
         *,
         downloads_dir: Path,
         import_ledger: AtomicJsonStore | None = None,
+        actor_token: str = "",
     ):
         self.config = config
         self.downloads_dir = downloads_dir
         self.import_ledger = import_ledger
+        # An actor token replaces only the Authorization bearer, so requests
+        # run as a specific Traxx user while base_url, TLS verification,
+        # proxy headers and timeouts stay those of the shared configuration.
+        self.actor_token = actor_token
 
     @property
     def headers(self) -> dict[str, str]:
         headers = {"Accept": "application/json"}
-        if self.config.token:
-            headers["Authorization"] = f"Bearer {self.config.token}"
+        token = self.actor_token or self.config.token
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         # Applied last so a proxy header cannot be silently dropped, but the
         # Authorization header stays under this client's control.
         for key, value in (self.config.extra_headers or {}).items():
@@ -1006,3 +1012,121 @@ class TraxxClient:
             f"/api/v1/playlists/{playlist_id}/tracks/add",
             json={"ids": track_ids},
         )
+
+    async def remove_playlist_tracks(
+        self,
+        *,
+        playlist_id: int,
+        track_ids: list[int],
+    ) -> Any:
+        return await self.request(
+            "POST",
+            f"/api/v1/playlists/{playlist_id}/tracks/remove",
+            json={"ids": track_ids},
+        )
+
+    async def list_playlists(self, *, page: int = 1, per_page: int = 20) -> Any:
+        """List the playlists of the acting user (service account or actor)."""
+        return await self.request(
+            "GET",
+            "/api/v1/users/me/playlists",
+            params={"page": page, "perPage": per_page},
+        )
+
+    async def get_playlist(self, playlist_id: int) -> Any:
+        """Return playlist details including its tracks.
+
+        BeMusic answers GET /api/v1/playlists/{id} with the playlist model; the
+        track listing lives on the paginated /playlists/{id}/tracks subresource,
+        so both are combined here. The subresource is probed tolerantly because
+        an installation may already inline tracks in the playlist payload.
+        """
+        payload = await self.request("GET", f"/api/v1/playlists/{playlist_id}")
+        result: dict[str, Any] = payload if isinstance(payload, dict) else {"playlist": payload}
+        tracks = self._playlist_track_items(payload)
+        if not tracks:
+            probe = await self.request(
+                "GET",
+                f"/api/v1/playlists/{playlist_id}/tracks",
+                params={"page": 1, "perPage": 500},
+                allow_error=True,
+            )
+            if int(probe.get("status") or 0) < 400:
+                tracks = self._playlist_track_items(probe.get("body"))
+        result = dict(result)
+        result["tracks"] = tracks
+        return result
+
+    @staticmethod
+    def _playlist_track_items(payload: Any) -> list[dict[str, Any]]:
+        if isinstance(payload, dict):
+            tracks = get_case_insensitive(payload, "tracks")
+            if isinstance(tracks, list):
+                return [item for item in tracks if isinstance(item, dict)]
+            if isinstance(tracks, dict):
+                return extract_items(tracks)
+        return extract_items(payload)
+
+    async def playlist_track_ids(self, playlist_id: int) -> list[int]:
+        payload = await self.get_playlist(playlist_id)
+        ids: list[int] = []
+        for item in self._playlist_track_items(payload):
+            raw = get_case_insensitive(item, "id")
+            with contextlib.suppress(TypeError, ValueError):
+                value = int(raw)
+                if value not in ids:
+                    ids.append(value)
+        return ids
+
+    async def update_playlist(
+        self,
+        *,
+        playlist_id: int,
+        name: str = "",
+        description: str = "",
+        public: bool | None = None,
+    ) -> Any:
+        """Partially update a playlist; only supplied fields are sent."""
+        payload: dict[str, Any] = {}
+        if name:
+            payload["name"] = name
+        if description:
+            payload["description"] = description
+        if public is not None:
+            payload["public"] = public
+        if not payload:
+            raise TraxxError(
+                "update_playlist needs at least one of name, description or public"
+            )
+        return await self.request(
+            "PUT",
+            f"/api/v1/playlists/{playlist_id}",
+            json=payload,
+        )
+
+    async def replace_playlist_tracks(
+        self,
+        *,
+        playlist_id: int,
+        track_ids: list[int],
+    ) -> dict[str, Any]:
+        """Make the playlist contain exactly ``track_ids``.
+
+        Implemented client-side as read + remove + add because the API offers
+        no atomic replace. Removing nothing and adding nothing are both no-ops,
+        so the call is idempotent and safe on an empty playlist.
+        """
+        current = await self.playlist_track_ids(playlist_id)
+        if current:
+            await self.remove_playlist_tracks(
+                playlist_id=playlist_id, track_ids=current
+            )
+        if track_ids:
+            await self.add_playlist_tracks(
+                playlist_id=playlist_id, track_ids=track_ids
+            )
+        return {
+            "playlist_id": playlist_id,
+            "removed_track_ids": current,
+            "added_track_ids": list(track_ids),
+        }

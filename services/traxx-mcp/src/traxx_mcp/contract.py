@@ -5,7 +5,7 @@ from typing import Any
 from . import __version__
 
 CONTRACT_NAME = "flowoox.music-library-import"
-CONTRACT_VERSION = "1.3"
+CONTRACT_VERSION = "1.4"
 
 
 def capabilities() -> dict[str, Any]:
@@ -31,6 +31,8 @@ def capabilities() -> dict[str, Any]:
             "retryable_partial_import": True,
             "search_based_lookup": True,
             "proxy_headers": True,
+            "playlist_management": True,
+            "actor_scoped_requests": True,
         },
         "tools": [
             "get_capabilities",
@@ -48,5 +50,13 @@ def capabilities() -> dict[str, Any]:
             "import_external_metadata",
             "create_playlist",
             "add_playlist_tracks",
+            "remove_playlist_tracks",
+            "replace_playlist_tracks",
+            "list_playlists",
+            "get_playlist",
+            "update_playlist",
+            "configure_traxx_actor",
+            "remove_traxx_actor",
+            "list_traxx_actors",
         ],
     }

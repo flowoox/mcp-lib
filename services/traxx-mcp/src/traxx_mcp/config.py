@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     mcp_port: int = 8082
     traxx_config_file: Path = Path("/data/config.json")
     traxx_import_ledger_file: Path = Path("/data/imports.json")
+    traxx_actors_file: Path = Path("/data/actors.json")
     downloads_dir: Path = Path("/downloads")
 
     traxx_url: str = ""
@@ -81,10 +82,69 @@ class RuntimeConfigStore:
         return config
 
 
+class UnknownActorError(LookupError):
+    """Raised when an actor_id has no registered token."""
+
+
+class ActorRegistry:
+    """File-backed map of actor_id -> bearer token for user-scoped requests.
+
+    The orchestrator chooses opaque actor ids; this service only stores the
+    matching token. The file lives next to the runtime config, is written
+    atomically with owner-only permissions (see AtomicJsonStore), and tokens
+    are never handed back through any tool output.
+    """
+
+    MAX_ID_LENGTH = 128
+
+    def __init__(self, path: str | Path):
+        self.store = AtomicJsonStore(path, default={})
+
+    @classmethod
+    def validate_actor_id(cls, actor_id: str) -> str:
+        actor_id = actor_id.strip()
+        if not actor_id or len(actor_id) > cls.MAX_ID_LENGTH or "\x00" in actor_id:
+            raise ValueError(
+                "actor_id must be a non-empty string of at most "
+                f"{cls.MAX_ID_LENGTH} characters"
+            )
+        return actor_id
+
+    def set(self, actor_id: str, token: str) -> str:
+        actor_id = self.validate_actor_id(actor_id)
+        if not token.strip():
+            raise ValueError(f"A non-empty token is required for actor {actor_id!r}")
+        self.store.update(**{actor_id: token.strip()})
+        return actor_id
+
+    def remove(self, actor_id: str) -> bool:
+        actor_id = self.validate_actor_id(actor_id)
+        actors = self.store.read()
+        if actor_id not in actors:
+            return False
+        del actors[actor_id]
+        self.store.write(actors)
+        return True
+
+    def list_ids(self) -> list[str]:
+        return sorted(self.store.read())
+
+    def token_for(self, actor_id: str) -> str:
+        actor_id = self.validate_actor_id(actor_id)
+        token = self.store.read().get(actor_id)
+        if not isinstance(token, str) or not token:
+            raise UnknownActorError(
+                f"Unknown actor_id {actor_id!r}. Register it first with "
+                "configure_traxx_actor."
+            )
+        return token
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     settings = Settings()
     settings.traxx_config_file.parent.mkdir(parents=True, exist_ok=True)
     settings.traxx_import_ledger_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.traxx_actors_file.parent.mkdir(parents=True, exist_ok=True)
     settings.downloads_dir.mkdir(parents=True, exist_ok=True)
     return settings

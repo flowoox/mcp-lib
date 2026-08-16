@@ -8,7 +8,7 @@ from mcp_common.paths import resolve_contained_path
 from mcp_common.store import AtomicJsonStore
 
 from .client import TraxxClient
-from .config import RuntimeConfig, RuntimeConfigStore, get_settings
+from .config import ActorRegistry, RuntimeConfig, RuntimeConfigStore, get_settings
 from .contract import capabilities
 from .metadata import inspect_audio_file
 
@@ -17,6 +17,7 @@ def create_server() -> FastMCP:
     settings = get_settings()
     configs = RuntimeConfigStore(settings)
     import_ledger = AtomicJsonStore(settings.traxx_import_ledger_file, default={})
+    actors = ActorRegistry(settings.traxx_actors_file)
     import_locks: dict[str, asyncio.Lock] = {}
     mcp = FastMCP(
         "Traxx BeMusic MCP",
@@ -35,11 +36,19 @@ def create_server() -> FastMCP:
         """Return the stable MCP contract and supported features."""
         return capabilities()
 
-    def client() -> TraxxClient:
+    def client(actor_id: str = "") -> TraxxClient:
+        """Build a client, optionally acting as a registered Traxx user.
+
+        An empty actor_id keeps the service-account token; otherwise the
+        actor's bearer token is resolved from the registry and an unknown
+        actor_id raises before any request is made.
+        """
+        actor_token = actors.token_for(actor_id) if actor_id.strip() else ""
         return TraxxClient(
             configs.get(),
             downloads_dir=settings.downloads_dir,
             import_ledger=import_ledger,
+            actor_token=actor_token,
         )
 
     @mcp.tool()
@@ -88,6 +97,28 @@ def create_server() -> FastMCP:
         return result
 
     @mcp.tool()
+    async def configure_traxx_actor(actor_id: str, token: str) -> dict[str, Any]:
+        """Register or replace the bearer token for an orchestrator-chosen actor.
+
+        Requests carrying this actor_id run as that Traxx user. The token is
+        stored server-side and never returned by any tool.
+        """
+        stored_id = actors.set(actor_id, token)
+        return {"ok": True, "actor_id": stored_id, "token": "***"}
+
+    @mcp.tool()
+    async def remove_traxx_actor(actor_id: str) -> dict[str, Any]:
+        """Delete a registered actor token. Unknown ids report removed=False."""
+        removed = actors.remove(actor_id)
+        return {"ok": True, "actor_id": actor_id.strip(), "removed": removed}
+
+    @mcp.tool()
+    async def list_traxx_actors() -> dict[str, Any]:
+        """List registered actor ids. Tokens are never included."""
+        ids = actors.list_ids()
+        return {"actors": ids, "count": len(ids)}
+
+    @mcp.tool()
     async def health() -> dict[str, Any]:
         return await client().health()
 
@@ -122,10 +153,13 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     async def list_liked(
-        resource: str = "artists", page: int = 1, per_page: int = 50
+        resource: str = "artists",
+        page: int = 1,
+        per_page: int = 50,
+        actor_id: str = "",
     ) -> Any:
-        """List liked artists, albums or tracks of the connected account."""
-        return await client().list_liked(resource, page=page, per_page=per_page)
+        """List liked artists, albums or tracks of the acting account."""
+        return await client(actor_id).list_liked(resource, page=page, per_page=per_page)
 
     @mcp.tool()
     async def search_library(query: str, resource: str = "artists", limit: int = 20) -> Any:
@@ -209,16 +243,63 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     async def create_playlist(
-        name: str, description: str = "", public: bool = False
+        name: str, description: str = "", public: bool = False, actor_id: str = ""
     ) -> Any:
-        return await client().create_playlist(
+        return await client(actor_id).create_playlist(
             name=name, description=description, public=public
         )
 
     @mcp.tool()
-    async def add_playlist_tracks(playlist_id: int, track_ids: list[int]) -> Any:
-        return await client().add_playlist_tracks(
+    async def add_playlist_tracks(
+        playlist_id: int, track_ids: list[int], actor_id: str = ""
+    ) -> Any:
+        return await client(actor_id).add_playlist_tracks(
             playlist_id=playlist_id, track_ids=track_ids
+        )
+
+    @mcp.tool()
+    async def remove_playlist_tracks(
+        playlist_id: int, track_ids: list[int], actor_id: str = ""
+    ) -> Any:
+        return await client(actor_id).remove_playlist_tracks(
+            playlist_id=playlist_id, track_ids=track_ids
+        )
+
+    @mcp.tool()
+    async def replace_playlist_tracks(
+        playlist_id: int, track_ids: list[int], actor_id: str = ""
+    ) -> Any:
+        """Make the playlist contain exactly track_ids (read, remove, add)."""
+        return await client(actor_id).replace_playlist_tracks(
+            playlist_id=playlist_id, track_ids=track_ids
+        )
+
+    @mcp.tool()
+    async def list_playlists(
+        page: int = 1, per_page: int = 20, actor_id: str = ""
+    ) -> Any:
+        """List the playlists of the acting account."""
+        return await client(actor_id).list_playlists(page=page, per_page=per_page)
+
+    @mcp.tool()
+    async def get_playlist(playlist_id: int, actor_id: str = "") -> Any:
+        """Return playlist details including its tracks."""
+        return await client(actor_id).get_playlist(playlist_id)
+
+    @mcp.tool()
+    async def update_playlist(
+        playlist_id: int,
+        name: str = "",
+        description: str = "",
+        public: bool | None = None,
+        actor_id: str = "",
+    ) -> Any:
+        """Partially update a playlist; only supplied fields are sent."""
+        return await client(actor_id).update_playlist(
+            playlist_id=playlist_id,
+            name=name,
+            description=description,
+            public=public,
         )
 
     return mcp
