@@ -249,19 +249,32 @@ class SlskdClient:
         max_candidates: int = 20,
         lossless_only: bool | None = None,
         minimum_lossy_bitrate_kbps: int | None = None,
+        search_text: str | None = None,
     ) -> tuple[str, list[AlbumCandidate], dict[str, Any]]:
         timeout_seconds = timeout_seconds or self.config.search_timeout
         payload = {
-            "searchText": f"{artist} {album}",
+            # Peers match every term against the file path, so the query is an
+            # AND over words. A caller that got no answer at all may hand in a
+            # shorter one; ranking still happens against artist and album.
+            "searchText": search_text or f"{artist} {album}",
             "fileLimit": 10000,
             "filterResponses": True,
             "maximumPeerQueueLength": 1000000,
             "minimumPeerUploadSpeed": 0,
-            "minimumResponseFileCount": max(
-                self.config.minimum_tracks, expected_track_count or 0
+            # A known track count is the truth about this release: taking the
+            # maximum would demand four files from a single and drop every
+            # answer before it could be ranked.
+            "minimumResponseFileCount": (
+                expected_track_count
+                if expected_track_count
+                else self.config.minimum_tracks
             ),
             "responseLimit": self.config.result_limit,
-            "searchTimeout": timeout_seconds,
+            # slskd takes this in milliseconds. Handing it the seconds value
+            # ended every search after 20 ms — long before a peer could
+            # answer, which is why the network looked empty. Measured on the
+            # same query: 20 gives 0 responses, 20000 gives 10.
+            "searchTimeout": timeout_seconds * 1000,
         }
         started = await self.request("POST", "/api/v0/searches", json=payload)
         if not isinstance(started, dict):
@@ -320,6 +333,7 @@ class SlskdClient:
             "rejected": rejected,
             "lossless_only": effective_lossless,
             "minimum_lossy_bitrate_kbps": effective_bitrate,
+            "search_text": payload["searchText"],
         }
         return (search_id, candidates[:max_candidates], stats)
 

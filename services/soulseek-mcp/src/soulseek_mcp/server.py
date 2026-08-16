@@ -132,13 +132,16 @@ def create_server() -> FastMCP:
         timeout_seconds: int | None = None,
         lossless_only: bool | None = None,
         minimum_lossy_bitrate_kbps: int | None = None,
+        search_text: str | None = None,
     ) -> dict[str, Any]:
         """Search and rank complete album folders, including multi-disc subfolders.
 
         Folders that were found but did not pass are reported with the quality
         they actually offer, so an empty result can be told apart from a strict
         gate. The quality arguments override the stored settings for this
-        search only.
+        search only. ``search_text`` replaces the default ``artist album``
+        query: peers require every term to occur in the file path, so a niche
+        release often answers only to a shorter one.
         """
         search_id, found, stats = await client().search_album(
             artist=artist,
@@ -148,6 +151,7 @@ def create_server() -> FastMCP:
             max_candidates=max_candidates,
             lossless_only=lossless_only,
             minimum_lossy_bitrate_kbps=minimum_lossy_bitrate_kbps,
+            search_text=search_text,
         )
         candidates.save_many(found)
         return {
@@ -158,6 +162,7 @@ def create_server() -> FastMCP:
             "rejected": stats.get("rejected", []),
             "lossless_only": stats.get("lossless_only"),
             "minimum_lossy_bitrate_kbps": stats.get("minimum_lossy_bitrate_kbps"),
+            "search_text": stats.get("search_text"),
         }
 
     @mcp.tool()
