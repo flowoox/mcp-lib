@@ -12,7 +12,7 @@ from mcp_common.http import get_case_insensitive
 from mcp_common.paths import safe_relative_destination, safe_segment, stable_id
 
 from .config import RuntimeConfig
-from .matcher import build_album_candidates
+from .matcher import build_album_candidates, extract_search_responses
 from .models import AlbumCandidate
 
 COMPLETE_STATES = {"completed", "complete", "succeeded", "success", "finished"}
@@ -247,6 +247,8 @@ class SlskdClient:
         expected_track_count: int | None = None,
         timeout_seconds: int | None = None,
         max_candidates: int = 20,
+        lossless_only: bool | None = None,
+        minimum_lossy_bitrate_kbps: int | None = None,
     ) -> tuple[str, list[AlbumCandidate], dict[str, Any]]:
         timeout_seconds = timeout_seconds or self.config.search_timeout
         payload = {
@@ -291,7 +293,18 @@ class SlskdClient:
                     "timed_out",
                 }:
                     break
-        candidates = build_album_candidates(
+        # Per-search overrides: the stored quality gate is the default, but a
+        # caller that already knows nothing lossless exists may lower it once
+        # rather than change the configuration for everything.
+        effective_lossless = (
+            self.config.lossless_only if lossless_only is None else lossless_only
+        )
+        effective_bitrate = (
+            self.config.minimum_lossy_bitrate_kbps
+            if minimum_lossy_bitrate_kbps is None
+            else minimum_lossy_bitrate_kbps
+        )
+        candidates, rejected = build_album_candidates(
             payload=result,
             artist=artist,
             album=album,
@@ -299,14 +312,16 @@ class SlskdClient:
             preferred_formats=self.config.preferred_formats,
             minimum_tracks=self.config.minimum_tracks,
             expected_track_count=expected_track_count,
-            lossless_only=self.config.lossless_only,
-            minimum_lossy_bitrate_kbps=self.config.minimum_lossy_bitrate_kbps,
+            lossless_only=effective_lossless,
+            minimum_lossy_bitrate_kbps=effective_bitrate,
         )
-        return (
-            search_id,
-            candidates[:max_candidates],
-            result if isinstance(result, dict) else {"result": result},
-        )
+        stats = {
+            "responses": len(extract_search_responses(result)),
+            "rejected": rejected,
+            "lossless_only": effective_lossless,
+            "minimum_lossy_bitrate_kbps": effective_bitrate,
+        }
+        return (search_id, candidates[:max_candidates], stats)
 
     async def get_existing_operation_batch(
         self,

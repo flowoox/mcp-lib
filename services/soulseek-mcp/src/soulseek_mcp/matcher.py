@@ -240,7 +240,8 @@ def build_album_candidates(
     expected_track_count: int | None = None,
     lossless_only: bool = True,
     minimum_lossy_bitrate_kbps: int = 320,
-) -> list[AlbumCandidate]:
+) -> tuple[list[AlbumCandidate], list[dict[str, Any]]]:
+    """Return accepted candidates and, separately, what was rejected and why."""
     grouped: dict[tuple[str, str], dict[str, Any]] = defaultdict(
         lambda: {
             "files": {},
@@ -291,6 +292,26 @@ def build_album_candidates(
             )
 
     candidates: list[AlbumCandidate] = []
+    rejected: list[dict[str, Any]] = []
+
+    def note(folder: str, files: list[RemoteFile], reason: str) -> None:
+        """Keep what was seen and why it lost, so "nothing found" is explainable."""
+        formats: dict[str, int] = {}
+        bitrates = [file.bit_rate for file in files if file.bit_rate]
+        for file in files:
+            formats[file.extension] = formats.get(file.extension, 0) + 1
+        rejected.append(
+            {
+                "folder": folder,
+                "reason": reason,
+                "audio_file_count": len(files),
+                "formats": formats,
+                "min_bitrate_kbps": min(bitrates) if bitrates else None,
+                "max_bitrate_kbps": max(bitrates) if bitrates else None,
+                "total_bytes": sum(file.size for file in files),
+            }
+        )
+
     for (username, folder), group in grouped.items():
         all_files = list(group["files"].values())
         all_audio = [file for file in all_files if file.extension in AUDIO_EXTENSIONS]
@@ -337,13 +358,32 @@ def build_album_candidates(
             file for file in all_audio if _audio_track_key(file) not in accepted_keys
         ]
         if unique_rejected:
+            # One file below the bar discards the whole folder, which is the
+            # single most common reason a real album never surfaces.
+            note(
+                folder,
+                all_audio,
+                "Qualitätsgrenze: "
+                + (
+                    "nicht verlustfrei"
+                    if lossless_only
+                    else f"unter {minimum_lossy_bitrate_kbps} kbit/s"
+                ),
+            )
             continue
         track_count = len(accepted_audio)
         if track_count > 150:
+            note(folder, all_audio, "mehr als 150 Titel")
             continue
         if expected_track_count and track_count != expected_track_count:
+            note(
+                folder,
+                all_audio,
+                f"{track_count} statt der erwarteten {expected_track_count} Titel",
+            )
             continue
         if not expected_track_count and track_count < minimum_tracks:
+            note(folder, all_audio, f"nur {track_count} Titel, mindestens {minimum_tracks}")
             continue
 
         sidecars = [file for file in all_files if file.extension in SIDECAR_EXTENSIONS]
@@ -394,7 +434,7 @@ def build_album_candidates(
                 score_reasons=reasons,
             )
         )
-    return sorted(
+    ranked = sorted(
         candidates,
         key=lambda item: (
             item.score,
@@ -403,3 +443,6 @@ def build_album_candidates(
         ),
         reverse=True,
     )
+    # Best rejections first: the operator wants to see the closest miss.
+    rejected.sort(key=lambda item: item["audio_file_count"], reverse=True)
+    return ranked, rejected[:20]

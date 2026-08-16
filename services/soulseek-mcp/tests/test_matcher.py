@@ -16,7 +16,7 @@ def test_groups_multi_disc_album_and_blocks_executables():
             {"filename": r"Artist\Album\evil.exe", "size": 2},
         ]
     )
-    candidates = build_album_candidates(
+    candidates, _rejected = build_album_candidates(
         payload=payload,
         artist="Artist",
         album="Album",
@@ -52,7 +52,7 @@ def test_rejects_mp3_by_default_even_at_320_kbps():
             search_id="s1",
             preferred_formats=["flac", "mp3"],
             minimum_tracks=4,
-        )
+        )[0]
         == []
     )
 
@@ -68,7 +68,7 @@ def test_optional_lossy_fallback_requires_320_kbps():
             for number in range(1, 5)
         ]
     )
-    candidates = build_album_candidates(
+    candidates, _rejected = build_album_candidates(
         payload=payload_320,
         artist="Artist",
         album="Album",
@@ -101,7 +101,7 @@ def test_optional_lossy_fallback_requires_320_kbps():
             minimum_tracks=4,
             lossless_only=False,
             minimum_lossy_bitrate_kbps=320,
-        )
+        )[0]
         == []
     )
 
@@ -119,7 +119,7 @@ def test_drops_lossy_duplicate_when_lossless_track_exists():
                 },
             ]
         )
-    candidates = build_album_candidates(
+    candidates, _rejected = build_album_candidates(
         payload=files_payload(files),
         artist="Artist",
         album="Album",
@@ -148,7 +148,7 @@ def test_rejects_album_with_unique_low_quality_track():
             search_id="s1",
             preferred_formats=["flac"],
             minimum_tracks=4,
-        )
+        )[0]
         == []
     )
 
@@ -160,7 +160,7 @@ def test_expected_track_count_rejects_incomplete_and_wrong_edition():
             for number in range(1, 11)
         ]
     )
-    candidates = build_album_candidates(
+    candidates, _rejected = build_album_candidates(
         payload=exact,
         artist="Artist",
         album="Album",
@@ -180,7 +180,7 @@ def test_expected_track_count_rejects_incomplete_and_wrong_edition():
                 for number in range(1, actual + 1)
             ]
         )
-        assert build_album_candidates(
+        accepted, rejected = build_album_candidates(
             payload=payload,
             artist="Artist",
             album="Album",
@@ -188,7 +188,60 @@ def test_expected_track_count_rejects_incomplete_and_wrong_edition():
             preferred_formats=["flac"],
             minimum_tracks=4,
             expected_track_count=10,
-        ) == []
+        )
+        assert accepted == []
+        # The near miss is reported rather than dropped silently.
+        assert rejected and f"{actual} statt der erwarteten 10" in rejected[0]["reason"]
+
+
+def test_rejected_folders_report_the_quality_they_do_offer() -> None:
+    payload = files_payload(
+        [
+            {"filename": rf"Artist\Album\{number:02}.mp3", "size": 100, "bitRate": 192}
+            for number in range(1, 11)
+        ]
+    )
+
+    accepted, rejected = build_album_candidates(
+        payload=payload,
+        artist="Artist",
+        album="Album",
+        search_id="s1",
+        preferred_formats=["flac"],
+        minimum_tracks=4,
+        lossless_only=True,
+    )
+
+    assert accepted == []
+    # "Nothing found" and "found, but lossy" are different answers.
+    entry = rejected[0]
+    assert entry["formats"] == {"mp3": 10}
+    assert entry["audio_file_count"] == 10
+    assert entry["max_bitrate_kbps"] == 192
+    assert "nicht verlustfrei" in entry["reason"]
+
+
+def test_lowering_the_gate_accepts_what_was_rejected() -> None:
+    payload = files_payload(
+        [
+            {"filename": rf"Artist\Album\{number:02}.mp3", "size": 100, "bitRate": 192}
+            for number in range(1, 11)
+        ]
+    )
+
+    accepted, _ = build_album_candidates(
+        payload=payload,
+        artist="Artist",
+        album="Album",
+        search_id="s1",
+        preferred_formats=["mp3"],
+        minimum_tracks=4,
+        lossless_only=False,
+        minimum_lossy_bitrate_kbps=192,
+    )
+
+    assert len(accepted) == 1
+    assert accepted[0].formats == ["mp3"]
 
 
 def test_prefers_one_lossless_variant_per_track_before_count_validation() -> None:
@@ -200,7 +253,7 @@ def test_prefers_one_lossless_variant_per_track_before_count_validation() -> Non
                 {"filename": rf"Artist\Album\{number:02}.flac", "size": 100},
             ]
         )
-    candidates = build_album_candidates(
+    candidates, _rejected = build_album_candidates(
         payload=files_payload(files),
         artist="Artist",
         album="Album",

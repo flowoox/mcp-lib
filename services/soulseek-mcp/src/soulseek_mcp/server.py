@@ -130,20 +130,34 @@ def create_server() -> FastMCP:
         expected_track_count: int | None = None,
         max_candidates: int = 10,
         timeout_seconds: int | None = None,
+        lossless_only: bool | None = None,
+        minimum_lossy_bitrate_kbps: int | None = None,
     ) -> dict[str, Any]:
-        """Search and rank complete album folders, including multi-disc subfolders."""
-        search_id, found, _ = await client().search_album(
+        """Search and rank complete album folders, including multi-disc subfolders.
+
+        Folders that were found but did not pass are reported with the quality
+        they actually offer, so an empty result can be told apart from a strict
+        gate. The quality arguments override the stored settings for this
+        search only.
+        """
+        search_id, found, stats = await client().search_album(
             artist=artist,
             album=album,
             expected_track_count=expected_track_count,
             timeout_seconds=timeout_seconds,
             max_candidates=max_candidates,
+            lossless_only=lossless_only,
+            minimum_lossy_bitrate_kbps=minimum_lossy_bitrate_kbps,
         )
         candidates.save_many(found)
         return {
             "search_id": search_id,
             "candidate_count": len(found),
             "candidates": [item.model_dump(mode="json") for item in found],
+            "responses": stats.get("responses", 0),
+            "rejected": stats.get("rejected", []),
+            "lossless_only": stats.get("lossless_only"),
+            "minimum_lossy_bitrate_kbps": stats.get("minimum_lossy_bitrate_kbps"),
         }
 
     @mcp.tool()
