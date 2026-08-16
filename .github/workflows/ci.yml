@@ -36,8 +36,11 @@ jobs:
         run: ruff check packages/mcp-common/src "services/${{ matrix.service }}/src" "services/${{ matrix.service }}/tests"
       - name: Test
         run: pytest -q "services/${{ matrix.service }}/tests"
+      - name: Tooling tests
+        if: matrix.service == 'soulseek-mcp'
+        run: pytest -q tests
       - name: Compile
-        run: python -m compileall -q packages/mcp-common/src "services/${{ matrix.service }}/src"
+        run: python -m compileall -q packages/mcp-common/src scripts "services/${{ matrix.service }}/src"
 
   docker:
     name: ${{ matrix.service }} image
