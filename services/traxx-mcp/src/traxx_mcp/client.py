@@ -101,6 +101,11 @@ class TraxxClient:
         headers = {"Accept": "application/json"}
         if self.config.token:
             headers["Authorization"] = f"Bearer {self.config.token}"
+        # Applied last so a proxy header cannot be silently dropped, but the
+        # Authorization header stays under this client's control.
+        for key, value in (self.config.extra_headers or {}).items():
+            if key.strip() and key.strip().casefold() != "authorization":
+                headers[key.strip()] = str(value)
         return headers
 
     async def request(
@@ -142,13 +147,66 @@ class TraxxClient:
         return body
 
     async def health(self) -> dict[str, Any]:
-        payload = await self.request("GET", "/api/v1/tracks", params={"perPage": 1})
-        return {
-            "ok": True,
-            "base_url": self.config.base_url,
-            "api": "/api/v1/tracks",
-            "response_type": type(payload).__name__,
-        }
+        """Check reachability and the token against a route that exists.
+
+        ``/users/me/playlists`` is part of the documented API and requires
+        authentication, so the outcome separates three cases that used to look
+        identical: an edge that never forwarded the request, a token the
+        instance rejects, and a working connection.
+        """
+        probe = "/api/v1/users/me/playlists"
+        result = await self.request("GET", probe, params={"perPage": 1}, allow_error=True)
+        status = int(result.get("status") or 0)
+        headers = {str(k).casefold(): str(v) for k, v in (result.get("headers") or {}).items()}
+        is_html = "html" in headers.get("content-type", "").casefold()
+        if 200 <= status < 300:
+            return {
+                "ok": True,
+                "base_url": self.config.base_url,
+                "api": probe,
+                "response_type": type(result.get("body")).__name__,
+            }
+        if is_html:
+            # The API answers JSON for an Accept: application/json request, so
+            # an HTML error page was produced by something in front of it.
+            raise TraxxError(
+                f"Traxx GET {probe} returned an HTML error page with status {status}. "
+                "That response did not come from the Traxx API but from a proxy or "
+                "WAF in front of it. Allow this client through there, for example "
+                "with a shared header configured via extra_headers."
+            )
+        if status in {401, 403}:
+            raise TraxxError(
+                f"Traxx GET {probe} was rejected ({status}). The instance was reached "
+                "but the API token was refused. Create a token under account settings "
+                "and check that it belongs to an account with the required rights."
+            )
+        raise TraxxError(
+            f"Traxx GET {probe} failed ({status}): "
+            f"{str(result.get('body'))[:600]}"
+        )
+
+    async def search_resource(
+        self, resource: str, name: str, *, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """Look records up by name through the documented search route.
+
+        The API exposes no paginated collection route for artists, albums or
+        tracks — only reads by id — so search is the only supported way to
+        resolve a name to an id.
+        """
+        payload = await self.request(
+            "GET", "/api/v1/search", params={"query": name, "limit": limit}
+        )
+        if isinstance(payload, dict):
+            section = get_case_insensitive(payload, resource)
+            if isinstance(section, list):
+                return [item for item in section if isinstance(item, dict)]
+            for mapping in iter_dicts(payload):
+                section = get_case_insensitive(mapping, resource)
+                if isinstance(section, list):
+                    return [item for item in section if isinstance(item, dict)]
+        return extract_items(payload)
 
     async def list_resource(
         self,
@@ -162,6 +220,23 @@ class TraxxClient:
         if query:
             params["query"] = query
         return await self.request("GET", f"/api/v1/{resource}", params=params)
+
+    async def list_liked(
+        self, resource: str, *, page: int = 1, per_page: int = 50
+    ) -> Any:
+        """List what the connected account has liked.
+
+        The API publishes no play counters, so likes are the available signal
+        for what resonates in the library.
+        """
+        allowed = {"artists", "albums", "tracks"}
+        if resource not in allowed:
+            raise TraxxError(f"list_liked supports {sorted(allowed)}, not {resource!r}")
+        return await self.request(
+            "GET",
+            f"/api/v1/users/me/liked-{resource}",
+            params={"page": page, "perPage": per_page},
+        )
 
     async def upload_file(
         self,
@@ -323,7 +398,7 @@ class TraxxClient:
     async def _find_existing_track(
         self, *, name: str, album_id: int, number: int
     ) -> dict[str, Any] | None:
-        payload = await self.list_resource("tracks", page=1, per_page=100, query=name)
+        payload = await self.search_resource("tracks", name, limit=50)
         expected = normalize_text(name)
         for item in extract_items(payload):
             current = str(get_case_insensitive(item, "name", "title", default=""))
@@ -349,9 +424,8 @@ class TraxxClient:
         return None
 
     async def _find_exact_resource(self, resource: str, name: str) -> int | None:
-        payload = await self.list_resource(resource, page=1, per_page=50, query=name)
         expected = normalize_text(name)
-        for item in extract_items(payload):
+        for item in await self.search_resource(resource, name, limit=50):
             current = str(get_case_insensitive(item, "name", "title", default=""))
             if normalize_text(current) != expected:
                 continue
@@ -395,9 +469,8 @@ class TraxxClient:
         release_date: str = "",
         image: str = "",
     ) -> int:
-        payload = await self.list_resource("albums", page=1, per_page=50, query=name)
         expected = normalize_text(name)
-        for item in extract_items(payload):
+        for item in await self.search_resource("albums", name, limit=50):
             current = str(get_case_insensitive(item, "name", "title", default=""))
             if normalize_text(current) != expected:
                 continue

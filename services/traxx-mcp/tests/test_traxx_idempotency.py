@@ -54,24 +54,15 @@ class ResourceClient(TraxxClient):
         super().__init__(RuntimeConfig(base_url="https://traxx.test"), downloads_dir=tmp_path)
         self.created: list[dict[str, Any]] = []
 
-    async def list_resource(
-        self, resource: str, *, page: int = 1, per_page: int = 20, query: str = ""
-    ) -> Any:
-        del page, per_page, query
+    async def search_resource(
+        self, resource: str, name: str, *, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        del name, limit
         if resource == "albums":
-            return {"data": [{"id": 5, "name": "Shared Name", "artists": [{"id": 99}]}]}
+            return [{"id": 5, "name": "Shared Name", "artists": [{"id": 99}]}]
         if resource == "tracks":
-            return {
-                "data": [
-                    {
-                        "id": 7,
-                        "name": "Track",
-                        "number": 1,
-                        "album": {"id": 42},
-                    }
-                ]
-            }
-        return {"data": []}
+            return [{"id": 7, "name": "Track", "number": 1, "album": {"id": 42}}]
+        return []
 
     async def request(self, method: str, path: str, **kwargs: Any) -> Any:
         assert method == "POST"

@@ -51,12 +51,20 @@ def create_server() -> FastMCP:
         upload_chunk_size: int = 8_388_608,
         file_url_template: str = "",
         timeout_seconds: int = 90,
+        extra_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Persist Traxx connector settings. The bearer token is never returned."""
+        """Persist Traxx connector settings. The bearer token is never returned.
+
+        extra_headers is sent with every request so a proxy or WAF in front of
+        the instance can admit this client without exposing the API publicly.
+        """
         current = configs.get()
         config = RuntimeConfig(
             base_url=base_url or current.base_url,
             token=token or current.token,
+            extra_headers=(
+                current.extra_headers if extra_headers is None else extra_headers
+            ),
             verify_tls=verify_tls,
             tus_endpoint=tus_endpoint,
             upload_chunk_size=upload_chunk_size,
@@ -66,6 +74,8 @@ def create_server() -> FastMCP:
         configs.save(config)
         result = config.model_dump(mode="json")
         result["token"] = "***" if config.token else ""
+        # Header names identify the proxy rule; their values are secrets.
+        result["extra_headers"] = {key: "***" for key in config.extra_headers}
         result["ok"] = True
         return result
 
@@ -74,6 +84,7 @@ def create_server() -> FastMCP:
         """Return effective Traxx settings with the token masked."""
         result = configs.get().model_dump(mode="json")
         result["token"] = "***" if result.get("token") else ""
+        result["extra_headers"] = {key: "***" for key in result.get("extra_headers") or {}}
         return result
 
     @mcp.tool()
@@ -103,6 +114,18 @@ def create_server() -> FastMCP:
         return await client().list_resource(
             "artists", page=page, per_page=per_page, query=query
         )
+
+    @mcp.tool()
+    async def list_liked(
+        resource: str = "artists", page: int = 1, per_page: int = 50
+    ) -> Any:
+        """List liked artists, albums or tracks of the connected account."""
+        return await client().list_liked(resource, page=page, per_page=per_page)
+
+    @mcp.tool()
+    async def search_library(query: str, resource: str = "artists", limit: int = 20) -> Any:
+        """Find artists, albums or tracks by name through the search route."""
+        return await client().search_resource(resource, query, limit=limit)
 
     @mcp.tool()
     async def inspect_local_track(path: str) -> dict[str, Any]:

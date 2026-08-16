@@ -11,6 +11,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class RuntimeConfig(BaseModel):
     base_url: str = ""
     token: str = ""
+    # Sent with every request. Exists so a WAF or reverse proxy in front of the
+    # instance can allow this client through without opening the API publicly.
+    extra_headers: dict[str, str] = Field(default_factory=dict)
     verify_tls: bool = True
     tus_endpoint: str = "/api/v1/tus/"
     upload_chunk_size: int = Field(default=8 * 1024 * 1024, ge=256 * 1024, le=64 * 1024 * 1024)
@@ -40,6 +43,7 @@ class Settings(BaseSettings):
 
     traxx_url: str = ""
     traxx_token: str = ""
+    traxx_extra_headers: dict[str, str] = {}
     traxx_verify_tls: bool = True
     traxx_tus_endpoint: str = "/api/v1/tus/"
     traxx_upload_chunk_size: int = 8 * 1024 * 1024
@@ -50,6 +54,7 @@ class Settings(BaseSettings):
         return RuntimeConfig(
             base_url=self.traxx_url,
             token=self.traxx_token,
+            extra_headers=dict(self.traxx_extra_headers),
             verify_tls=self.traxx_verify_tls,
             tus_endpoint=self.traxx_tus_endpoint,
             upload_chunk_size=self.traxx_upload_chunk_size,
