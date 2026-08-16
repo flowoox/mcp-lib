@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from contextlib import suppress
 from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import quote
@@ -132,11 +133,43 @@ class SlskdClient:
             return {"text": response.text}
 
     async def health(self) -> dict[str, Any]:
-        data = await self.request("GET", "/api/v0/searches")
+        """Report reachability *and* whether slskd is logged into Soulseek.
+
+        Answering only "the API responds" was misleading: searching fails with
+        409 while slskd is disconnected, so a green connector test could be
+        followed by every search failing.
+        """
+        await self.request("GET", "/api/v0/searches")
+
+        state = ""
+        username = ""
+        detail: Any = None
+        with suppress(Exception):
+            detail = await self.request("GET", "/api/v0/server", allow_not_found=True)
+        if isinstance(detail, dict):
+            state = str(get_case_insensitive(detail, "state", default="") or "")
+            username = str(get_case_insensitive(detail, "username", default="") or "")
+
+        normalized = state.replace(" ", "").casefold()
+        logged_in = "loggedin" in normalized
+        if state and not logged_in:
+            raise SlskdError(
+                f"slskd ist erreichbar, aber nicht im Soulseek-Netz angemeldet "
+                f"(Zustand: {state}). Ohne Anmeldung schlägt jede Suche mit 409 fehl. "
+                "Prüfe Benutzername und Passwort im Schnellstart und ob slskd die "
+                "geschriebene Konfiguration übernommen hat."
+            )
+        if not state:
+            raise SlskdError(
+                "slskd meldet keinen Verbindungszustand. Vermutlich wurde noch kein "
+                "Soulseek-Konto hinterlegt — trage es im Schnellstart ein."
+            )
         return {
             "ok": True,
             "base_url": self.config.base_url,
-            "searches_visible": len(data) if isinstance(data, list) else None,
+            "soulseek_state": state,
+            "soulseek_username": username,
+            "logged_in": True,
             "lossless_only": self.config.lossless_only,
             "minimum_lossy_bitrate_kbps": self.config.minimum_lossy_bitrate_kbps,
         }
