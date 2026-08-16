@@ -166,14 +166,26 @@ class TraxxClient:
                 "api": probe,
                 "response_type": type(result.get("body")).__name__,
             }
-        if is_html:
-            # The API answers JSON for an Accept: application/json request, so
-            # an HTML error page was produced by something in front of it.
+        if status == 404:
+            # BeMusic serves its own HTML 404 for anything that matches no API
+            # route, so this says the URL was wrong, not that a proxy blocked it.
+            raise TraxxError(
+                f"Traxx GET {probe} returned 404 at {self.config.base_url}{probe}. "
+                "The request reached an application that has no such route. Check "
+                "that the configured Traxx URL is the bare origin, for example "
+                "https://traxx.example.ch, without a trailing /api or /api/v1 — "
+                "those are added by this connector. Run diagnose_connection to see "
+                "the exact URL that was called."
+            )
+        if is_html and status in {401, 403}:
+            # For auth failures BeMusic answers JSON when asked for JSON, so an
+            # HTML page at this status came from something in front of it.
             raise TraxxError(
                 f"Traxx GET {probe} returned an HTML error page with status {status}. "
-                "That response did not come from the Traxx API but from a proxy or "
-                "WAF in front of it. Allow this client through there, for example "
-                "with a shared header configured via extra_headers."
+                "An authentication failure from the API itself would be JSON, so "
+                "this came from a proxy or WAF in front of it. Allow this client "
+                "through there, for example with a shared header configured via "
+                "extra_headers."
             )
         if status in {401, 403}:
             raise TraxxError(
@@ -185,6 +197,69 @@ class TraxxClient:
             f"Traxx GET {probe} failed ({status}): "
             f"{str(result.get('body'))[:600]}"
         )
+
+    async def diagnose_connection(self) -> dict[str, Any]:
+        """Report the URLs this client builds and what each one answers.
+
+        Written to be compared against a manual curl: if the effective URL here
+        differs from the one that works by hand, the configuration is what
+        differs, not the network.
+        """
+        tus = self.config.tus_endpoint or "/api/v1/tus/"
+        probes: list[tuple[str, str]] = [
+            ("GET", "/api/v1/users/me/playlists"),
+            ("GET", "/api/v1/genres"),
+            ("GET", "/api/v1/search"),
+            # TUS servers answer OPTIONS with their protocol headers, which is
+            # how the real upload endpoint identifies itself.
+            ("OPTIONS", tus),
+            ("OPTIONS", "/api/v1/tus"),
+            ("OPTIONS", "/tus"),
+            ("OPTIONS", "/api/v1/uploads/tus"),
+            ("OPTIONS", "/files/tus"),
+            ("POST", "/api/v1/uploads"),
+        ]
+        results: list[dict[str, Any]] = []
+        async with httpx.AsyncClient(
+            base_url=self.config.base_url,
+            headers=self.headers,
+            verify=self.config.verify_tls,
+            timeout=self.config.timeout_seconds,
+            follow_redirects=False,
+        ) as client:
+            for method, path in probes:
+                entry: dict[str, Any] = {"method": method, "path": path}
+                try:
+                    response = await client.request(method, path)
+                except Exception as exc:
+                    entry["error"] = f"{type(exc).__name__}: {exc}"
+                    results.append(entry)
+                    continue
+                headers = {k.casefold(): v for k, v in response.headers.items()}
+                entry.update(
+                    {
+                        "effective_url": str(response.request.url),
+                        "status": response.status_code,
+                        "content_type": headers.get("content-type", ""),
+                        "tus_resumable": headers.get("tus-resumable", ""),
+                        "tus_version": headers.get("tus-version", ""),
+                        "location": headers.get("location", ""),
+                        "looks_like_tus": bool(
+                            headers.get("tus-resumable") or headers.get("tus-version")
+                        ),
+                    }
+                )
+                results.append(entry)
+        return {
+            "base_url": self.config.base_url,
+            "token_configured": bool(self.config.token),
+            "extra_header_names": sorted(self.config.extra_headers or {}),
+            "configured_tus_endpoint": tus,
+            "probes": results,
+            "tus_candidates": [
+                item["path"] for item in results if item.get("looks_like_tus")
+            ],
+        }
 
     async def search_resource(
         self, resource: str, name: str, *, limit: int = 20

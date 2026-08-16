@@ -98,6 +98,28 @@ async def test_json_401_is_attributed_to_the_token() -> None:
 
 
 @pytest.mark.asyncio
+async def test_404_html_is_attributed_to_the_url_not_a_proxy() -> None:
+    client = RecordingClient(
+        config(),
+        {
+            "/api/v1/users/me/playlists": {
+                "status": 404,
+                "headers": {"content-type": "text/html; charset=UTF-8"},
+                "body": {"text": "<!doctype html>doorway to the great nothing"},
+            }
+        },
+    )
+    # BeMusic serves its own HTML 404 for unknown routes, so blaming a proxy
+    # here sends the operator after the wrong thing entirely.
+    with pytest.raises(TraxxError) as excinfo:
+        await client.health()
+    message = str(excinfo.value)
+    assert "404" in message
+    assert "proxy" not in message.casefold()
+    assert "/api/v1" in message
+
+
+@pytest.mark.asyncio
 async def test_artist_lookup_goes_through_search() -> None:
     client = RecordingClient(
         config(),

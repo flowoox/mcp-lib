@@ -116,6 +116,11 @@ def create_server() -> FastMCP:
         )
 
     @mcp.tool()
+    async def diagnose_connection() -> dict[str, Any]:
+        """Report effective URLs and responses, for comparison against curl."""
+        return await client().diagnose_connection()
+
+    @mcp.tool()
     async def list_liked(
         resource: str = "artists", page: int = 1, per_page: int = 50
     ) -> Any:
