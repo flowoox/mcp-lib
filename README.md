@@ -2,9 +2,9 @@
 
 Public, reusable MCP services and MCP building blocks maintained under `flowoox`.
 
-The repository started with music-oriented services, but its long-term role is broader: provide a small, product-neutral MCP toolkit plus selected public connectors that are useful outside the Tekoda platform.
+The repository started with music-oriented services, but its role is broader: provide a small product-neutral MCP toolkit plus selected public connectors that are useful outside the Tekoda platform.
 
-**Product/business logic and private Tekoda topology do not belong here.** Internal platform adapters should live in a separate private integration repository and may reuse the common toolkit from this repository.
+**Product/business logic and private Tekoda topology do not belong here.** Private platform adapters live in `flowoox/tekoda-integrations` and may reuse patterns/helpers from this repository.
 
 ## Architecture
 
@@ -15,17 +15,18 @@ Public MCP services
       +-- Traxx MCP
       +-- future reusable connectors
       |
+      +-- templates/service-template
+      |
       v
 packages/mcp-common
       |
-      +-- server/bootstrap helpers
+      +-- safe shared helpers
       +-- validation/contracts
-      +-- safe HTTP/path helpers
-      +-- auth/policy hook interfaces
-      +-- test utilities
+      +-- path/HTTP helpers
+      +-- reusable test patterns
 ```
 
-For Tekoda-internal use, the intended boundary is:
+Tekoda-internal reuse:
 
 ```text
 mcp-lib (public reusable code)
@@ -33,11 +34,39 @@ mcp-lib (public reusable code)
           v
 tekoda-integrations (private adapters/façades)
           |
+          +--> services/ssio-mcp
+          +--> future Odoo/provider/product adapters
+          |
           v
 SSIO / Odoo / provider APIs / internal services
 ```
 
 MCP is an agent-facing interface, **not** a bypass around the authoritative API, policy, approval or audit path.
+
+## Start a new MCP service
+
+Use [`templates/service-template`](templates/service-template/) as the default bootstrap. It already provides:
+
+- FastMCP with Streamable HTTP
+- `get_capabilities`
+- a versioned contract module
+- typed Pydantic validation
+- package/CLI structure
+- a contract test
+- an intentionally harmless example capability
+
+The normal path is:
+
+```text
+copy template
+  -> rename package/service
+  -> define contract
+  -> implement narrow upstream client/handlers
+  -> add allow/deny + contract tests
+  -> containerize/publish if appropriate
+```
+
+See [`docs/SERVER-KIT.md`](docs/SERVER-KIT.md).
 
 ## Images
 
@@ -74,12 +103,11 @@ Wrapper for Traxx/BeMusic 3.x. It uses the native TUS endpoint, metadata extract
 
 ## `packages/mcp-common`
 
-This package is the seed for the reusable MCP server kit. New generally useful functionality should land here before being copied into multiple services.
+This package is the seed for reusable MCP server helpers. New generally useful functionality should land here before being copied into multiple services.
 
 Target responsibilities:
 
-- server bootstrap
-- capability discovery
+- capability discovery helpers
 - typed input/output validation
 - normalized errors
 - correlation/request IDs
@@ -92,7 +120,7 @@ Target responsibilities:
 - health/readiness helpers
 - contract-test fixtures
 
-The package must stay product-neutral and must not depend on Tekoda private services.
+The package must stay product-neutral and must not depend on private Tekoda services.
 
 ## Security model
 
@@ -100,13 +128,14 @@ The package must stay product-neutral and must not depend on Tekoda private serv
 - Model-supplied arguments are validated against typed schemas.
 - Credentials are injected at runtime and never returned as tool output.
 - Internal network reachability is not authorization.
-- Writes may require upstream policy/approval and must preserve actor/correlation context.
+- Writes may require upstream policy/approval and must preserve actor/correlation/idempotency context.
 - A public MCP server must not require publishing private Tekoda network topology or customer data.
 
-For SSIO-managed resources, the expected path is:
+For SSIO-managed resources, the implemented Tekoda path is:
 
 ```text
-MCP client -> MCP façade -> SSIO typed API -> policy/audit -> durable operation -> provider
+MCP client -> tekoda-integrations/ssio-mcp -> SSIO typed API
+           -> RBAC/policy/audit -> durable operation -> provider
 ```
 
 not a direct provider bypass.
