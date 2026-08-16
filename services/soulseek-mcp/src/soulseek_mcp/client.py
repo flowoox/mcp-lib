@@ -141,37 +141,102 @@ class SlskdClient:
         """
         await self.request("GET", "/api/v0/searches")
 
-        state = ""
-        username = ""
-        detail: Any = None
-        with suppress(Exception):
-            detail = await self.request("GET", "/api/v0/server", allow_not_found=True)
-        if isinstance(detail, dict):
-            state = str(get_case_insensitive(detail, "state", default="") or "")
-            username = str(get_case_insensitive(detail, "username", default="") or "")
-
-        normalized = state.replace(" ", "").casefold()
-        logged_in = "loggedin" in normalized
-        if state and not logged_in:
+        status = await self.server_status()
+        if not status["logged_in"]:
             raise SlskdError(
                 f"slskd ist erreichbar, aber nicht im Soulseek-Netz angemeldet "
-                f"(Zustand: {state}). Ohne Anmeldung schlägt jede Suche mit 409 fehl. "
-                "Prüfe Benutzername und Passwort im Schnellstart und ob slskd die "
-                "geschriebene Konfiguration übernommen hat."
+                f"(Zustand: {status['state'] or 'unbekannt'}). Ohne Anmeldung schlägt "
+                "jede Suche mit 409 fehl. Rufe connect_soulseek auf, oder prüfe "
+                "Benutzername und Passwort, falls die Anmeldung abgelehnt wird."
             )
-        if not state:
-            raise SlskdError(
-                "slskd meldet keinen Verbindungszustand. Vermutlich wurde noch kein "
-                "Soulseek-Konto hinterlegt — trage es im Schnellstart ein."
+        shared = await self.shared_file_count()
+        warnings: list[str] = []
+        if shared == 0:
+            # Not an error: searching works. But peers answer searches from
+            # users who share something, so an empty share reliably produces
+            # zero results and looks like a broken connector.
+            warnings.append(
+                "Es sind keine Dateien freigegeben. Im Soulseek-Netz antworten die "
+                "meisten Gegenstellen nur Nutzern, die selbst etwas teilen — ohne "
+                "Freigabe bleiben Suchen typischerweise ohne Treffer. Lege Musik in "
+                "das Freigabeverzeichnis (im Compose auf /music gemountet)."
             )
         return {
             "ok": True,
             "base_url": self.config.base_url,
-            "soulseek_state": state,
-            "soulseek_username": username,
+            "soulseek_state": status["state"],
+            "soulseek_username": status["username"],
             "logged_in": True,
+            "shared_files": shared,
+            "warnings": warnings,
             "lossless_only": self.config.lossless_only,
             "minimum_lossy_bitrate_kbps": self.config.minimum_lossy_bitrate_kbps,
+        }
+
+    async def shared_file_count(self) -> int:
+        """Total files slskd offers to the network, across all share hosts."""
+        payload: Any = None
+        with suppress(Exception):
+            payload = await self.request("GET", "/api/v0/shares", allow_not_found=True)
+        total = 0
+        for entry in payload if isinstance(payload, list) else []:
+            if isinstance(entry, dict):
+                with suppress(TypeError, ValueError):
+                    total += int(get_case_insensitive(entry, "files", default=0) or 0)
+        if isinstance(payload, dict):
+            for group in payload.values():
+                for entry in group if isinstance(group, list) else []:
+                    if isinstance(entry, dict):
+                        with suppress(TypeError, ValueError):
+                            total += int(get_case_insensitive(entry, "files", default=0) or 0)
+        return total
+
+    async def server_status(self) -> dict[str, Any]:
+        """Read the Soulseek connection state.
+
+        The explicit booleans are authoritative; the state string is only for
+        display and reads "None" before the first attempt.
+        """
+        detail: Any = None
+        with suppress(Exception):
+            detail = await self.request("GET", "/api/v0/server", allow_not_found=True)
+        if not isinstance(detail, dict):
+            return {"state": "", "username": "", "logged_in": False, "connected": False}
+        return {
+            "state": str(get_case_insensitive(detail, "state", default="") or ""),
+            "username": str(get_case_insensitive(detail, "username", default="") or ""),
+            "logged_in": bool(get_case_insensitive(detail, "isLoggedIn", default=False)),
+            "connected": bool(get_case_insensitive(detail, "isConnected", default=False)),
+        }
+
+    async def connect_soulseek(self, *, wait_seconds: int = 25) -> dict[str, Any]:
+        """Ask slskd to log into the Soulseek network and wait for the result.
+
+        slskd reads the account from its configuration file at startup. Writing
+        credentials afterwards leaves it sitting in state "None" without ever
+        attempting a login, which is why configuring an account has to be
+        followed by this.
+        """
+        already = await self.server_status()
+        if already["logged_in"]:
+            return {**already, "triggered": False}
+
+        await self.request("PUT", "/api/v0/server", json={"action": "connect"})
+        deadline = asyncio.get_running_loop().time() + wait_seconds
+        status = already
+        while asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(1.5)
+            status = await self.server_status()
+            if status["logged_in"]:
+                return {**status, "triggered": True}
+        return {
+            **status,
+            "triggered": True,
+            "note": (
+                "Die Anmeldung wurde angestossen, war aber innerhalb der Wartezeit "
+                "nicht abgeschlossen. Ist der Benutzername schon vergeben, lehnt der "
+                "Soulseek-Server ihn ab — dann hilft ein anderer Name."
+            ),
         }
 
     async def search_album(

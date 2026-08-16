@@ -27,6 +27,7 @@ def capabilities() -> dict[str, Any]:
             "status_polling": True,
             "idempotent_queue": True,
             "expected_track_count_validation": True,
+            "login_state_reporting": True,
         },
         "audio_formats": {
             "lossless": ["flac", "wav", "alac", "aiff", "aif", "ape", "wv"],

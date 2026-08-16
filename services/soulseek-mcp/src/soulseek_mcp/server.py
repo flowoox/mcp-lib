@@ -90,8 +90,25 @@ def create_server() -> FastMCP:
         result = config.model_dump(mode="json")
         result["api_key"] = "***" if config.api_key else ""
         result["account_configured"] = account_requested
+        if account_requested:
+            # slskd only reads the account at startup, so a freshly written
+            # file leaves it disconnected until something asks it to log in.
+            try:
+                result["connection"] = await SlskdClient(config).connect_soulseek()
+            except Exception as exc:
+                result["connection"] = {"logged_in": False, "error": str(exc)}
         result["ok"] = True
         return result
+
+    @mcp.tool()
+    async def connect_soulseek() -> dict[str, Any]:
+        """Log slskd into the Soulseek network and report the resulting state."""
+        return await client().connect_soulseek()
+
+    @mcp.tool()
+    async def server_status() -> dict[str, Any]:
+        """Report the Soulseek connection state without changing it."""
+        return await client().server_status()
 
     @mcp.tool()
     async def get_configuration() -> dict[str, Any]:
