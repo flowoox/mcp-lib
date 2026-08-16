@@ -16,6 +16,7 @@ Public MCP services
       +-- future reusable connectors
       |
       +-- templates/service-template
+      +-- scripts/new-mcp-service.py
       |
       v
 packages/mcp-common
@@ -45,7 +46,17 @@ MCP is an agent-facing interface, **not** a bypass around the authoritative API,
 
 ## Start a new MCP service
 
-Use [`templates/service-template`](templates/service-template/) as the default bootstrap. It already provides:
+The preferred path is now one command:
+
+```bash
+python scripts/new-mcp-service.py \
+  --name proxmox \
+  --contract flowoox.proxmox
+```
+
+This creates `services/proxmox-mcp` from [`templates/service-template`](templates/service-template/) and rewrites the package, project, CLI and contract identifiers automatically.
+
+The generated service already provides:
 
 - FastMCP with Streamable HTTP
 - `get_capabilities`
@@ -53,18 +64,9 @@ Use [`templates/service-template`](templates/service-template/) as the default b
 - typed Pydantic validation
 - package/CLI structure
 - a contract test
-- an intentionally harmless example capability
+- an intentionally harmless read-only example capability
 
-The normal path is:
-
-```text
-copy template
-  -> rename package/service
-  -> define contract
-  -> implement narrow upstream client/handlers
-  -> add allow/deny + contract tests
-  -> containerize/publish if appropriate
-```
+Then only the narrow upstream-specific client/handlers and their allow/deny tests need to be implemented. The scaffolder refuses to overwrite an existing target.
 
 See [`docs/SERVER-KIT.md`](docs/SERVER-KIT.md).
 
