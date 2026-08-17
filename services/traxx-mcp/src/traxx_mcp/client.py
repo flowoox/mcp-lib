@@ -25,6 +25,7 @@ from .metadata import (
     ensure_audio_metadata,
     find_local_cover,
     inspect_audio_file,
+    verify_assignment,
 )
 from .tus import TusUnsupported, TusUploader, TusUploadResult, recursive_find
 
@@ -961,6 +962,13 @@ class TraxxClient:
         assigned = assign_track_hints(
             files, album_root=resolved, hints=parsed_track_hints
         )
+        # Checked before any tag is written: ensure_audio_metadata stamps the
+        # expected title onto the file, so a wrong file that gets past here is
+        # published under the right name and can no longer be told apart.
+        rejected = verify_assignment(
+            assigned, {path: inspect_audio_file(path).duration_ms for path in files}
+        )
+        files = [path for path in files if path not in rejected]
         tag_results: list[dict[str, Any]] = []
         for path in files:
             tag_results.append(
@@ -995,7 +1003,10 @@ class TraxxClient:
         )
 
         imported: list[dict[str, Any]] = []
-        unresolved: list[dict[str, Any]] = []
+        unresolved: list[dict[str, Any]] = [
+            {"path": str(path), "stage": "verification", "reason": reason}
+            for path, reason in rejected.items()
+        ]
         for path in files:
             local = inspect_audio_file(path)
             try:

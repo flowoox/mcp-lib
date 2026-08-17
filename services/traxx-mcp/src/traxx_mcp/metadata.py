@@ -83,6 +83,9 @@ class TrackHint:
     disc_number: int = 1
     artist: str = ""
     artists: list[str] = field(default_factory=list)
+    # Length of the recording according to the release listing. Zero means the
+    # caller did not supply one, and no length check can be made.
+    duration_ms: int = 0
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> TrackHint:
@@ -108,6 +111,9 @@ class TrackHint:
             ),
             artist=artists[0] if artists else primary,
             artists=artists,
+            duration_ms=parse_number(
+                str(value.get("duration_ms") or value.get("duration") or ""), default=0
+            ),
         )
 
 
@@ -347,6 +353,54 @@ def choose_track_hint(
     if position and total_files and total_files == len(hints):
         return hints[position - 1]
     return None
+
+
+def duration_mismatch(expected_ms: int, actual_ms: int) -> int:
+    """How far an audio file is from the length the listing claims, in ms.
+
+    Zero means "no objection": either side may be unknown, and small
+    differences are normal — a CD rip and a streaming master rarely agree to
+    the second, and trailing silence differs between pressings.
+
+    This is the only signal available that says something about the *audio*
+    rather than about a filename. Names are what a stranger typed into a
+    folder, so a folder called "Artist - Album" can hold an entirely
+    different recording and still match on every text comparison.
+    """
+    if expected_ms <= 0 or actual_ms <= 0:
+        return 0
+    tolerance = max(6000, int(expected_ms * 0.04))
+    difference = abs(expected_ms - actual_ms)
+    return 0 if difference <= tolerance else difference
+
+
+def verify_assignment(
+    assigned: dict[Path, TrackHint | None],
+    durations: dict[Path, int],
+) -> dict[Path, str]:
+    """Name every file that cannot be the track it was matched to.
+
+    Assignment falls back to position when the folder and the listing hold
+    the same number of tracks, which is right for a complete rip and wrong
+    for a folder that simply happens to hold one file. Without this check a
+    single unrelated track is tagged with the expected title and published
+    under it — worse than importing nothing, because the library then claims
+    to hold a recording it does not have.
+    """
+    rejected: dict[Path, str] = {}
+    for path, hint in assigned.items():
+        if hint is None or not hint.duration_ms:
+            continue
+        actual = durations.get(path, 0)
+        difference = duration_mismatch(hint.duration_ms, actual)
+        if difference:
+            rejected[path] = (
+                f"Datei ist {actual / 1000:.0f} s lang, „{hint.title}“ dauert "
+                f"laut Veröffentlichung {hint.duration_ms / 1000:.0f} s "
+                f"({difference / 1000:.0f} s Abweichung) — das ist eine andere "
+                "Aufnahme."
+            )
+    return rejected
 
 
 def assign_track_hints(
