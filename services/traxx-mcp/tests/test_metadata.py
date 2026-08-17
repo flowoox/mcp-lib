@@ -110,6 +110,37 @@ def test_position_resolves_a_rip_whose_names_say_nothing(tmp_path: Path):
     assert hint is not None and hint.title == "Verrückt nach dir"
 
 
+def test_a_rip_without_leading_numbers_is_not_collapsed_into_one_track(
+    tmp_path: Path,
+):
+    from traxx_mcp.metadata import assign_track_hints
+
+    album = tmp_path / "Motion"
+    album.mkdir()
+    names = [
+        "Peter Sandberg_Motion_01_Deep.flac",
+        "Peter Sandberg_Motion_02_Nocturnal.flac",
+        "Peter Sandberg_Motion_03_Swarm.flac",
+    ]
+    files = []
+    for name in names:
+        path = album / name
+        path.write_bytes(b"fLaC")
+        files.append(path)
+    hints = [
+        TrackHint(title="Deep", number=1),
+        TrackHint(title="Nocturnal", number=2),
+        TrackHint(title="Swarm", number=3),
+    ]
+
+    assigned = assign_track_hints(files, album_root=album, hints=hints)
+
+    # None of these names starts with a track number, so every file looks like
+    # track one. Matched file by file, all three would be titled "Deep" and two
+    # of them dropped in Traxx as duplicates.
+    assert [assigned[path].title for path in files] == ["Deep", "Nocturnal", "Swarm"]
+
+
 def test_a_single_disc_rip_still_matches_by_number(tmp_path: Path):
     album = tmp_path / "Album"
     album.mkdir()

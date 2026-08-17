@@ -20,7 +20,7 @@ from .config import RuntimeConfig
 from .metadata import (
     AUDIO_EXTENSIONS,
     TrackHint,
-    choose_track_hint,
+    assign_track_hints,
     cover_mime_type,
     ensure_audio_metadata,
     find_local_cover,
@@ -956,10 +956,11 @@ class TraxxClient:
         parsed_track_hints = [
             TrackHint.from_mapping(item) for item in (track_hints or [])
         ]
-        # The sorted folder is the album order, so a file's index in it is its
-        # position on the release — the only way to line a two-disc rip up with
-        # a listing that counts straight through.
-        positions = {path: index + 1 for index, path in enumerate(files)}
+        # Decided for the whole folder at once: only there can it be seen that
+        # two files claimed the same entry of the release listing.
+        assigned = assign_track_hints(
+            files, album_root=resolved, hints=parsed_track_hints
+        )
         tag_results: list[dict[str, Any]] = []
         for path in files:
             tag_results.append(
@@ -973,8 +974,7 @@ class TraxxClient:
                     track_hints=track_hints,
                     cover_data=cover_data,
                     cover_mime=cover_mime,
-                    position=positions[path],
-                    total_files=len(files),
+                    hint=assigned.get(path),
                 ).as_dict()
             )
 
@@ -999,13 +999,7 @@ class TraxxClient:
         for path in files:
             local = inspect_audio_file(path)
             try:
-                hint = choose_track_hint(
-                    path,
-                    album_root=resolved,
-                    hints=parsed_track_hints,
-                    position=positions[path],
-                    total_files=len(files),
-                )
+                hint = assigned.get(path)
                 track_artist_names = list(hint.artists) if hint and hint.artists else []
                 if not track_artist_names and hint and hint.artist:
                     track_artist_names = [hint.artist]

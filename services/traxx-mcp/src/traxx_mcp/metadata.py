@@ -340,6 +340,41 @@ def choose_track_hint(
     return None
 
 
+def assign_track_hints(
+    files: list[Path],
+    *,
+    album_root: Path,
+    hints: list[TrackHint],
+) -> dict[Path, TrackHint | None]:
+    """Give every file of one folder its own entry from the listing.
+
+    Decided for the folder as a whole, because a per-file decision cannot see
+    that two files claimed the same entry. That is not a corner case: a rip
+    named "Artist_Album_01_Title.flac" carries no *leading* number, so every
+    file looks like track one, every file is matched to the first entry, and
+    an album of ten arrives in Traxx as a single track — the other nine are
+    recognised as duplicates of it and dropped.
+
+    When the folder and the listing hold the same number of tracks, the sorted
+    order settles it, since that is the order the release is in.
+    """
+    ordered = list(files)
+    chosen: dict[Path, TrackHint | None] = {}
+    for index, path in enumerate(ordered):
+        chosen[path] = choose_track_hint(
+            path,
+            album_root=album_root,
+            hints=hints,
+            position=index + 1,
+            total_files=len(ordered),
+        )
+    matched = [hint for hint in chosen.values() if hint is not None]
+    distinct = {(hint.disc_number, hint.number, hint.title) for hint in matched}
+    if len(hints) == len(ordered) and len(distinct) < len(matched):
+        return {path: hints[index] for index, path in enumerate(ordered)}
+    return chosen
+
+
 def _set_easy_tags(
     path: Path,
     *,
@@ -491,16 +526,18 @@ def ensure_audio_metadata(
     cover_mime: str = "image/jpeg",
     position: int = 0,
     total_files: int = 0,
+    hint: TrackHint | None = None,
 ) -> TagWriteResult:
     before = inspect_audio_file(path)
     hints = [TrackHint.from_mapping(item) for item in (track_hints or [])]
-    hint = choose_track_hint(
-        path,
-        album_root=album_root,
-        hints=hints,
-        position=position,
-        total_files=total_files,
-    )
+    if hint is None:
+        hint = choose_track_hint(
+            path,
+            album_root=album_root,
+            hints=hints,
+            position=position,
+            total_files=total_files,
+        )
     inferred_track, inferred_disc = infer_track_numbers(path, album_root)
     title = hint.title if hint and hint.title else before.title
     track_number = hint.number if hint else before.track_number or inferred_track
