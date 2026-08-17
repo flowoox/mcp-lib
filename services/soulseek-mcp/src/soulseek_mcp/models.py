@@ -25,6 +25,9 @@ class DownloadBatch(BaseModel):
     album: str = ""
     queued_at: str = ""
     collected: bool = False
+    # How often each file had to be asked for again. Peers drop single files
+    # routinely; without this the whole album would count as lost.
+    retries: dict[str, int] = Field(default_factory=dict)
 
 
 class AlbumCandidate(BaseModel):

@@ -172,3 +172,55 @@ async def test_a_finished_album_is_moved_into_the_requested_folder(
     # A second poll must not report a failure just because the sources moved.
     again = await client.get_batch(queued["batch_id"])
     assert again["collected"]["already_collected"] is True
+
+
+@pytest.mark.asyncio
+async def test_one_dropped_file_is_asked_for_again(tmp_path: Path) -> None:
+    client = build(tmp_path)
+    posts: list[Any] = []
+    state = "Completed, Errored"
+
+    async def request(
+        method: str,
+        path: str,
+        *,
+        json: Any = None,
+        params: dict[str, Any] | None = None,
+        allow_not_found: bool = False,
+    ) -> Any:
+        del path, params, allow_not_found
+        if method == "POST":
+            posts.append(json)
+            return {}
+        return {
+            "username": "peer",
+            "directories": [
+                {
+                    "files": [
+                        {
+                            "filename": "Music\\Artist\\Album\\01 Deep.flac",
+                            "state": state,
+                            "size": 123,
+                        }
+                    ]
+                }
+            ],
+        }
+
+    client.request = request  # type: ignore[method-assign]
+    queued = await client.queue_candidate(
+        candidate(), destination="library/Artist/Album", external_id="release-1"
+    )
+
+    # A peer that drops one file of an otherwise finished album is normal; the
+    # album must not be written off over it.
+    first = await client.get_batch(queued["batch_id"])
+    assert first["state"] == "active"
+    assert first["retried"] == ["01 Deep.flac"]
+    assert posts[-1] == [{"filename": "Music\\Artist\\Album\\01 Deep.flac", "size": 123}]
+
+    await client.get_batch(queued["batch_id"])
+    # After the agreed number of attempts it really is a failure.
+    final = await client.get_batch(queued["batch_id"])
+    assert final["state"] == "failed"
+    assert final["retried"] == []

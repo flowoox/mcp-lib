@@ -37,6 +37,10 @@ ACTIVE_STATES = {
     "downloading",
     "transferring",
 }
+# How often one dropped file is asked for again before the album counts as
+# lost. Peers abort single transfers often enough that one attempt is not a
+# verdict, and often enough that endless retries would hide a dead peer.
+MAX_FILE_RETRIES = 2
 
 
 class SlskdError(RuntimeError):
@@ -507,8 +511,12 @@ class SlskdClient:
                 continue
             files.append(item)
         state = classify_batch({"files": files}) if files else "unknown"
+        retried: list[str] = []
+        if state == "failed":
+            state, retried = await self.retry_failed_files(record, files)
         result: dict[str, Any] = {
             "batch_id": batch_id,
+            "retried": retried,
             "username": record.username,
             "state": state,
             "file_count": len(record.filenames),
@@ -521,6 +529,58 @@ class SlskdClient:
         if state == "completed" and len(files) >= len(record.filenames):
             result["collected"] = self.collect_batch(record, files)
         return result
+
+    async def retry_failed_files(
+        self, record: DownloadBatch, files: list[dict[str, Any]]
+    ) -> tuple[str, list[str]]:
+        """Ask again for the files a peer dropped, before giving the album up.
+
+        Peers abort single transfers routinely — measured on five albums, four
+        of them arrived complete except for one or two files that ended as
+        "Completed, Errored". Declaring the whole album lost over that throws
+        away a download that is already ninety percent done.
+        """
+        failed = [
+            str(get_case_insensitive(item, "filename", "fileName") or "")
+            for item in files
+            if classify_transfer_state(
+                str(get_case_insensitive(item, "state", "status") or "")
+            )
+            == "failed"
+        ]
+        sizes = {
+            normalize_remote_path(
+                str(get_case_insensitive(item, "filename", "fileName") or "")
+            ): int(get_case_insensitive(item, "size", "fileSize", default=0) or 0)
+            for item in files
+        }
+        retries = dict(record.retries)
+        again = [
+            name
+            for name in failed
+            if name and retries.get(normalize_remote_path(name), 0) < MAX_FILE_RETRIES
+        ]
+        if not again:
+            return "failed", []
+        payload = [
+            {"filename": name, "size": sizes.get(normalize_remote_path(name), 0)}
+            for name in again
+        ]
+        try:
+            await self.request(
+                "POST",
+                f"/api/v0/transfers/downloads/{quote(record.username, safe='')}",
+                json=payload,
+            )
+        except SlskdError:
+            # The peer may be gone for good; the next poll decides.
+            return "failed", []
+        for name in again:
+            key = normalize_remote_path(name)
+            retries[key] = retries.get(key, 0) + 1
+        if self.batches is not None:
+            self.batches.update(record.batch_id, retries=retries)
+        return "active", [PurePosixPath(remote_to_posix(name)).name for name in again]
 
     def collect_batch(
         self, record: DownloadBatch, files: list[dict[str, Any]]
