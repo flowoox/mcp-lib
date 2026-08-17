@@ -141,6 +141,41 @@ def test_a_rip_without_leading_numbers_is_not_collapsed_into_one_track(
     assert [assigned[path].title for path in files] == ["Deep", "Nocturnal", "Swarm"]
 
 
+def test_a_number_in_the_middle_of_the_name_is_read(tmp_path: Path):
+    album = tmp_path / "Wildflower"
+    album.mkdir()
+    path = album / "The Avalanches - Wildflower - 07 - Colours.flac"
+    make_wav(path)
+
+    # An album title may carry a number of its own, so the group closest to
+    # the track title is the one that counts.
+    assert infer_track_numbers(path, album) == (7, 1)
+    other = album / "Grand 12 Inches 05 - CD 3 - 04 - Title.flac"
+    make_wav(other)
+    assert infer_track_numbers(other, album) == (4, 1)
+
+
+def test_files_the_listing_cannot_place_keep_their_own_titles(tmp_path: Path):
+    from traxx_mcp.metadata import assign_track_hints
+
+    album = tmp_path / "Album"
+    album.mkdir()
+    files = []
+    for name in ("Nameless One.flac", "Nameless Two.flac"):
+        path = album / name
+        path.write_bytes(b"fLaC")
+        files.append(path)
+    # More entries than files, so position cannot decide either.
+    hints = flat_listing()
+
+    assigned = assign_track_hints(files, album_root=album, hints=hints)
+
+    # Both files look like track one. Giving them the same entry would import
+    # the second as a duplicate of the first and drop it.
+    assert assigned[files[0]] is not None
+    assert assigned[files[1]] is None
+
+
 def test_a_single_disc_rip_still_matches_by_number(tmp_path: Path):
     album = tmp_path / "Album"
     album.mkdir()

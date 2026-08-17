@@ -53,6 +53,11 @@ LEADING_TRACK_RE = re.compile(
     re.IGNORECASE,
 )
 DISC_DIR_RE = re.compile(r"^(?:cd|disc|disk|part)\s*[-_. ]*(\d{1,2})$", re.IGNORECASE)
+# "The Avalanches - Wildflower - 01 - Colours", "Artist_Album_01_Title": the
+# number sits in the middle, fenced by separators on both sides. Read only
+# when nothing leads the name, and the last group wins, because an album title
+# may carry a number of its own ("Grand 12 Inches 05 - … - 04 - Title").
+EMBEDDED_TRACK_RE = re.compile(r"[-_]\s*(\d{1,3})\s*[-_]")
 
 
 @dataclass(slots=True)
@@ -148,6 +153,10 @@ def infer_track_numbers(path: Path, album_root: Path | None = None) -> tuple[int
     match = LEADING_TRACK_RE.match(path.stem)
     track_number = int(match.group("track")) if match else 1
     disc_number = int(match.group("disc")) if match and match.group("disc") else 1
+    if not match:
+        embedded = EMBEDDED_TRACK_RE.findall(path.stem)
+        if embedded:
+            track_number = int(embedded[-1])
     root = album_root.resolve() if album_root else None
     for parent in path.parents:
         if root and parent.resolve() == root:
@@ -370,9 +379,26 @@ def assign_track_hints(
         )
     matched = [hint for hint in chosen.values() if hint is not None]
     distinct = {(hint.disc_number, hint.number, hint.title) for hint in matched}
-    if len(hints) == len(ordered) and len(distinct) < len(matched):
+    if len(distinct) == len(matched):
+        return chosen
+    if len(hints) == len(ordered):
         return {path: hints[index] for index, path in enumerate(ordered)}
-    return chosen
+    # The folder holds a different number of tracks than the listing — a
+    # partial rip, or a listing for another edition — so position says nothing.
+    # Two files must still never be given the same entry: the second would be
+    # imported as a duplicate of the first and dropped. Whoever cannot be
+    # identified keeps the title the file itself carries.
+    seen: set[tuple[int, int, str]] = set()
+    resolved: dict[Path, TrackHint | None] = {}
+    for path in ordered:
+        hint = chosen[path]
+        if hint is None:
+            resolved[path] = None
+            continue
+        key = (hint.disc_number, hint.number, hint.title)
+        resolved[path] = None if key in seen else hint
+        seen.add(key)
+    return resolved
 
 
 def _set_easy_tags(
