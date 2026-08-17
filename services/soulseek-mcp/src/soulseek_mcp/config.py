@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     mcp_port: int = 8081
     soulseek_config_file: Path = Path("/data/config.json")
     soulseek_candidate_file: Path = Path("/data/candidates.json")
+    soulseek_batch_file: Path = Path("/data/batches.json")
     downloads_dir: Path = Path("/downloads")
     slskd_config_path: Path = Path("/slskd/slskd.yml")
 
@@ -93,6 +94,7 @@ def get_settings() -> Settings:
     settings = Settings()
     settings.soulseek_config_file.parent.mkdir(parents=True, exist_ok=True)
     settings.soulseek_candidate_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.soulseek_batch_file.parent.mkdir(parents=True, exist_ok=True)
     settings.downloads_dir.mkdir(parents=True, exist_ok=True)
     settings.slskd_config_path.parent.mkdir(parents=True, exist_ok=True)
     return settings

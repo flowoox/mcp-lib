@@ -10,6 +10,19 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 
+class TusUnsupported(RuntimeError):
+    """The endpoint answered, but not as a TUS server.
+
+    Separated from a genuine upload failure because the two need opposite
+    responses: a failure should be reported, while an instance that simply
+    has no TUS route should be uploaded to the ordinary way.
+    """
+
+    def __init__(self, message: str, *, status_code: int):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 class TusError(RuntimeError):
     pass
 
@@ -138,7 +151,7 @@ class TusUploader:
         self,
         path: Path,
         *,
-        upload_type: str = "track",
+        upload_type: str = "media",
         extra_metadata: dict[str, str] | None = None,
     ) -> TusUploadResult:
         path = path.resolve()
@@ -147,10 +160,17 @@ class TusUploader:
         size = path.stat().st_size
         mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         metadata = {
-            "filename": path.name,
-            "filetype": mime,
+            # No "filename" on purpose. The server takes that conventional TUS
+            # key as the literal storage path, so a second album with a track
+            # called "01 Intro.flac" collided with the first and the upload
+            # failed. Left out, the server assigns a uuid of its own and the
+            # readable title still comes from clientName.
             "uploadType": upload_type,
             "clientName": path.name,
+            # clientExtension, clientMime and clientSize are not decoration:
+            # measured against the live server, leaving any one of them out
+            # makes the create step answer 500 before a byte is sent.
+            "clientExtension": path.suffix.lstrip(".").casefold(),
             "clientMime": mime,
             "clientSize": str(size),
         }
@@ -171,6 +191,15 @@ class TusUploader:
             follow_redirects=True,
         ) as client:
             created = await client.post(self.endpoint, headers=create_headers)
+            # 404/405 mean the route is not a TUS server at all — BeMusic
+            # without the TUS add-on answers its SPA catch-all here. That is a
+            # different situation from an upload that was attempted and
+            # refused, and the caller can still use the ordinary route.
+            if created.status_code in {404, 405}:
+                raise TusUnsupported(
+                    f"No TUS server at {self.endpoint} ({created.status_code})",
+                    status_code=created.status_code,
+                )
             if created.status_code not in {201, 204}:
                 raise TusError(
                     f"TUS create failed ({created.status_code}): {created.text[:1400]}"

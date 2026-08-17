@@ -300,7 +300,23 @@ def choose_track_hint(
     *,
     album_root: Path,
     hints: list[TrackHint],
+    position: int = 0,
+    total_files: int = 0,
 ) -> TrackHint | None:
+    """Match one file to the entry of the release listing it belongs to.
+
+    A rip and a shop listing disagree about numbering more often than they
+    agree: a two-disc rip counts 1-01…1-07 and 2-01…2-06 while the shop lists
+    the same release flat as 1…13. Matching on the track number alone then
+    gives every disc-two file the title of a disc-one track — measured on
+    "Hurra die Welt geht unter", six of thirteen tracks arrived under the wrong
+    name and were then dropped as duplicates of the tracks they had been
+    renamed to.
+
+    ``position`` is the file's place in the sorted album folder and is used
+    only when nothing else matched and the folder holds exactly as many files
+    as the listing has entries.
+    """
     if not hints:
         return None
     track_number, disc_number = infer_track_numbers(path, album_root)
@@ -308,10 +324,20 @@ def choose_track_hint(
         if hint.number == track_number and hint.disc_number == disc_number:
             return hint
     same_track = [hint for hint in hints if hint.number == track_number]
-    if len(same_track) == 1:
+    # Only when the discs agree. An unambiguous track number on the wrong disc
+    # is not the same track.
+    if len(same_track) == 1 and same_track[0].disc_number == disc_number:
         return same_track[0]
     normalized = clean_title_from_filename(path).casefold()
-    return next((hint for hint in hints if hint.title.casefold() in normalized), None)
+    by_title = next(
+        (hint for hint in hints if hint.title and hint.title.casefold() in normalized),
+        None,
+    )
+    if by_title is not None:
+        return by_title
+    if position and total_files and total_files == len(hints):
+        return hints[position - 1]
+    return None
 
 
 def _set_easy_tags(
@@ -463,10 +489,18 @@ def ensure_audio_metadata(
     track_hints: list[dict[str, Any]] | None = None,
     cover_data: bytes | None = None,
     cover_mime: str = "image/jpeg",
+    position: int = 0,
+    total_files: int = 0,
 ) -> TagWriteResult:
     before = inspect_audio_file(path)
     hints = [TrackHint.from_mapping(item) for item in (track_hints or [])]
-    hint = choose_track_hint(path, album_root=album_root, hints=hints)
+    hint = choose_track_hint(
+        path,
+        album_root=album_root,
+        hints=hints,
+        position=position,
+        total_files=total_files,
+    )
     inferred_track, inferred_disc = infer_track_numbers(path, album_root)
     title = hint.title if hint and hint.title else before.title
     track_number = hint.number if hint else before.track_number or inferred_track

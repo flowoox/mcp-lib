@@ -7,6 +7,7 @@ from pathlib import Path
 from traxx_mcp.client import extract_items, normalize_genres
 from traxx_mcp.metadata import (
     TrackHint,
+    choose_track_hint,
     clean_title_from_filename,
     ensure_audio_metadata,
     find_local_cover,
@@ -52,6 +53,72 @@ def test_infers_disc_track_and_clean_title(tmp_path: Path):
     make_wav(path)
     assert infer_track_numbers(path, album) == (3, 2)
     assert clean_title_from_filename(path) == "Final Song"
+
+
+def flat_listing() -> list[TrackHint]:
+    """A shop listing of a two-disc release, counted straight through."""
+    titles = [
+        "Wir",
+        "Geld",
+        "Glücklich und satt",
+        "Boom Boom Boom",
+        "AMG Mercedes",
+        "Freier Fall",
+        "Ariane",
+        "Käfigbett",
+        "Verrückt nach dir",
+        "Ehrenlos",
+        "Superstars",
+        "Was würde Manny Marc tun",
+        "Hurra die Welt geht unter",
+    ]
+    return [
+        TrackHint(title=title, number=index + 1, disc_number=1)
+        for index, title in enumerate(titles)
+    ]
+
+
+def test_a_disc_two_file_does_not_take_a_disc_one_title(tmp_path: Path):
+    album = tmp_path / "Hurra die Welt geht unter"
+    album.mkdir()
+    path = album / "2-02 Verrückt nach dir.flac"
+    path.write_bytes(b"fLaC")
+
+    hint = choose_track_hint(path, album_root=album, hints=flat_listing())
+
+    # Matching on the track number alone would return "Geld", track two of
+    # disc one, and the file would be imported under that name.
+    assert hint is not None
+    assert hint.title == "Verrückt nach dir"
+    assert hint.number == 9
+
+
+def test_position_resolves_a_rip_whose_names_say_nothing(tmp_path: Path):
+    album = tmp_path / "Album"
+    album.mkdir()
+    path = album / "2-02 Track.flac"
+    path.write_bytes(b"fLaC")
+
+    hint = choose_track_hint(
+        path,
+        album_root=album,
+        hints=flat_listing(),
+        position=9,
+        total_files=13,
+    )
+
+    assert hint is not None and hint.title == "Verrückt nach dir"
+
+
+def test_a_single_disc_rip_still_matches_by_number(tmp_path: Path):
+    album = tmp_path / "Album"
+    album.mkdir()
+    path = album / "02 Geld.flac"
+    path.write_bytes(b"fLaC")
+
+    hint = choose_track_hint(path, album_root=album, hints=flat_listing())
+
+    assert hint is not None and hint.title == "Geld"
 
 
 def test_prefers_named_local_cover(tmp_path: Path):

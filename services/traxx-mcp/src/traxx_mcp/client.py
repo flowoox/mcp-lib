@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import base64
 import contextlib
+import mimetypes
 import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
+from uuid import uuid4
 
 import httpx
 from mcp_common.http import get_case_insensitive
@@ -23,11 +26,30 @@ from .metadata import (
     find_local_cover,
     inspect_audio_file,
 )
-from .tus import TusUploader, TusUploadResult, recursive_find
+from .tus import TusUnsupported, TusUploader, TusUploadResult, recursive_find
 
 
 class TraxxError(RuntimeError):
     pass
+
+
+# The instance publishes the upload types it accepts in its bootstrap
+# settings: audio belongs to "media", images to "artwork". Any other value —
+# "track" was the earlier guess — makes the server answer 500 before the first
+# byte is sent.
+UPLOAD_TYPE_ALIASES = {
+    "track": "media",
+    "tracks": "media",
+    "audio": "media",
+    "media": "media",
+    "image": "artwork",
+    "cover": "artwork",
+    "artwork": "artwork",
+}
+
+# Tried in order after whatever is configured. The first one is where BeMusic
+# actually mounts its TUS server.
+TUS_ENDPOINT_CANDIDATES = ("/api/v1/tus/upload", "/api/v1/tus", "/tus")
 
 
 def normalize_genres(value: Any, fallback: list[str] | None = None) -> list[str]:
@@ -84,6 +106,26 @@ def extract_items(payload: Any) -> list[dict[str, Any]]:
     return []
 
 
+def select_resource_items(payload: Any, resource: str) -> list[dict[str, Any]]:
+    """Pull one named bucket out of a Traxx search answer.
+
+    The search route nests its answer as ``results.<resource>.data`` and
+    paginates every bucket on its own. A generic "first data list wins" walk
+    lands in the tracks bucket whichever resource was asked for, so an album
+    lookup came back empty and the importer created the album again on every
+    run. Reading the bucket by name is what makes the lookup a lookup.
+    """
+    for container in (get_case_insensitive(payload, "results"), payload):
+        if not isinstance(container, dict):
+            continue
+        bucket = get_case_insensitive(container, resource)
+        if isinstance(bucket, list):
+            return [item for item in bucket if isinstance(item, dict)]
+        if isinstance(bucket, dict):
+            return extract_items(bucket)
+    return extract_items(payload)
+
+
 class TraxxClient:
     def __init__(
         self,
@@ -100,6 +142,8 @@ class TraxxClient:
         # run as a specific Traxx user while base_url, TLS verification,
         # proxy headers and timeouts stay those of the shared configuration.
         self.actor_token = actor_token
+        # Probed once per client, then reused for every file of an album.
+        self._tus_endpoint = ""
 
     @property
     def headers(self) -> dict[str, str]:
@@ -279,15 +323,7 @@ class TraxxClient:
         payload = await self.request(
             "GET", "/api/v1/search", params={"query": name, "limit": limit}
         )
-        if isinstance(payload, dict):
-            section = get_case_insensitive(payload, resource)
-            if isinstance(section, list):
-                return [item for item in section if isinstance(item, dict)]
-            for mapping in iter_dicts(payload):
-                section = get_case_insensitive(mapping, resource)
-                if isinstance(section, list):
-                    return [item for item in section if isinstance(item, dict)]
-        return extract_items(payload)
+        return select_resource_items(payload, resource)
 
     async def list_resource(
         self,
@@ -319,24 +355,165 @@ class TraxxClient:
             params={"page": page, "perPage": per_page},
         )
 
+    async def _resolve_tus_endpoint(self) -> str:
+        """Find the path that really speaks TUS on this instance.
+
+        BeMusic answers OPTIONS on any unknown path with its single-page app,
+        so a 200 says nothing. Only the ``Tus-Resumable`` header separates the
+        upload route from that catch-all, which is why a configured
+        ``/api/v1/tus/`` looked reachable while every upload failed.
+        """
+        if self._tus_endpoint:
+            return self._tus_endpoint
+        if not self.config.base_url:
+            raise TraxxError("Traxx URL is not configured")
+        checked: list[str] = []
+        seen: set[str] = set()
+        async with httpx.AsyncClient(
+            base_url=self.config.base_url,
+            headers=self.headers,
+            verify=self.config.verify_tls,
+            timeout=self.config.timeout_seconds,
+            follow_redirects=True,
+        ) as client:
+            for candidate in (self.config.tus_endpoint, *TUS_ENDPOINT_CANDIDATES):
+                path = candidate.strip()
+                if not path:
+                    continue
+                if not path.startswith("/"):
+                    path = f"/{path}"
+                path = path.rstrip("/") or "/"
+                if path in seen:
+                    continue
+                seen.add(path)
+                try:
+                    response = await client.request("OPTIONS", path)
+                except httpx.HTTPError as exc:
+                    checked.append(f"{path}: {type(exc).__name__}")
+                    continue
+                headers = {k.casefold(): v for k, v in response.headers.items()}
+                if headers.get("tus-resumable") or headers.get("tus-version"):
+                    self._tus_endpoint = path
+                    return path
+                checked.append(f"{path}: {response.status_code} without TUS headers")
+        raise TusUnsupported(
+            "No TUS upload route answered on this Traxx instance. Tried "
+            + "; ".join(checked),
+            status_code=0,
+        )
+
     async def upload_file(
         self,
         path: Path,
         *,
         upload_type: str = "track",
     ) -> TusUploadResult:
-        endpoint = urljoin(
-            f"{self.config.base_url}/",
-            self.config.tus_endpoint.lstrip("/"),
+        resolved_type = UPLOAD_TYPE_ALIASES.get(
+            upload_type.strip().casefold(), upload_type.strip()
         )
+        try:
+            endpoint_path = await self._resolve_tus_endpoint()
+        except TusUnsupported:
+            # Resumable upload is the better transport for album-sized files,
+            # but not every instance offers it. Falling back keeps those
+            # importable instead of failing every track.
+            return await self._upload_multipart(path, upload_type=resolved_type)
         uploader = TusUploader(
-            endpoint=endpoint,
+            endpoint=urljoin(f"{self.config.base_url}/", endpoint_path.lstrip("/")),
             headers=self.headers,
             verify_tls=self.config.verify_tls,
             chunk_size=self.config.upload_chunk_size,
             timeout=max(300, self.config.timeout_seconds),
         )
-        return await uploader.upload(path, upload_type=upload_type)
+        result = await uploader.upload(
+            path,
+            upload_type=resolved_type,
+            # The web app sends an opaque client-side id here; the stored name
+            # comes from clientName, so any stable value does.
+            extra_metadata={
+                "name": base64.b64encode(str(uuid4()).encode()).decode("ascii")
+            },
+        )
+        return await self._finalize_tus_upload(result, endpoint_path=endpoint_path)
+
+    async def _finalize_tus_upload(
+        self, upload: TusUploadResult, *, endpoint_path: str
+    ) -> TusUploadResult:
+        """Turn a finished TUS upload into a FileEntry.
+
+        TUS only moves the bytes. The row a track can point at is created by a
+        second call — the one the web app makes in its ``onSuccess`` handler.
+        Without it the audio sits on disk with no id and no URL, which is what
+        made every track come back as "no FileEntry id was exposed".
+        """
+        key = upload.upload_url.rstrip("/").rsplit("/", 1)[-1]
+        if not key:
+            return upload
+        entries_path = f"{endpoint_path.rsplit('/', 1)[0]}/entries"
+        body = await self.request("POST", entries_path, json={"uploadKey": key})
+        entry = get_case_insensitive(body, "fileEntry", "file_entry", default=body)
+        if isinstance(entry, dict):
+            entry_id = get_case_insensitive(entry, "id")
+            if entry_id is not None:
+                upload.file_entry_id = str(entry_id)
+            file_url = get_case_insensitive(entry, "url")
+            if file_url:
+                upload.file_url = str(file_url)
+        if isinstance(body, dict):
+            upload.response_json = body
+        return upload
+
+    async def _upload_multipart(
+        self, path: Path, *, upload_type: str
+    ) -> TusUploadResult:
+        """Ordinary single-request upload, for instances without a TUS route.
+
+        Returns the same result shape as the resumable path so callers do not
+        have to know which transport carried the file.
+        """
+        payload = path.read_bytes()
+        mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        async with httpx.AsyncClient(
+            base_url=self.config.base_url,
+            headers=self.headers,
+            verify=self.config.verify_tls,
+            timeout=max(300, self.config.timeout_seconds),
+        ) as client:
+            response = await client.post(
+                "/api/v1/uploads",
+                files={"file": (path.name, payload, mime)},
+                data={
+                    "uploadType": upload_type,
+                    "clientName": path.name,
+                    "clientMime": mime,
+                    "clientSize": str(len(payload)),
+                    "clientExtension": path.suffix.lstrip("."),
+                },
+            )
+        if response.status_code == 403:
+            raise TraxxError(
+                "Traxx refused the upload (403). The API account may create "
+                "music but not files: grant it the 'files.create' permission, "
+                "then retry. Nothing else about the import needs to change."
+            )
+        if response.status_code >= 400:
+            raise TraxxError(
+                f"Traxx upload failed ({response.status_code}): {response.text[:800]}"
+            )
+        body = response.json() if "json" in response.headers.get("content-type", "") else {}
+        entry = get_case_insensitive(body, "fileEntry", "file_entry", default=body)
+        entry_id = get_case_insensitive(entry, "id") if isinstance(entry, dict) else None
+        return TusUploadResult(
+            upload_url=str(response.url),
+            bytes_uploaded=len(payload),
+            file_entry_id=str(entry_id) if entry_id is not None else None,
+            file_url=(
+                get_case_insensitive(entry, "url") if isinstance(entry, dict) else None
+            ),
+            create_status=response.status_code,
+            final_status=response.status_code,
+            response_json=body if isinstance(body, dict) else None,
+        )
 
     def resolve_file_url(self, upload: TusUploadResult) -> str | None:
         if upload.file_url:
@@ -355,7 +532,9 @@ class TraxxClient:
             "file_url": self.resolve_file_url(upload),
             "probes": [],
         }
-        if not upload.file_entry_id:
+        if not upload.file_entry_id or result["file_url"]:
+            # A finalized TUS upload already carries both, and the extra probes
+            # would only risk overwriting them from a differently shaped route.
             return result
         paths = (
             f"/api/v1/file-entries/{upload.file_entry_id}",
@@ -777,6 +956,10 @@ class TraxxClient:
         parsed_track_hints = [
             TrackHint.from_mapping(item) for item in (track_hints or [])
         ]
+        # The sorted folder is the album order, so a file's index in it is its
+        # position on the release — the only way to line a two-disc rip up with
+        # a listing that counts straight through.
+        positions = {path: index + 1 for index, path in enumerate(files)}
         tag_results: list[dict[str, Any]] = []
         for path in files:
             tag_results.append(
@@ -790,6 +973,8 @@ class TraxxClient:
                     track_hints=track_hints,
                     cover_data=cover_data,
                     cover_mime=cover_mime,
+                    position=positions[path],
+                    total_files=len(files),
                 ).as_dict()
             )
 
@@ -815,7 +1000,11 @@ class TraxxClient:
             local = inspect_audio_file(path)
             try:
                 hint = choose_track_hint(
-                    path, album_root=resolved, hints=parsed_track_hints
+                    path,
+                    album_root=resolved,
+                    hints=parsed_track_hints,
+                    position=positions[path],
+                    total_files=len(files),
                 )
                 track_artist_names = list(hint.artists) if hint and hint.artists else []
                 if not track_artist_names and hint and hint.artist:

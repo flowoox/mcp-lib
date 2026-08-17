@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import uuid
 from contextlib import suppress
-from pathlib import PurePosixPath
+from datetime import UTC, datetime
+from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote
 
@@ -13,7 +14,8 @@ from mcp_common.paths import safe_relative_destination, safe_segment, stable_id
 
 from .config import RuntimeConfig
 from .matcher import build_album_candidates, extract_search_responses
-from .models import AlbumCandidate
+from .models import AlbumCandidate, DownloadBatch
+from .repository import BatchRepository
 
 COMPLETE_STATES = {"completed", "complete", "succeeded", "success", "finished"}
 FAILED_STATES = {
@@ -61,19 +63,56 @@ def walk_dicts(value: Any):
             yield from walk_dicts(child)
 
 
+def remote_to_posix(value: str) -> PurePosixPath:
+    """The remote path with its own spelling kept.
+
+    Peers send Windows separators; only those are translated. The case has to
+    survive, because the file slskd wrote to disk carries it and Linux will
+    not find "deep.flac" when the file is called "Deep.flac".
+    """
+    return PurePosixPath((value or "").replace("\\", "/").strip())
+
+
+def normalize_remote_path(value: str) -> str:
+    """One spelling for comparing two remote paths, and only for that."""
+    return str(remote_to_posix(value)).casefold()
+
+
+def classify_transfer_state(raw: str) -> str:
+    """One word for one transfer, out of what slskd actually writes.
+
+    slskd reports a compound state: "Completed, Succeeded" but also
+    "Completed, Errored" and "Completed, Cancelled". Reading only the first
+    word would count every abandoned transfer as a success, and reading the
+    whole string matches nothing at all.
+    """
+    words = [
+        word for word in str(raw or "").casefold().replace(" ", "").split(",") if word
+    ]
+    if not words:
+        return "unknown"
+    if any(word in FAILED_STATES for word in words):
+        return "failed"
+    if any(word in ACTIVE_STATES for word in words):
+        return "active"
+    if all(word in COMPLETE_STATES for word in words):
+        return "completed"
+    return words[0]
+
+
 def classify_batch(payload: Any) -> str:
     states: list[str] = []
     for item in walk_dicts(payload):
         raw = get_case_insensitive(item, "state", "status")
         if raw is not None:
-            states.append(str(raw).casefold().replace(" ", ""))
+            states.append(classify_transfer_state(str(raw)))
     if not states:
         return "unknown"
-    if any(state in FAILED_STATES for state in states):
+    if any(state == "failed" for state in states):
         return "failed"
-    if all(state in COMPLETE_STATES for state in states):
+    if all(state == "completed" for state in states):
         return "completed"
-    if any(state in ACTIVE_STATES for state in states):
+    if any(state == "active" for state in states):
         return "active"
     return states[0]
 
@@ -92,9 +131,19 @@ def sanitize_destination(value: str) -> str:
 
 
 class SlskdClient:
-    def __init__(self, config: RuntimeConfig, *, timeout: float = 45):
+    def __init__(
+        self,
+        config: RuntimeConfig,
+        *,
+        timeout: float = 45,
+        batches: BatchRepository | None = None,
+        downloads_dir: Path = Path("/downloads"),
+    ):
         self.config = config
         self.timeout = timeout
+        # An album is a local idea; slskd only knows users and files.
+        self.batches = batches
+        self.downloads_dir = downloads_dir
 
     @property
     def headers(self) -> dict[str, str]:
@@ -344,25 +393,21 @@ class SlskdClient:
         external_id: str | None = None,
         destination: str | None = None,
     ) -> dict[str, Any] | None:
+        """Return an already queued batch, or None.
+
+        The record is ours: slskd knows users and files, not albums, so
+        "have I queued this before" can only be answered from the local batch
+        store.
+        """
         requested_id = deterministic_batch_id(candidate_id, external_id)
-        batch_path = (
-            "/api/v0/transfers/downloads/batches/"
-            f"{quote(requested_id, safe='')}"
-        )
-        existing = await self.request(
-            "GET",
-            batch_path,
-            allow_not_found=True,
-        )
-        if existing is None:
+        if self.batches is None:
             return None
-        output = existing if isinstance(existing, dict) else {"result": existing}
-        output.setdefault("batch_id", requested_id)
-        output.setdefault("requestedBatchId", requested_id)
+        stored = self.batches.get(requested_id)
+        if stored is None:
+            return None
+        output = await self.get_batch(requested_id)
         if destination:
-            normalized_destination = sanitize_destination(destination)
-            output.setdefault("artifact_path", normalized_destination)
-            output.setdefault("destination", normalized_destination)
+            output.setdefault("artifact_path", sanitize_destination(destination))
         output["idempotent"] = True
         return output
 
@@ -373,6 +418,13 @@ class SlskdClient:
         destination: str | None = None,
         external_id: str | None = None,
     ) -> dict[str, Any]:
+        """Queue every file of one album folder with the peer that holds it.
+
+        slskd offers no batch route — ``POST /transfers/downloads/batches`` is
+        read as a *user* named "batches" and answers "User batches appears to
+        be offline". The real route takes a plain list of files per user, so
+        the album is queued that way and held together by a local record.
+        """
         destination = (
             sanitize_destination(destination)
             if destination
@@ -388,38 +440,148 @@ class SlskdClient:
         if existing is not None:
             return existing
 
-        payload = {
-            "id": requested_id,
-            "searchId": candidate.search_id,
-            "username": candidate.username,
-            "files": [
-                {"filename": file.filename, "size": file.size}
-                for file in candidate.files
-            ],
-            "options": {
-                "destination": destination,
-                "externalId": operation_key,
-            },
-        }
-        result = await self.request(
-            "POST", "/api/v0/transfers/downloads/batches", json=payload
+        payload = [
+            {"filename": file.filename, "size": file.size}
+            for file in candidate.files
+        ]
+        if not payload:
+            raise SlskdError(f"Candidate {candidate.candidate_id} has no files to queue")
+        await self.request(
+            "POST",
+            f"/api/v0/transfers/downloads/{quote(candidate.username, safe='')}",
+            json=payload,
         )
-        output = result if isinstance(result, dict) else {"result": result}
-        output.setdefault("batch_id", requested_id)
-        output.setdefault("requestedBatchId", requested_id)
-        output.setdefault("artifact_path", destination)
-        output.setdefault("destination", destination)
-        output.setdefault("idempotent", False)
-        return output
+        record = DownloadBatch(
+            batch_id=requested_id,
+            candidate_id=candidate.candidate_id,
+            username=candidate.username,
+            filenames=[file.filename for file in candidate.files],
+            destination=destination,
+            external_id=operation_key,
+            artist=candidate.artist,
+            album=candidate.album,
+            queued_at=datetime.now(UTC).isoformat(),
+        )
+        if self.batches is not None:
+            self.batches.save(record)
+        return {
+            "batch_id": requested_id,
+            "requestedBatchId": requested_id,
+            "username": candidate.username,
+            "file_count": len(payload),
+            "artifact_path": destination,
+            "destination": destination,
+            "local_path": str(self.downloads_dir / PurePosixPath(destination)),
+            "idempotent": False,
+        }
 
     async def list_downloads(self) -> Any:
         return await self.request("GET", "/api/v0/transfers/downloads")
 
-    async def get_batch(self, batch_id: str) -> Any:
-        return await self.request(
+    async def get_batch(self, batch_id: str) -> dict[str, Any]:
+        """Report one album's transfers, and collect them once they are done.
+
+        The state has to be assembled from the peer's transfer list because
+        slskd tracks files, not albums. When every file has arrived they are
+        moved into the folder the caller asked for — slskd drops them under the
+        remote folder name, which is not where the import looks.
+        """
+        record = self.batches.get(batch_id) if self.batches is not None else None
+        if record is None:
+            raise SlskdError(
+                f"Unknown download batch {batch_id}. It was queued by a different "
+                "instance of this connector, or its record has expired."
+            )
+        payload = await self.request(
             "GET",
-            f"/api/v0/transfers/downloads/batches/{quote(batch_id, safe='')}",
+            f"/api/v0/transfers/downloads/{quote(record.username, safe='')}",
+            allow_not_found=True,
         )
+        wanted = {normalize_remote_path(name) for name in record.filenames}
+        files: list[dict[str, Any]] = []
+        for item in walk_dicts(payload):
+            filename = get_case_insensitive(item, "filename", "fileName")
+            if not filename or normalize_remote_path(str(filename)) not in wanted:
+                continue
+            if get_case_insensitive(item, "state", "status") is None:
+                continue
+            files.append(item)
+        state = classify_batch({"files": files}) if files else "unknown"
+        result: dict[str, Any] = {
+            "batch_id": batch_id,
+            "username": record.username,
+            "state": state,
+            "file_count": len(record.filenames),
+            "files_seen": len(files),
+            "destination": record.destination,
+            "artifact_path": record.destination,
+            "local_path": str(self.downloads_dir / PurePosixPath(record.destination)),
+            "files": files,
+        }
+        if state == "completed" and len(files) >= len(record.filenames):
+            result["collected"] = self.collect_batch(record, files)
+        return result
+
+    def collect_batch(
+        self, record: DownloadBatch, files: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Move a finished album into the folder that was requested for it.
+
+        slskd writes each file under the remote folder's own name, so a
+        download ends up somewhere the importer would never look. Moving is
+        done once and then remembered, because a second pass would find the
+        sources gone and report a failure that did not happen.
+        """
+        target = self.downloads_dir / PurePosixPath(record.destination)
+        if record.collected and target.is_dir():
+            return {"moved": 0, "already_collected": True, "path": str(target)}
+        target.mkdir(parents=True, exist_ok=True)
+        moved = 0
+        missing: list[str] = []
+        for item in files:
+            remote = str(get_case_insensitive(item, "filename", "fileName") or "")
+            source = self.locate_downloaded_file(remote, target)
+            if source is None:
+                missing.append(remote_to_posix(remote).name)
+                continue
+            destination_file = target / source.name
+            if source == destination_file:
+                continue
+            with suppress(OSError):
+                destination_file.parent.mkdir(parents=True, exist_ok=True)
+                source.replace(destination_file)
+                moved += 1
+                # An emptied download folder is noise for the next scan.
+                with suppress(OSError):
+                    source.parent.rmdir()
+        if self.batches is not None and not missing:
+            self.batches.update(record.batch_id, collected=True)
+        return {
+            "moved": moved,
+            "missing": missing,
+            "path": str(target),
+            "already_collected": False,
+        }
+
+    def locate_downloaded_file(self, remote: str, target: Path) -> Path | None:
+        """Find where slskd put one downloaded file.
+
+        The usual place is ``<downloads>/<remote folder name>/<file>``. The
+        search by name is the fallback for the cases where slskd sanitized the
+        folder differently than expected.
+        """
+        posix = remote_to_posix(remote)
+        guess = self.downloads_dir / posix.parent.name / posix.name
+        if guess.is_file():
+            return guess
+        direct = self.downloads_dir / posix.name
+        if direct.is_file():
+            return direct
+        for found in self.downloads_dir.rglob(posix.name):
+            if found.is_file() and target not in found.parents:
+                return found
+        settled = target / posix.name
+        return settled if settled.is_file() else None
 
     async def browse_user(self, username: str) -> Any:
         return await self.request(
@@ -437,7 +599,7 @@ class SlskdClient:
         last: Any = None
         while asyncio.get_running_loop().time() < deadline:
             last = await self.get_batch(batch_id)
-            state = classify_batch(last)
+            state = str(last.get("state") or "unknown")
             if state in {"completed", "failed"}:
                 return {"state": state, "batch": last}
             await asyncio.sleep(max(2, poll_seconds))

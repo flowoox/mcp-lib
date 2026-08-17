@@ -15,7 +15,7 @@ class RuntimeConfig(BaseModel):
     # instance can allow this client through without opening the API publicly.
     extra_headers: dict[str, str] = Field(default_factory=dict)
     verify_tls: bool = True
-    tus_endpoint: str = "/api/v1/tus/"
+    tus_endpoint: str = "/api/v1/tus/upload"
     upload_chunk_size: int = Field(default=8 * 1024 * 1024, ge=256 * 1024, le=64 * 1024 * 1024)
     file_url_template: str = ""
     timeout_seconds: int = Field(default=90, ge=10, le=900)
@@ -28,7 +28,7 @@ class RuntimeConfig(BaseModel):
     @field_validator("tus_endpoint")
     @classmethod
     def normalize_endpoint(cls, value: str) -> str:
-        value = value.strip() or "/api/v1/tus/"
+        value = value.strip() or "/api/v1/tus/upload"
         return value if value.startswith("/") else f"/{value}"
 
 
@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     traxx_token: str = ""
     traxx_extra_headers: dict[str, str] = {}
     traxx_verify_tls: bool = True
-    traxx_tus_endpoint: str = "/api/v1/tus/"
+    traxx_tus_endpoint: str = "/api/v1/tus/upload"
     traxx_upload_chunk_size: int = 8 * 1024 * 1024
     traxx_file_url_template: str = ""
     traxx_timeout_seconds: int = 90

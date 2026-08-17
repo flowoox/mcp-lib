@@ -12,6 +12,21 @@ class RemoteFile(BaseModel):
     bit_depth: int | None = None
 
 
+class DownloadBatch(BaseModel):
+    """One queued album: who serves it, which files, and where it belongs."""
+
+    batch_id: str
+    candidate_id: str
+    username: str
+    filenames: list[str]
+    destination: str
+    external_id: str = ""
+    artist: str = ""
+    album: str = ""
+    queued_at: str = ""
+    collected: bool = False
+
+
 class AlbumCandidate(BaseModel):
     candidate_id: str
     search_id: str | None = None

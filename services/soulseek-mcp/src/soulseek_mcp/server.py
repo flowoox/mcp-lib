@@ -9,7 +9,7 @@ from mcp_common.rights import validate_rights
 from .client import SlskdClient, classify_batch
 from .config import RuntimeConfig, RuntimeConfigStore, get_settings
 from .contract import capabilities
-from .repository import CandidateRepository
+from .repository import BatchRepository, CandidateRepository
 from .slskd_config import SlskdConfigurationWriter
 
 
@@ -17,6 +17,7 @@ def create_server() -> FastMCP:
     settings = get_settings()
     configs = RuntimeConfigStore(settings)
     candidates = CandidateRepository(settings.soulseek_candidate_file)
+    batches = BatchRepository(settings.soulseek_batch_file)
     slskd_config = SlskdConfigurationWriter(settings.slskd_config_path)
     queue_locks: dict[str, asyncio.Lock] = {}
     mcp = FastMCP(
@@ -37,7 +38,11 @@ def create_server() -> FastMCP:
         return capabilities()
 
     def client() -> SlskdClient:
-        return SlskdClient(configs.get())
+        return SlskdClient(
+            configs.get(),
+            batches=batches,
+            downloads_dir=settings.downloads_dir,
+        )
 
     @mcp.tool()
     async def configure_slskd(
@@ -217,11 +222,15 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     async def get_download_batch(batch_id: str) -> dict[str, Any]:
-        """Return raw and normalized status for one slskd batch."""
+        """Return normalized status and the transfers one album consists of.
+
+        Once every file has arrived, they are moved into the folder that was
+        requested when the album was queued, and ``collected`` says what moved.
+        """
         payload = await client().get_batch(batch_id)
         return {
             "batch_id": batch_id,
-            "state": classify_batch(payload),
+            "state": payload.get("state") or classify_batch(payload),
             "batch": payload,
         }
 
