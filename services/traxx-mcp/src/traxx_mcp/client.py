@@ -27,6 +27,7 @@ from .metadata import (
     find_local_cover,
     inspect_audio_file,
     verify_assignment,
+    verify_release,
 )
 from .tus import TusUnsupported, TusUploader, TusUploadResult, recursive_find
 
@@ -1116,12 +1117,19 @@ class TraxxClient:
         assigned = assign_track_hints(
             files, album_root=resolved, hints=parsed_track_hints
         )
+        durations = {path: inspect_audio_file(path).duration_ms for path in files}
+        # Whether this folder can be the release at all. Judged before the
+        # per-file check, because a file that matched nothing passes that one
+        # untouched — and an unrelated folder consists of exactly those.
+        release = verify_release(durations, parsed_track_hints)
+        if release["reason"]:
+            raise TraxxError(release["reason"])
         # Checked before any tag is written: ensure_audio_metadata stamps the
         # expected title onto the file, so a wrong file that gets past here is
         # published under the right name and can no longer be told apart.
         rejected = verify_assignment(
             assigned,
-            {path: inspect_audio_file(path).duration_ms for path in files},
+            durations,
             # The filename, not the tag: a previous run of this importer
             # writes the expected title into the file, so the tag agrees with
             # the listing even when the audio does not. The name a stranger

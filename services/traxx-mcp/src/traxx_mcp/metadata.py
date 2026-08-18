@@ -442,6 +442,59 @@ def verify_assignment(
     return rejected
 
 
+def verify_release(
+    durations: dict[Path, int],
+    hints: list[TrackHint],
+) -> dict[str, Any]:
+    """Judge whether a folder can be the release at all, before any of it is
+    imported.
+
+    ``verify_assignment`` only inspects files it managed to match, so a file
+    that matched nothing passed through untouched — which is exactly what an
+    unrelated folder consists of. Measured on the live library: a folder
+    offered as the eight-track album "Silhouettes" held six drum one-shots of
+    about a second each, none of which matched anything, and all six were
+    published as tracks of that album.
+
+    A file is foreign when its length is nowhere near any length on the
+    listing. When most of the folder is foreign, it is not this release, and
+    importing part of it would leave the library claiming a record it does
+    not have.
+    """
+    lengths = [hint.duration_ms for hint in hints if hint.duration_ms > 0]
+    if not lengths or not durations:
+        # Nothing to compare against. Saying "fine" here is not a judgement,
+        # and the caller is told so rather than left to assume one was made.
+        return {"checked": False, "foreign": [], "reason": ""}
+    shortest = min(lengths)
+    foreign: list[Path] = []
+    for path, actual in durations.items():
+        if actual <= 0:
+            continue
+        if all(duration_mismatch(expected, actual) for expected in lengths):
+            foreign.append(path)
+    total = len([value for value in durations.values() if value > 0])
+    if not total:
+        return {"checked": False, "foreign": [], "reason": ""}
+    share = len(foreign) / total
+    reason = ""
+    if share > 0.5:
+        names = ", ".join(f"„{path.name}“" for path in foreign[:3])
+        reason = (
+            f"{len(foreign)} von {total} Dateien passen zu keinem Titel der "
+            f"Veröffentlichung — {names}"
+            + (" u. a." if len(foreign) > 3 else "")
+            + f". Der kürzeste Titel dauert {shortest / 1000:.0f} s. "
+            "Das ist ein anderer Ordner, nicht dieses Album."
+        )
+    return {
+        "checked": True,
+        "foreign": [str(path) for path in foreign],
+        "share": round(share, 2),
+        "reason": reason,
+    }
+
+
 def assign_track_hints(
     files: list[Path],
     *,
