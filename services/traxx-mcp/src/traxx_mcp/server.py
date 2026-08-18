@@ -152,6 +152,26 @@ def create_server() -> FastMCP:
         return await client().diagnose_connection()
 
     @mcp.tool()
+    async def list_members(page: int = 1, per_page: int = 50) -> dict[str, Any]:
+        """List the instance's accounts with their email addresses.
+
+        The address is what ties a listener here to the same person on
+        Spotify, so their taste can be read as one instead of two halves.
+        """
+        return {"members": await client().list_members(page=page, per_page=per_page)}
+
+    @mcp.tool()
+    async def member_taste(
+        user_id: str = "", pages: int = 2, per_page: int = 50
+    ) -> dict[str, Any]:
+        """Rank artists by what one account has marked as theirs.
+
+        An empty user_id reads the connected account. A liked artist weighs
+        more than a liked album, which weighs more than a single liked track.
+        """
+        return await client().member_taste(user_id, pages=pages, per_page=per_page)
+
+    @mcp.tool()
     async def list_liked(
         resource: str = "artists",
         page: int = 1,

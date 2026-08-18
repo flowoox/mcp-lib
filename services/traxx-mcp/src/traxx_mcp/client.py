@@ -128,6 +128,29 @@ def select_resource_items(payload: Any, resource: str) -> list[dict[str, Any]]:
     return extract_items(payload)
 
 
+def _liked_artist_names(item: dict[str, Any], resource: str) -> list[str]:
+    """Artist names behind one liked thing, whatever kind it is."""
+    if resource == "artists":
+        name = str(get_case_insensitive(item, "name", default="") or "").strip()
+        return [name] if name else []
+    names: list[str] = []
+    artists = get_case_insensitive(item, "artists", "artist")
+    if isinstance(artists, dict):
+        artists = [artists]
+    for entry in artists if isinstance(artists, list) else []:
+        if isinstance(entry, dict):
+            name = str(get_case_insensitive(entry, "name", default="") or "").strip()
+        else:
+            name = str(entry or "").strip()
+        if name and name not in names:
+            names.append(name)
+    if not names:
+        album = get_case_insensitive(item, "album")
+        if isinstance(album, dict):
+            return _liked_artist_names(album, "albums")
+    return names
+
+
 class TraxxClient:
     def __init__(
         self,
@@ -341,21 +364,100 @@ class TraxxClient:
         return await self.request("GET", f"/api/v1/{resource}", params=params)
 
     async def list_liked(
-        self, resource: str, *, page: int = 1, per_page: int = 50
+        self,
+        resource: str,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+        user_id: str = "",
     ) -> Any:
-        """List what the connected account has liked.
+        """List what an account has liked. Empty ``user_id`` means our own.
 
-        The API publishes no play counters, so likes are the available signal
-        for what resonates in the library.
+        The same route answers for any user id, not only for "me", so the
+        taste of every member can be read with one service token instead of
+        asking each of them for one.
         """
         allowed = {"artists", "albums", "tracks"}
         if resource not in allowed:
             raise TraxxError(f"list_liked supports {sorted(allowed)}, not {resource!r}")
+        who = str(user_id).strip() or "me"
+        if who != "me" and not who.isdigit():
+            raise TraxxError(f"Not a Traxx user id: {user_id!r}")
         return await self.request(
             "GET",
-            f"/api/v1/users/me/liked-{resource}",
+            f"/api/v1/users/{who}/liked-{resource}",
             params={"page": page, "perPage": per_page},
         )
+
+    async def list_members(self, *, page: int = 1, per_page: int = 50) -> list[dict[str, Any]]:
+        """Everyone with an account on this instance, with their address.
+
+        The address is what ties a listener here to the same person on
+        Spotify; without it the two halves of someone's taste stay separate.
+        """
+        payload = await self.request(
+            "GET", "/api/v1/users", params={"page": page, "perPage": per_page}
+        )
+        members: list[dict[str, Any]] = []
+        for item in extract_items(payload):
+            identifier = get_case_insensitive(item, "id")
+            if identifier is None:
+                continue
+            members.append(
+                {
+                    "id": str(identifier),
+                    "name": str(get_case_insensitive(item, "name", default="") or ""),
+                    "email": str(get_case_insensitive(item, "email", default="") or ""),
+                    "created_at": str(
+                        get_case_insensitive(item, "created_at", default="") or ""
+                    ),
+                }
+            )
+        return members
+
+    async def member_taste(
+        self, user_id: str = "", *, pages: int = 2, per_page: int = 50
+    ) -> dict[str, Any]:
+        """What one listener has marked as theirs, weighted by how strong the
+        signal is.
+
+        A liked artist says more than a liked album, which says more than a
+        single liked track — the narrower the mark, the less of the artist it
+        vouches for.
+        """
+        weights = {"artists": 5.0, "albums": 2.0, "tracks": 1.0}
+        totals: dict[str, dict[str, Any]] = {}
+        counts: dict[str, int] = {}
+        errors: list[str] = []
+        for resource, weight in weights.items():
+            for page in range(1, max(1, pages) + 1):
+                try:
+                    payload = await self.list_liked(
+                        resource, page=page, per_page=per_page, user_id=user_id
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"{resource}: {exc}")
+                    break
+                items = extract_items(payload)
+                if not items:
+                    break
+                counts[resource] = counts.get(resource, 0) + len(items)
+                for item in items:
+                    for name in _liked_artist_names(item, resource):
+                        entry = totals.setdefault(
+                            name, {"name": name, "weight": 0.0, "signals": 0}
+                        )
+                        entry["weight"] += weight
+                        entry["signals"] += 1
+        ranked = sorted(
+            totals.values(), key=lambda item: float(item["weight"]), reverse=True
+        )
+        return {
+            "user_id": str(user_id or "me"),
+            "liked": counts,
+            "artists": ranked,
+            "errors": errors,
+        }
 
     async def _resolve_tus_endpoint(self) -> str:
         """Find the path that really speaks TUS on this instance.

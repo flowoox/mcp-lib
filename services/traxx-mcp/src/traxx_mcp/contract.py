@@ -43,6 +43,8 @@ def capabilities() -> dict[str, Any]:
             "list_albums",
             "list_artists",
             "list_liked",
+            "list_members",
+            "member_taste",
             "search_library",
             "inspect_local_track",
             "diagnose_upload",
