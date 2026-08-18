@@ -374,9 +374,36 @@ def duration_mismatch(expected_ms: int, actual_ms: int) -> int:
     return 0 if difference <= tolerance else difference
 
 
+def title_tokens(value: str) -> set[str]:
+    """Words of a title that carry meaning, for a rough comparison.
+
+    Bracketed additions and featured artists are dropped because they differ
+    freely between a release listing and a ripped filename, and tokens under
+    three characters are ignored so track numbers cannot look like a match.
+    """
+    cleaned = re.sub(r"\(.*?\)|\[.*?\]", " ", value.casefold())
+    cleaned = re.split(r"feat\.?|ft\.?|with", cleaned)[0]
+    return {word for word in re.findall(r"[\w]+", cleaned, re.UNICODE) if len(word) >= 3}
+
+
+def title_conflict(expected: str, observed: str) -> bool:
+    """Whether two titles share nothing at all.
+
+    Only a total absence of common words counts. Rips rename freely — an
+    added artist, a different dash, a "(Remastered)" — so anything short of
+    "no word in common" would reject correct files.
+    """
+    want = title_tokens(expected)
+    have = title_tokens(observed)
+    if not want or not have:
+        return False
+    return not (want & have)
+
+
 def verify_assignment(
     assigned: dict[Path, TrackHint | None],
     durations: dict[Path, int],
+    observed_titles: dict[Path, str] | None = None,
 ) -> dict[Path, str]:
     """Name every file that cannot be the track it was matched to.
 
@@ -389,16 +416,28 @@ def verify_assignment(
     """
     rejected: dict[Path, str] = {}
     for path, hint in assigned.items():
-        if hint is None or not hint.duration_ms:
+        if hint is None:
             continue
         actual = durations.get(path, 0)
-        difference = duration_mismatch(hint.duration_ms, actual)
+        difference = duration_mismatch(hint.duration_ms, actual) if hint.duration_ms else 0
         if difference:
             rejected[path] = (
                 f"Datei ist {actual / 1000:.0f} s lang, „{hint.title}“ dauert "
                 f"laut Veröffentlichung {hint.duration_ms / 1000:.0f} s "
                 f"({difference / 1000:.0f} s Abweichung) — das ist eine andere "
                 "Aufnahme."
+            )
+            continue
+        if hint.duration_ms:
+            # The length agreed, which says more about the audio than any
+            # name can. A differing filename after that is just a rip naming
+            # its files differently.
+            continue
+        observed = (observed_titles or {}).get(path, "")
+        if observed and title_conflict(hint.title, observed):
+            rejected[path] = (
+                f"Ohne bekannte Spieldauer nicht überprüfbar, und die Datei heisst "
+                f"„{observed}“ statt „{hint.title}“ — kein gemeinsames Wort."
             )
     return rejected
 

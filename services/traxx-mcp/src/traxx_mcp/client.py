@@ -21,6 +21,7 @@ from .metadata import (
     AUDIO_EXTENSIONS,
     TrackHint,
     assign_track_hints,
+    clean_title_from_filename,
     cover_mime_type,
     ensure_audio_metadata,
     find_local_cover,
@@ -816,6 +817,49 @@ class TraxxClient:
                     raise
         return external_url
 
+    def folder_fails_verification(
+        self, folder: str | Path, track_hints: list[dict[str, Any]] | None
+    ) -> bool:
+        """Whether any file in the folder cannot be the track it stands for.
+
+        Reads only local files, so it is cheap enough to run before trusting a
+        recorded import. Only a positive finding counts: a folder that cannot
+        be measured is not evidence of a wrong import, and discarding the
+        record for it would re-upload every file this build cannot parse.
+        """
+        try:
+            resolved = resolve_contained_path(self.downloads_dir, folder)
+            files = sorted(
+                path
+                for path in resolved.rglob("*")
+                if path.is_file() and path.suffix.casefold() in AUDIO_EXTENSIONS
+            )
+            if not files:
+                return False
+            assigned = assign_track_hints(
+                files,
+                album_root=resolved,
+                hints=[TrackHint.from_mapping(item) for item in (track_hints or [])],
+            )
+            durations: dict[Path, int] = {}
+            for path in files:
+                # Per file, so one unreadable track cannot blind the check for
+                # the rest of the folder. A missing length simply leaves the
+                # name as the only signal for that file.
+                with contextlib.suppress(Exception):
+                    durations[path] = inspect_audio_file(path).duration_ms
+            return bool(
+                verify_assignment(
+                    assigned,
+                    durations,
+                    observed_titles={
+                        path: clean_title_from_filename(path) for path in files
+                    },
+                )
+            )
+        except Exception:
+            return False
+
     async def import_album_folder(
         self,
         folder: str | Path,
@@ -854,7 +898,15 @@ class TraxxClient:
         previous = ledger.get(key)
         if isinstance(previous, dict) and previous.get("status") == "completed":
             result = previous.get("result")
-            if isinstance(result, dict):
+            # A recorded success certifies that this folder was imported. It
+            # cannot certify that the import was right: entries written before
+            # the files were checked against the release listing keep
+            # reporting success for a wrong recording, and no retry can ever
+            # correct it. Re-checking is local and cheap, so the ledger only
+            # answers for a folder that would still pass today.
+            if isinstance(result, dict) and not self.folder_fails_verification(
+                folder, track_hints
+            ):
                 return {**result, "idempotent": True}
 
         ledger[key] = {
@@ -966,7 +1018,13 @@ class TraxxClient:
         # expected title onto the file, so a wrong file that gets past here is
         # published under the right name and can no longer be told apart.
         rejected = verify_assignment(
-            assigned, {path: inspect_audio_file(path).duration_ms for path in files}
+            assigned,
+            {path: inspect_audio_file(path).duration_ms for path in files},
+            # The filename, not the tag: a previous run of this importer
+            # writes the expected title into the file, so the tag agrees with
+            # the listing even when the audio does not. The name a stranger
+            # gave the file is the only part it cannot have rewritten.
+            observed_titles={path: clean_title_from_filename(path) for path in files},
         )
         files = [path for path in files if path not in rejected]
         tag_results: list[dict[str, Any]] = []

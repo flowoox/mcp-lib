@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from traxx_mcp.metadata import TrackHint, duration_mismatch, verify_assignment
+from traxx_mcp.metadata import (
+    TrackHint,
+    duration_mismatch,
+    title_conflict,
+    verify_assignment,
+)
 
 
 def test_a_different_recording_is_rejected() -> None:
@@ -47,3 +52,89 @@ def test_a_hint_carries_the_duration_the_listing_gave() -> None:
         {"title": "sleeping", "number": 1, "duration_ms": 159000}
     )
     assert hint.duration_ms == 159000
+
+
+def test_the_filename_catches_what_a_rewritten_tag_hides() -> None:
+    """The importer writes the expected title into the source file, so after
+    one wrong run the tag agrees with the listing while the audio does not.
+    Only the name the stranger gave the file survives that.
+    """
+    path = Path("/downloads/Onative/sleeping/01. Onative - How.flac")
+    hint = TrackHint(title="sleeping", number=1)
+
+    rejected = verify_assignment(
+        {path: hint}, {path: 138_300}, observed_titles={path: "Onative - How"}
+    )
+
+    assert path in rejected
+    assert "kein gemeinsames Wort" in rejected[path]
+
+
+def test_a_known_length_outranks_a_differently_named_file() -> None:
+    # Rips name their files freely. Once the length agrees, the name says
+    # nothing more about whether this is the right recording.
+    path = Path("/downloads/x/07 - Artist - Title (Remastered 2011).flac")
+    hint = TrackHint(title="Title", number=7, duration_ms=200_000)
+
+    assert verify_assignment(
+        {path: hint}, {path: 201_000}, observed_titles={path: "Etwas ganz anderes"}
+    ) == {}
+
+
+def test_titles_survive_the_usual_rip_decorations() -> None:
+    assert not title_conflict("Wir", "Wir")
+    assert not title_conflict("Ariane", "K.I.Z - Ariane")
+    assert not title_conflict("Boom Boom Boom", "Boom Boom Boom (Live)")
+    assert not title_conflict("Superstars", "Superstars feat. Henning May")
+    # A bare number carries no information and must not reject anything.
+    assert not title_conflict("Wir", "01")
+    assert title_conflict("sleeping", "Onative / zubi - How")
+
+
+def test_a_recorded_success_stops_answering_for_a_wrong_folder(tmp_path) -> None:
+    """The ledger exists so a repeated import does not upload twice. It must
+    not also certify an import made before the files were checked: otherwise
+    a wrong recording stays "imported" forever and no retry can correct it.
+    """
+    from mcp_common.store import AtomicJsonStore
+
+    from traxx_mcp.client import TraxxClient
+    from traxx_mcp.config import RuntimeConfig
+
+    downloads = tmp_path / "downloads"
+    folder = downloads / "Onative" / "sleeping"
+    folder.mkdir(parents=True)
+    (folder / "01. Onative - How.flac").write_bytes(b"not really flac")
+
+    client = TraxxClient(
+        RuntimeConfig(base_url="https://example.test", token="t"),
+        downloads_dir=downloads,
+        import_ledger=AtomicJsonStore(tmp_path / "imports.json", default={}),
+    )
+    hints = [{"title": "sleeping", "number": 1}]
+
+    # The filename shares no word with the expected title, so the folder
+    # cannot be waved through on a recorded success.
+    assert client.folder_fails_verification(folder, hints) is True
+
+
+def test_a_folder_that_still_matches_keeps_its_recorded_success(tmp_path) -> None:
+    from mcp_common.store import AtomicJsonStore
+
+    from traxx_mcp.client import TraxxClient
+    from traxx_mcp.config import RuntimeConfig
+
+    downloads = tmp_path / "downloads"
+    folder = downloads / "K.I.Z" / "Hurra"
+    folder.mkdir(parents=True)
+    (folder / "01 Wir.flac").write_bytes(b"not really flac")
+
+    client = TraxxClient(
+        RuntimeConfig(base_url="https://example.test", token="t"),
+        downloads_dir=downloads,
+        import_ledger=AtomicJsonStore(tmp_path / "imports.json", default={}),
+    )
+
+    # Unreadable audio means no duration, but the name agrees with the
+    # listing, so nothing objects and the recorded result still stands.
+    assert client.folder_fails_verification(folder, [{"title": "Wir", "number": 1}]) is False
