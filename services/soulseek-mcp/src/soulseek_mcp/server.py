@@ -4,6 +4,7 @@ import asyncio
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp_common.mcp_security import build_mcp_server_security
 from mcp_common.rights import validate_rights
 
 from .client import SlskdClient, classify_batch
@@ -20,6 +21,7 @@ def create_server() -> FastMCP:
     batches = BatchRepository(settings.soulseek_batch_file)
     slskd_config = SlskdConfigurationWriter(settings.slskd_config_path)
     queue_locks: dict[str, asyncio.Lock] = {}
+    security = build_mcp_server_security(settings, service_hosts=("mcp-soulseek",))
     mcp = FastMCP(
         "Soulseek Album MCP",
         instructions=(
@@ -30,6 +32,9 @@ def create_server() -> FastMCP:
         port=settings.mcp_port,
         stateless_http=True,
         json_response=True,
+        transport_security=security.transport_security,
+        auth=security.auth,
+        token_verifier=security.token_verifier,
     )
 
     @mcp.tool()
