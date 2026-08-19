@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import secrets
 from collections.abc import Iterable
 from dataclasses import dataclass
+from secrets import compare_digest
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -63,7 +63,7 @@ class StaticBearerTokenVerifier(TokenVerifier):
         self._resource = resource
 
     async def verify_token(self, token: str) -> AccessToken | None:
-        if not secrets.compare_digest(token, self._token):
+        if not compare_digest(token, self._token):
             return None
         return AccessToken(
             token=token,
