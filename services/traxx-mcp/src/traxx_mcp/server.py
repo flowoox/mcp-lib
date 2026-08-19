@@ -4,8 +4,10 @@ import asyncio
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp_common.mcp_security import build_mcp_server_security
 from mcp_common.paths import resolve_contained_path
 from mcp_common.store import AtomicJsonStore
+from mcp_common.url_security import origin_for_url
 
 from .client import TraxxClient
 from .config import ActorRegistry, RuntimeConfig, RuntimeConfigStore, get_settings
@@ -19,6 +21,7 @@ def create_server() -> FastMCP:
     import_ledger = AtomicJsonStore(settings.traxx_import_ledger_file, default={})
     actors = ActorRegistry(settings.traxx_actors_file)
     import_locks: dict[str, asyncio.Lock] = {}
+    security = build_mcp_server_security(settings, service_hosts=("mcp-traxx",))
     mcp = FastMCP(
         "Traxx BeMusic MCP",
         instructions=(
@@ -29,12 +32,44 @@ def create_server() -> FastMCP:
         port=settings.mcp_port,
         stateless_http=True,
         json_response=True,
+        transport_security=security.transport_security,
+        auth=security.auth,
+        token_verifier=security.token_verifier,
     )
 
     @mcp.tool()
     async def get_capabilities() -> dict[str, Any]:
         """Return the stable MCP contract and supported features."""
         return capabilities()
+
+    def _allowed_traxx_origins() -> set[str]:
+        allowed: set[str] = set()
+        if settings.traxx_url.strip():
+            allowed.add(origin_for_url(settings.traxx_url))
+        for value in settings.traxx_allowed_origins.split(","):
+            value = value.strip()
+            if value:
+                allowed.add(origin_for_url(value))
+        return allowed
+
+    def _validate_target_origin(current: RuntimeConfig, target_url: str) -> None:
+        target_origin = origin_for_url(target_url)
+        current_origin = origin_for_url(current.base_url) if current.base_url else ""
+        if target_origin == current_origin:
+            return
+        allowed = _allowed_traxx_origins()
+        if target_origin in allowed:
+            return
+        # First-time bootstrap is permitted only while no credential exists.
+        # Once an origin or any token-bearing state exists, moving the client
+        # requires an operator-approved TRAXX_ALLOWED_ORIGINS entry.
+        if not current_origin and not current.token and not current.extra_headers and not actors.has_tokens():
+            return
+        raise ValueError(
+            "Changing the Traxx origin is blocked because it could forward existing "
+            "service, proxy, or actor credentials. Add the exact destination origin "
+            "to TRAXX_ALLOWED_ORIGINS at deployment time before migrating it."
+        )
 
     def client(actor_id: str = "") -> TraxxClient:
         """Build a client, optionally acting as a registered Traxx user.
@@ -43,9 +78,15 @@ def create_server() -> FastMCP:
         actor's bearer token is resolved from the registry and an unknown
         actor_id raises before any request is made.
         """
+        config = configs.get()
+        if not config.verify_tls and not settings.traxx_allow_insecure_tls:
+            raise ValueError(
+                "Traxx TLS verification is disabled in persisted configuration, but "
+                "TRAXX_ALLOW_INSECURE_TLS is not enabled for this deployment."
+            )
         actor_token = actors.token_for(actor_id) if actor_id.strip() else ""
         return TraxxClient(
-            configs.get(),
+            config,
             downloads_dir=settings.downloads_dir,
             import_ledger=import_ledger,
             actor_token=actor_token,
@@ -68,8 +109,17 @@ def create_server() -> FastMCP:
         the instance can admit this client without exposing the API publicly.
         """
         current = configs.get()
+        target_url = base_url or current.base_url
+        if not target_url:
+            raise ValueError("Traxx base_url must be configured")
+        _validate_target_origin(current, target_url)
+        if not verify_tls and not settings.traxx_allow_insecure_tls:
+            raise ValueError(
+                "verify_tls=false is restricted to an explicit development deployment; "
+                "set TRAXX_ALLOW_INSECURE_TLS=true only for that isolated environment."
+            )
         config = RuntimeConfig(
-            base_url=base_url or current.base_url,
+            base_url=target_url,
             token=token or current.token,
             extra_headers=(
                 current.extra_headers if extra_headers is None else extra_headers
@@ -101,7 +151,7 @@ def create_server() -> FastMCP:
         """Register or replace the bearer token for an orchestrator-chosen actor.
 
         Requests carrying this actor_id run as that Traxx user. The token is
-        stored server-side and never returned by any tool.
+        stored server-side and never returned by any tool output.
         """
         stored_id = actors.set(actor_id, token)
         return {"ok": True, "actor_id": stored_id, "token": "***"}
