@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import secrets
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 from urllib.parse import urlsplit
 
 from mcp.server.auth.provider import AccessToken, TokenVerifier
