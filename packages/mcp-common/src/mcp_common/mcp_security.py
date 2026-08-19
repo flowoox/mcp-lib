@@ -10,7 +10,6 @@ from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.transport_security import TransportSecuritySettings
 
-
 LOCAL_HOSTS = ("127.0.0.1:*", "localhost:*", "[::1]:*")
 LOCAL_ORIGINS = (
     "http://127.0.0.1:*",
