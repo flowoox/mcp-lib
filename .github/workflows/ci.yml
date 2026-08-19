@@ -32,6 +32,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install ./packages/mcp-common
           python -m pip install -e "./services/${{ matrix.service }}[dev]"
+      - name: Lint import diagnostics
+        run: ruff check --select I --diff packages/mcp-common/src/mcp_common/mcp_security.py
       - name: Lint
         run: ruff check packages/mcp-common/src "services/${{ matrix.service }}/src" "services/${{ matrix.service }}/tests"
       - name: Test
