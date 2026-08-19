@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from mcp_common.store import AtomicJsonStore
+from mcp_common.url_security import normalize_origin_url
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -23,7 +25,8 @@ class RuntimeConfig(BaseModel):
     @field_validator("base_url")
     @classmethod
     def normalize_url(cls, value: str) -> str:
-        return value.strip().rstrip("/")
+        value = value.strip()
+        return normalize_origin_url(value) if value else ""
 
     @field_validator("tus_endpoint")
     @classmethod
@@ -37,6 +40,16 @@ class Settings(BaseSettings):
 
     mcp_host: str = "0.0.0.0"
     mcp_port: int = 8082
+    # Internal means network exposure is constrained by the deployment. Any
+    # container/host/tenant-crossing endpoint must explicitly switch to
+    # external, which fails closed unless MCP auth is configured.
+    mcp_trust_boundary: Literal["internal", "external"] = "internal"
+    mcp_allowed_hosts: str = ""
+    mcp_allowed_origins: str = ""
+    mcp_public_url: str = ""
+    mcp_issuer_url: str = ""
+    mcp_auth_token: str = ""
+
     traxx_config_file: Path = Path("/data/config.json")
     traxx_import_ledger_file: Path = Path("/data/imports.json")
     traxx_actors_file: Path = Path("/data/actors.json")
@@ -46,6 +59,12 @@ class Settings(BaseSettings):
     traxx_token: str = ""
     traxx_extra_headers: dict[str, str] = {}
     traxx_verify_tls: bool = True
+    # Explicit development escape hatch. Production defaults fail closed when
+    # somebody tries to persist verify_tls=false through configure_traxx.
+    traxx_allow_insecure_tls: bool = False
+    # Comma-separated additional origins to which a configured connector may
+    # be moved. The initial TRAXX_URL origin is always trusted automatically.
+    traxx_allowed_origins: str = ""
     traxx_tus_endpoint: str = "/api/v1/tus/upload"
     traxx_upload_chunk_size: int = 8 * 1024 * 1024
     traxx_file_url_template: str = ""
@@ -128,6 +147,9 @@ class ActorRegistry:
 
     def list_ids(self) -> list[str]:
         return sorted(self.store.read())
+
+    def has_tokens(self) -> bool:
+        return bool(self.store.read())
 
     def token_for(self, actor_id: str) -> str:
         actor_id = self.validate_actor_id(actor_id)
