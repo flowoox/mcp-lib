@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from mcp_common.store import AtomicJsonStore
 from pydantic import BaseModel, Field, field_validator
@@ -42,6 +43,13 @@ class Settings(BaseSettings):
 
     mcp_host: str = "0.0.0.0"
     mcp_port: int = 8081
+    mcp_trust_boundary: Literal["internal", "external"] = "internal"
+    mcp_allowed_hosts: str = ""
+    mcp_allowed_origins: str = ""
+    mcp_public_url: str = ""
+    mcp_issuer_url: str = ""
+    mcp_auth_token: str = ""
+
     soulseek_config_file: Path = Path("/data/config.json")
     soulseek_candidate_file: Path = Path("/data/candidates.json")
     soulseek_batch_file: Path = Path("/data/batches.json")
