@@ -479,6 +479,59 @@ class SlskdClient:
             "idempotent": False,
         }
 
+    async def cancel_batch(self, batch_id: str, *, remove: bool = False) -> dict[str, Any]:
+        """Stop an album's transfers, and optionally forget them.
+
+        slskd cancels per file, so an album is cancelled by cancelling each of
+        its files. Files that already finished are left alone: cancelling them
+        would delete a download that succeeded.
+        """
+        record = self.batches.get(batch_id) if self.batches is not None else None
+        if record is None:
+            raise SlskdError(f"Unknown download batch {batch_id}")
+        payload = await self.request(
+            "GET",
+            f"/api/v0/transfers/downloads/{quote(record.username, safe='')}",
+            allow_not_found=True,
+        )
+        wanted = {normalize_remote_path(name) for name in record.filenames}
+        cancelled: list[str] = []
+        failed: dict[str, str] = {}
+        for item in walk_dicts(payload):
+            filename = str(get_case_insensitive(item, "filename", "fileName") or "")
+            if not filename or normalize_remote_path(filename) not in wanted:
+                continue
+            state = classify_transfer_state(
+                str(get_case_insensitive(item, "state", "status") or "")
+            )
+            if state == "completed" and not remove:
+                continue
+            transfer_id = str(get_case_insensitive(item, "id", default="") or "")
+            if not transfer_id:
+                continue
+            path = (
+                f"/api/v0/transfers/downloads/{quote(record.username, safe='')}/"
+                f"{quote(transfer_id, safe='')}"
+            )
+            try:
+                await self.request(
+                    "DELETE",
+                    path,
+                    params={"remove": "true"} if remove else None,
+                    allow_not_found=True,
+                )
+                cancelled.append(remote_to_posix(filename).name)
+            except SlskdError as exc:
+                failed[remote_to_posix(filename).name] = str(exc)[:200]
+        if self.batches is not None:
+            self.batches.update(batch_id, cancelled=True)
+        return {
+            "batch_id": batch_id,
+            "cancelled": cancelled,
+            "failed": failed,
+            "removed": remove,
+        }
+
     async def list_downloads(self) -> Any:
         return await self.request("GET", "/api/v0/transfers/downloads")
 

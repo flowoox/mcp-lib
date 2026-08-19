@@ -216,6 +216,15 @@ def create_server() -> FastMCP:
         return result
 
     @mcp.tool()
+    async def cancel_download_batch(batch_id: str, remove: bool = False) -> dict[str, Any]:
+        """Stop every unfinished transfer of one album.
+
+        Files that already arrived are left alone unless ``remove`` is set —
+        cancelling those would throw away a download that succeeded.
+        """
+        return await client().cancel_batch(batch_id, remove=remove)
+
+    @mcp.tool()
     async def list_downloads() -> Any:
         """List current downloads from slskd."""
         return await client().list_downloads()

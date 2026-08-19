@@ -152,6 +152,34 @@ def _liked_artist_names(item: dict[str, Any], resource: str) -> list[str]:
     return names
 
 
+def describe_cover(local_cover: Path | None, url: str) -> dict[str, Any]:
+    """What became of the album art, in a form the operator can act on.
+
+    Reported, not enforced: an album without a sleeve is still the album. But
+    nothing downstream can invent one, and a blank tile in the library is
+    exactly the kind of defect nobody goes looking for — so if it did not
+    happen, it has to be said here.
+    """
+    return {
+        "ok": bool(url),
+        "source": (
+            "Datei im Ordner"
+            if local_cover
+            else ("externe Adresse" if url else "keine")
+        ),
+        "url": url,
+        "warning": (
+            ""
+            if url
+            else (
+                "Kein Cover: der Ordner enthält kein Bild und es wurde keine "
+                "Bildadresse mitgegeben. Das Album erscheint in Traxx ohne "
+                "Titelbild."
+            )
+        ),
+    }
+
+
 class TraxxClient:
     def __init__(
         self,
@@ -1158,6 +1186,7 @@ class TraxxClient:
             external_url=cover_url,
             local_cover=cover_path,
         )
+        cover_report = describe_cover(cover_path, traxx_cover_url)
         artist_id = await self.ensure_artist(
             expected_artist,
             image=traxx_cover_url,
@@ -1321,6 +1350,7 @@ class TraxxClient:
             "artist_id": artist_id,
             "album_id": album_id,
             "cover_url": traxx_cover_url,
+            "cover": cover_report,
             "tag_results": tag_results,
             "imported": imported,
             "unresolved": unresolved,

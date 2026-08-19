@@ -42,6 +42,10 @@ class AlbumCandidate(BaseModel):
     rights_basis: str = ""
     collections: list[str] = Field(default_factory=list)
     detail_url: str = ""
+    # The item's own artwork. Without it an album reaches the library with
+    # no sleeve, and nothing downstream can invent one.
+    cover_name: str = ""
+    cover_size: int = 0
     score: float = 0
     score_reasons: list[str] = Field(default_factory=list)
 
@@ -59,6 +63,7 @@ class DownloadBatch(BaseModel):
     album: str = ""
     license_url: str = ""
     license_label: str = ""
+    cover_name: str = ""
     queued_at: str = ""
     state: str = "queued"
     collected: bool = False

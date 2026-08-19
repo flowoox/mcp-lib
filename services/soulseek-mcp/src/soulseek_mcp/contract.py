@@ -41,6 +41,7 @@ def capabilities() -> dict[str, Any]:
             "search_album",
             "get_album_candidate",
             "queue_album_folder",
+            "cancel_download_batch",
             "list_downloads",
             "get_download_batch",
             "wait_for_download",

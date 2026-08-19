@@ -22,6 +22,7 @@ from .matcher import (
     extract_search_docs,
     score_candidate,
     select_album_files,
+    select_cover_file,
 )
 from .models import AlbumCandidate, ArchiveFile, DownloadBatch
 from .repository import BatchRepository
@@ -322,6 +323,7 @@ class ArchiveClient:
                 ),
                 "",
             )
+        cover = select_cover_file(records)
         score, reasons = score_candidate(
             artist=artist,
             album=album,
@@ -337,6 +339,12 @@ class ArchiveClient:
                 candidate_id=candidate_id_for(identifier, files),
                 search_id=search_id,
                 identifier=identifier,
+                cover_name=str(get_case_insensitive(cover, "name", default="") or "")
+                if cover
+                else "",
+                cover_size=int(get_case_insensitive(cover, "size", default=0) or 0)
+                if cover
+                else 0,
                 folder=identifier,
                 artist=item_creator or artist,
                 album=item_title or album,
@@ -422,6 +430,7 @@ class ArchiveClient:
             album=candidate.album,
             license_url=candidate.license_url,
             license_label=candidate.license_label,
+            cover_name=candidate.cover_name,
             queued_at=datetime.now(UTC).isoformat(),
             state="active",
             bytes_total=sum(file.size for file in candidate.files),
@@ -504,6 +513,10 @@ class ArchiveClient:
                         return
 
             await asyncio.gather(*(one(file) for file in files), return_exceptions=True)
+            # Fetched after the audio and never allowed to fail the batch: an
+            # album without a sleeve is still the album, but nothing further
+            # down the line can invent one, so it is worth one request here.
+            await self.fetch_cover(record, client, target)
 
         state = (
             "completed"
@@ -520,6 +533,34 @@ class ArchiveClient:
                 bytes_done=done_bytes,
                 collected=state == "completed",
             )
+
+    async def fetch_cover(
+        self, record: DownloadBatch, client: httpx.AsyncClient, target: Path
+    ) -> None:
+        """Put the item's artwork next to the audio, under a name the importer
+        looks for.
+
+        Measured: an item downloaded without this reaches Traxx with no image
+        at all, and the album shows as a blank tile — there is no second place
+        to get the sleeve from once the transfer is over.
+        """
+        if not record.cover_name:
+            return
+        suffix = PurePosixPath(record.cover_name).suffix.casefold() or ".jpg"
+        destination = target / f"cover{suffix}"
+        if destination.exists():
+            return
+        url = (
+            f"{self.config.base_url}/download/{quote(record.identifier, safe='')}/"
+            f"{quote(record.cover_name, safe='/')}"
+        )
+        try:
+            response = await client.get(url)
+            response.raise_for_status()
+            destination.write_bytes(response.content)
+        except Exception:  # noqa: BLE001
+            # A missing sleeve is worth reporting, never worth failing over.
+            return
 
     async def persist(
         self,

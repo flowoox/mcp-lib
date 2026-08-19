@@ -16,6 +16,11 @@ AUDIO_EXTENSIONS = LOSSLESS_EXTENSIONS | LOSSY_EXTENSIONS
 # Files the Archive derives for its own player. They are audio, but taking
 # them alongside the originals downloads every track two or three times.
 DERIVATIVE_ONLY_FORMATS = {"64kbps mp3", "56kbps mp3", "ogg vorbis", "mpeg-4 audio"}
+IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "gif"}
+# The Archive generates these for its own listing pages. They are a few
+# kilobytes and look like a smudge at album size, so they are the last
+# resort rather than the first hit.
+THUMBNAIL_MARKERS = ("__ia_thumb", "_thumb", "itemimage")
 
 TRACK_RE = re.compile(r"^\s*(\d{1,3})")
 DISC_RE = re.compile(r"^\s*(\d{1,2})\s*[-.]\s*(\d{1,3})\s*$")
@@ -272,3 +277,33 @@ def coerce_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value if str(item).strip()]
     return [str(value)]
+
+
+def select_cover_file(records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The best picture the item offers, or nothing.
+
+    Measured: an item that carries an album cover carries it as an ordinary
+    original file, while ``__ia_thumb.jpg`` and ``<identifier>_itemimage.jpg``
+    are generated thumbnails of a few kilobytes. Taking the largest original
+    picture gets the real sleeve; the generated ones are kept as a fallback so
+    an album is not left with nothing at all.
+    """
+    pictures: list[tuple[int, int, dict[str, Any]]] = []
+    for record in records:
+        name = str(get_case_insensitive(record, "name", default="") or "")
+        if extension_of(name) not in IMAGE_EXTENSIONS:
+            continue
+        try:
+            size = int(get_case_insensitive(record, "size", default=0) or 0)
+        except (TypeError, ValueError):
+            size = 0
+        generated = any(marker in name.casefold() for marker in THUMBNAIL_MARKERS)
+        derivative = str(
+            get_case_insensitive(record, "source", default="") or ""
+        ).casefold() != "original"
+        rank = (1 if generated else 0) + (1 if derivative else 0)
+        pictures.append((rank, -size, record))
+    if not pictures:
+        return None
+    pictures.sort(key=lambda item: (item[0], item[1]))
+    return pictures[0][2]
