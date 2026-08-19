@@ -4,6 +4,7 @@ import asyncio
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp_common.mcp_security import build_mcp_server_security
 from mcp_common.rights import validate_rights
 
 from .client import ArchiveClient
@@ -21,6 +22,7 @@ def create_server() -> FastMCP:
     # Transfers run past the tool call that started them, so the tasks are
     # owned by the server rather than by any one request.
     transfers: dict[str, asyncio.Task[None]] = {}
+    security = build_mcp_server_security(settings, service_hosts=("mcp-archive",))
     mcp = FastMCP(
         "Internet Archive Album MCP",
         instructions=(
@@ -32,6 +34,9 @@ def create_server() -> FastMCP:
         port=settings.mcp_port,
         stateless_http=True,
         json_response=True,
+        transport_security=security.transport_security,
+        auth=security.auth,
+        token_verifier=security.token_verifier,
     )
 
     def client() -> ArchiveClient:
