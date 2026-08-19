@@ -8,7 +8,10 @@ version = "0.1.0"
 description = "Small product-neutral helpers shared by flowoox MCP services."
 requires-python = ">=3.12"
 license = {text = "MIT"}
-dependencies = ["pydantic>=2.10,<3"]
+dependencies = [
+  "mcp>=1.28.1,<2",
+  "pydantic>=2.10,<3",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcp_common"]
