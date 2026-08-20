@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import json
 import mimetypes
 import re
 from datetime import UTC, datetime
@@ -198,6 +199,7 @@ class TraxxClient:
         self.actor_token = actor_token
         # Probed once per client, then reused for every file of an album.
         self._tus_endpoint = ""
+        self._upload_limits: dict[str, int] | None = None
 
     @property
     def headers(self) -> dict[str, str]:
@@ -487,6 +489,77 @@ class TraxxClient:
             "artists": ranked,
             "errors": errors,
         }
+
+    async def upload_limits(self) -> dict[str, int]:
+        """The largest file each upload type accepts, as the instance says.
+
+        Read from the page the web app bootstraps itself with, because the
+        limit lives in the instance settings and is not part of the documented
+        API. Measured: it changed from 600 MB to 10 MB between two runs, which
+        turned every album import into a stack of 422s.
+        """
+        if self._upload_limits is not None:
+            return self._upload_limits
+        limits: dict[str, int] = {}
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.config.base_url,
+                verify=self.config.verify_tls,
+                timeout=self.config.timeout_seconds,
+                follow_redirects=True,
+            ) as client:
+                response = await client.get(
+                    "/",
+                    headers={
+                        # The bootstrap block is only served to something that
+                        # looks like a browser; a crawler gets a plain page.
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/126.0.0.0 Safari/537.36"
+                        )
+                    },
+                )
+            marker = "window.bootstrapData = "
+            start = response.text.index(marker) + len(marker)
+            data, _ = json.JSONDecoder().raw_decode(response.text[start:])
+            for name, entry in (data.get("uploading_types") or {}).items():
+                size = entry.get("max_file_size") if isinstance(entry, dict) else None
+                if size:
+                    limits[str(name)] = int(size)
+        except Exception:  # noqa: BLE001
+            # Not knowing the limit is not an error; it only means the check
+            # below cannot be made and the upload decides instead.
+            limits = {}
+        self._upload_limits = limits
+        return limits
+
+    async def check_upload_sizes(
+        self, files: list[Path], *, upload_type: str = "media"
+    ) -> str:
+        """Say up front whether these files can be uploaded at all.
+
+        Without this the importer created the artist and the album, then failed
+        on every single track and left an empty album behind — nineteen of them
+        on the live instance before this was found.
+        """
+        limits = await self.upload_limits()
+        limit = limits.get(UPLOAD_TYPE_ALIASES.get(upload_type, upload_type), 0)
+        if not limit:
+            return ""
+        too_big = [path for path in files if path.stat().st_size > limit]
+        if not too_big:
+            return ""
+        largest = max(too_big, key=lambda path: path.stat().st_size)
+        return (
+            f"{len(too_big)} von {len(files)} Dateien überschreiten das "
+            f"Upload-Limit dieser Traxx-Instanz von {limit / 1_000_000:.0f} MB — "
+            f"die grösste ist „{largest.name}“ mit "
+            f"{largest.stat().st_size / 1_000_000:.0f} MB. Das ist eine "
+            "Einstellung auf der Traxx-Seite (Einrichtung → Uploads → maximale "
+            "Dateigrösse), nicht am Radar. Bis sie erhöht ist, kann kein "
+            "verlustfreies Album importiert werden."
+        )
 
     async def _resolve_tus_endpoint(self) -> str:
         """Find the path that really speaks TUS on this instance.
@@ -1182,6 +1255,13 @@ class TraxxClient:
                 ).as_dict()
             )
 
+        # Asked before anything is created in the library. Without it the
+        # importer created the artist and the album, then failed on every
+        # track, and left an empty album behind — nineteen of them on the live
+        # instance before this was found.
+        oversized = await self.check_upload_sizes(files)
+        if oversized:
+            raise TraxxError(oversized)
         traxx_cover_url = await self._cover_url_for_traxx(
             external_url=cover_url,
             local_cover=cover_path,
@@ -1340,6 +1420,21 @@ class TraxxClient:
                         "reason": str(exc),
                     }
                 )
+                if "may not be greater than" in str(exc):
+                    # A size limit applies to every file of this album, so
+                    # trying the rest only repeats the same refusal and keeps
+                    # the instance busy for nothing.
+                    unresolved.append(
+                        {
+                            "path": str(resolved),
+                            "stage": "abgebrochen",
+                            "reason": (
+                                "Weitere Dateien nicht versucht: die Instanz "
+                                "lehnt sie wegen ihrer Grösse ab."
+                            ),
+                        }
+                    )
+                    break
         return {
             "dry_run": False,
             "folder": str(resolved),
