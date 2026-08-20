@@ -32,7 +32,9 @@ def flac(tmp_path: Path, name: str, size: int) -> Path:
 async def test_files_over_the_limit_are_named_before_anything_is_created(
     tmp_path: Path,
 ) -> None:
-    client = Limited(tmp_path, limit=10_485_760)
+    # Above the ten-megabyte mark, so this is read as a limit somebody chose
+    # rather than as the fallback that hints at a lost APP_KEY.
+    client = Limited(tmp_path, limit=20_000_000)
     files = [flac(tmp_path, "01.flac", 30_000_000), flac(tmp_path, "02.flac", 1_000)]
 
     message = await client.check_upload_sizes(files)
@@ -41,7 +43,7 @@ async def test_files_over_the_limit_are_named_before_anything_is_created(
     # every track was refused with 422, and nineteen empty albums were left
     # behind because the album is created before the first upload is tried.
     assert "1 von 2 Dateien" in message
-    assert "10 MB" in message
+    assert "20 MB" in message
     assert "01.flac" in message
     # It has to say where the setting lives, or it reads as a radar fault.
     assert "Traxx-Seite" in message
@@ -60,3 +62,19 @@ async def test_an_unknown_limit_is_not_treated_as_a_refusal(tmp_path: Path) -> N
     files = [flac(tmp_path, "01.flac", 900_000_000)]
     # Not knowing is not the same as knowing it is too big; the upload decides.
     assert await client.check_upload_sizes(files) == ""
+
+
+@pytest.mark.asyncio
+async def test_a_ten_megabyte_limit_points_at_the_app_key(tmp_path: Path) -> None:
+    client = Limited(tmp_path, limit=10 * 1024 * 1024)
+    files = [flac(tmp_path, "01.flac", 30_000_000)]
+
+    message = await client.check_upload_sizes(files)
+
+    # Measured: the encrypted "uploading" setting became unreadable after the
+    # APP_KEY changed, BeMusic fell back to its built-in defaults without
+    # saying so, and the limit dropped from 512 MB to exactly this. The same
+    # fallback also cost every track its storage URL. Raising the limit by
+    # hand would have hidden the real fault.
+    assert "APP_KEY" in message
+    assert "abspielen" in message

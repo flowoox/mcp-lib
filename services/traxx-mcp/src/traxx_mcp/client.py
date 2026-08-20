@@ -551,6 +551,23 @@ class TraxxClient:
         if not too_big:
             return ""
         largest = max(too_big, key=lambda path: path.stat().st_size)
+        # A suspiciously small limit is usually not a decision somebody made.
+        # Measured on this instance: the encrypted "uploading" setting became
+        # unreadable after the APP_KEY changed, the application fell back to
+        # its built-in defaults without saying so, and the limit silently
+        # dropped from 512 MB to 10 MB. Naming that possibility saves the next
+        # person the two hours it cost to find.
+        if limit <= 10 * 1024 * 1024:
+            return (
+                f"Traxx meldet ein Upload-Limit von nur "
+                f"{limit / 1_000_000:.0f} MB — das ist der eingebaute "
+                "Standardwert. Das deutet darauf hin, dass die verschlüsselte "
+                "Einstellung „uploading“ nicht mehr lesbar ist (APP_KEY "
+                "gewechselt): BeMusic fällt dann still auf Voreinstellungen "
+                "zurück, und aus demselben Grund verlieren auch alle Tracks "
+                "ihre Storage-URL und lassen sich nicht mehr abspielen. Prüfe "
+                "das, bevor du das Limit von Hand hochsetzt."
+            )
         return (
             f"{len(too_big)} von {len(files)} Dateien überschreiten das "
             f"Upload-Limit dieser Traxx-Instanz von {limit / 1_000_000:.0f} MB — "
