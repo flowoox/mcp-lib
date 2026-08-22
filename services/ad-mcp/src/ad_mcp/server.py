@@ -39,6 +39,12 @@ class IdentityInput(BaseModel):
         return value
 
 
+class ListLimitInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=200, ge=1, le=1000)
+
+
 def _context(correlation_id: str) -> OperationContext:
     value = correlation_id.strip()
     if not value:
@@ -121,6 +127,12 @@ def create_server() -> FastMCP:
         return _observe_response("ad.replication.health", correlation_id, output)
 
     @mcp.tool()
+    async def dns_discovery(correlation_id: str = "") -> dict[str, Any]:
+        """Resolve core AD LDAP/Kerberos SRV discovery records through the host resolver."""
+        output = await probe(ScriptId.DNS_DISCOVERY)
+        return _observe_response("ad.dns.discovery", correlation_id, output)
+
+    @mcp.tool()
     async def local_secure_channel(correlation_id: str = "") -> dict[str, Any]:
         """Test this Windows member's domain secure channel; never invokes repair."""
         output = await probe(ScriptId.LOCAL_SECURE_CHANNEL)
@@ -173,6 +185,15 @@ def create_server() -> FastMCP:
         return _observe_response(
             "ad.group.get", correlation_id, output, target=f"group:{request.identity}"
         )
+
+    @mcp.tool()
+    async def list_organizational_units(
+        limit: int = 200, correlation_id: str = ""
+    ) -> dict[str, Any]:
+        """Return a bounded OU inventory sorted by distinguished name."""
+        request = ListLimitInput(limit=limit)
+        output = await probe(ScriptId.LIST_OUS, {"limit": request.limit})
+        return _observe_response("ad.ou.list", correlation_id, output)
 
     return mcp
 
