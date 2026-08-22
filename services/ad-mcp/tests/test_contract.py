@@ -1,5 +1,6 @@
-from ad_mcp.contract import CONTRACT, CONTRACT_VERSION, TOOL_POLICIES, capabilities
 from mcp_common.operations import OperationPhase, RiskLevel
+
+from ad_mcp.contract import CONTRACT, CONTRACT_VERSION, TOOL_POLICIES, capabilities
 
 
 def test_contract_is_versioned_and_explicit() -> None:
