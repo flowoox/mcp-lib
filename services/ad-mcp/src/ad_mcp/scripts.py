@@ -267,9 +267,13 @@ $groups = @($user.MemberOf | Sort-Object | ForEach-Object {
 $ErrorActionPreference = 'Stop'
 Import-Module ActiveDirectory -ErrorAction Stop
 $p = $env:FLOWOOX_MCP_INPUT | ConvertFrom-Json -ErrorAction Stop
-$user = Get-ADUser -Identity $p.identity -Properties Enabled -ErrorAction Stop
+$user = Get-ADUser -Identity $p.identity -Properties Enabled,PasswordLastSet -ErrorAction Stop
 $requested = [bool]$p.enabled
 $before = [bool]$user.Enabled
+$credentialEstablished = ($null -ne $user.PasswordLastSet)
+if ($requested -and -not $credentialEstablished) {
+    throw 'AD user cannot be enabled before credential state is established.'
+}
 $changed = $false
 if ($before -ne $requested) {
     if ($requested) {
@@ -284,6 +288,7 @@ if ($before -ne $requested) {
     distinguishedName = $user.DistinguishedName
     previousEnabled = $before
     requestedEnabled = $requested
+    credentialEstablished = $credentialEstablished
     changed = $changed
 } | ConvertTo-Json -Depth 5 -Compress
 """,
