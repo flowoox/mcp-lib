@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 from uuid import UUID
 
 from mcp.server.fastmcp import FastMCP
@@ -17,13 +18,9 @@ from mcp_common.operations import (
 
 from .config import Settings
 from .contract import capabilities
-from .diagnostics import (
-    diagnostic_bundle as build_diagnostic_bundle,
-    dns_result,
-    route_selection as build_route_selection,
-    subnet_validation,
-    tcp_probe,
-)
+from .diagnostics import diagnostic_bundle as build_diagnostic_bundle
+from .diagnostics import dns_result, subnet_validation, tcp_probe
+from .diagnostics import route_selection as build_route_selection
 from .policy import TargetPolicy, validate_port
 
 
@@ -66,7 +63,12 @@ def _observe_response(
     return payload
 
 
-async def _bounded_call(timeout_seconds: float, function: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+async def _bounded_call(
+    timeout_seconds: float,
+    function: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
     try:
         return await asyncio.wait_for(
             asyncio.to_thread(function, *args, **kwargs),
