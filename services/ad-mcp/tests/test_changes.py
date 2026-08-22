@@ -160,3 +160,37 @@ def test_write_configuration_fails_closed_without_strong_approval_secret() -> No
         ad_writes_enabled=True,
         ad_approval_secret="x" * 32,
     ).validate_write_boundary()
+
+
+def test_credential_bootstrap_configuration_is_separately_fail_closed() -> None:
+    with pytest.raises(ValueError, match="AD_WRITES_ENABLED=true"):
+        Settings(
+            ad_credential_bootstrap_enabled=True,
+            ad_approval_secret="x" * 32,
+            ad_credential_secret_directory="C:/runtime/secrets",
+            ad_credential_receipt_store="C:/runtime/state/receipts.json",
+        ).validate_write_boundary()
+
+    with pytest.raises(ValueError, match="AD_CREDENTIAL_SECRET_DIRECTORY"):
+        Settings(
+            ad_writes_enabled=True,
+            ad_approval_secret="x" * 32,
+            ad_credential_bootstrap_enabled=True,
+            ad_credential_receipt_store="C:/runtime/state/receipts.json",
+        ).validate_write_boundary()
+
+    with pytest.raises(ValueError, match="AD_CREDENTIAL_RECEIPT_STORE"):
+        Settings(
+            ad_writes_enabled=True,
+            ad_approval_secret="x" * 32,
+            ad_credential_bootstrap_enabled=True,
+            ad_credential_secret_directory="C:/runtime/secrets",
+        ).validate_write_boundary()
+
+    Settings(
+        ad_writes_enabled=True,
+        ad_approval_secret="x" * 32,
+        ad_credential_bootstrap_enabled=True,
+        ad_credential_secret_directory="C:/runtime/secrets",
+        ad_credential_receipt_store="C:/runtime/state/receipts.json",
+    ).validate_write_boundary()

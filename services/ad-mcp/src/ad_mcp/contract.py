@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from mcp_common.operations import OperationPhase, RiskLevel, ToolPolicy
 
 CONTRACT = "flowoox.active-directory"
-CONTRACT_VERSION = "1.3.0"
+CONTRACT_VERSION = "1.4.0"
 
 TOOL_POLICIES = (
     ToolPolicy(name="ad.domain.summary", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
@@ -73,6 +74,23 @@ TOOL_POLICIES = (
         phase=OperationPhase.VERIFY,
         risk=RiskLevel.READ_ONLY,
     ),
+    ToolPolicy(
+        name="ad.user.credential-bootstrap.plan",
+        phase=OperationPhase.PLAN,
+        risk=RiskLevel.HIGH,
+        requires_approval=True,
+    ),
+    ToolPolicy(
+        name="ad.user.credential-bootstrap.change",
+        phase=OperationPhase.CHANGE,
+        risk=RiskLevel.HIGH,
+        requires_approval=True,
+    ),
+    ToolPolicy(
+        name="ad.user.credential-bootstrap.verify",
+        phase=OperationPhase.VERIFY,
+        risk=RiskLevel.READ_ONLY,
+    ),
 )
 
 _DESCRIPTIONS = {
@@ -95,18 +113,35 @@ _DESCRIPTIONS = {
     "ad.user.provision-disabled.plan": "Preflight and plan creation of one disabled AD user.",
     "ad.user.provision-disabled.change": "Ensure one approved disabled AD user exists with exact attributes.",
     "ad.user.provision-disabled.verify": "Independently verify the disabled user and approved attribute set.",
+    "ad.user.credential-bootstrap.plan": "Plan initial password establishment through an opaque secret reference.",
+    "ad.user.credential-bootstrap.change": "Set one initial password from a runtime-only secret reference after approval.",
+    "ad.user.credential-bootstrap.verify": "Verify credential state without resolving or returning a secret value.",
 }
 
 
-def capabilities(*, writes_enabled: bool = False) -> dict[str, Any]:
+def _env_enabled(name: str) -> bool:
+    return os.getenv(name, "").strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def capabilities(
+    *,
+    writes_enabled: bool = False,
+    credential_bootstrap_enabled: bool | None = None,
+) -> dict[str, Any]:
+    if credential_bootstrap_enabled is None:
+        credential_bootstrap_enabled = _env_enabled("AD_CREDENTIAL_BOOTSTRAP_ENABLED")
     return {
         "contract": CONTRACT,
         "version": CONTRACT_VERSION,
         "runtime": {
             "platform": "windows",
             "requirements": ["PowerShell", "ActiveDirectory RSAT module"],
-            "credential_model": "inherited service identity; credentials are not accepted by MCP tools",
+            "credential_model": (
+                "AD access uses the inherited service identity; initial passwords are resolved "
+                "from opaque runtime secret references and are never accepted or returned as MCP values"
+            ),
             "writes_enabled": writes_enabled,
+            "credential_bootstrap_enabled": credential_bootstrap_enabled,
             "approval_model": (
                 "short-lived HMAC-signed grant bound to operation, target, idempotency key and exact desired-state intent"
             ),
