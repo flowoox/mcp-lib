@@ -6,6 +6,8 @@ from enum import StrEnum
 class ProvisioningScriptId(StrEnum):
     PREFLIGHT_CREATE_DISABLED_USER = "preflight_create_disabled_user"
     CREATE_DISABLED_USER = "create_disabled_user"
+    PREFLIGHT_CREDENTIAL_BOOTSTRAP = "preflight_credential_bootstrap"
+    SET_INITIAL_PASSWORD = "set_initial_password"
 
 
 PROVISIONING_SCRIPTS: dict[ProvisioningScriptId, str] = {
@@ -132,6 +134,69 @@ $readback = Get-ADUser -Identity $created.ObjectGUID -Properties $properties -Er
     distinguishedName = $readback.DistinguishedName
     changed = $true
     createdDisabled = (-not [bool]$readback.Enabled)
+} | ConvertTo-Json -Depth 5 -Compress
+""",
+    ProvisioningScriptId.PREFLIGHT_CREDENTIAL_BOOTSTRAP: r"""
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory -ErrorAction Stop
+$p = $env:FLOWOOX_MCP_INPUT | ConvertFrom-Json -ErrorAction Stop
+$user = Get-ADUser -Identity ([string]$p.identity) -Properties Enabled,PasswordLastSet,SamAccountName,UserPrincipalName,DistinguishedName -ErrorAction Stop
+$passwordLastSet = if ($null -eq $user.PasswordLastSet) { $null } else { $user.PasswordLastSet.ToUniversalTime().ToString('o') }
+[pscustomobject]@{
+    objectGuid = $user.ObjectGUID.ToString()
+    samAccountName = $user.SamAccountName
+    userPrincipalName = $user.UserPrincipalName
+    distinguishedName = $user.DistinguishedName
+    enabled = [bool]$user.Enabled
+    credentialEstablished = ($null -ne $user.PasswordLastSet)
+    passwordLastSet = $passwordLastSet
+} | ConvertTo-Json -Depth 5 -Compress
+""",
+    ProvisioningScriptId.SET_INITIAL_PASSWORD: r"""
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory -ErrorAction Stop
+$p = $env:FLOWOOX_MCP_INPUT | ConvertFrom-Json -ErrorAction Stop
+$user = Get-ADUser -Identity ([string]$p.identity) -Properties Enabled,PasswordLastSet -ErrorAction Stop
+$expectedGuid = [guid]([string]$p.expectedObjectGuid)
+if ($user.ObjectGUID -ne $expectedGuid) {
+    throw 'The AD user object GUID no longer matches the approved identity.'
+}
+if ([bool]$user.Enabled) {
+    throw 'Credential bootstrap is allowed only while the AD user remains disabled.'
+}
+if ($null -ne $user.PasswordLastSet) {
+    throw 'The AD user already has password state; refusing an implicit password reset.'
+}
+$secret = [Console]::In.ReadToEnd()
+if ([string]::IsNullOrEmpty($secret)) {
+    throw 'The credential secret stream was empty.'
+}
+if ($secret.IndexOf([char]0) -ge 0) {
+    throw 'The credential secret stream contained an invalid character.'
+}
+$secure = $null
+try {
+    $secure = ConvertTo-SecureString -String $secret -AsPlainText -Force
+    Set-ADAccountPassword -Identity $user.ObjectGUID -Reset -NewPassword $secure -Confirm:$false -ErrorAction Stop
+}
+finally {
+    $secret = $null
+    $secure = $null
+}
+$readback = Get-ADUser -Identity $user.ObjectGUID -Properties Enabled,PasswordLastSet -ErrorAction Stop
+$passwordLastSet = if ($null -eq $readback.PasswordLastSet) { $null } else { $readback.PasswordLastSet.ToUniversalTime().ToString('o') }
+if ($null -eq $readback.PasswordLastSet) {
+    throw 'AD did not report password state after credential bootstrap.'
+}
+if ([bool]$readback.Enabled) {
+    throw 'AD user became enabled during credential bootstrap; refusing success.'
+}
+[pscustomobject]@{
+    objectGuid = $readback.ObjectGUID.ToString()
+    enabled = [bool]$readback.Enabled
+    credentialEstablished = ($null -ne $readback.PasswordLastSet)
+    passwordLastSet = $passwordLastSet
+    changed = $true
 } | ConvertTo-Json -Depth 5 -Compress
 """,
 }
