@@ -43,11 +43,19 @@ independent provisioning preflight/readback
       |
       v
 verify_user_provision_disabled
+      |
+      v
+plan/change/verify_user_credential_bootstrap
+      |
+      +--> resolve an opaque secret reference locally
+      +--> keep password material out of MCP input/output and argv
+      +--> set the initial password while the user is still disabled
+      +--> independently read back PasswordLastSet and Enabled=false
 ```
 
 ## Idempotency and collision handling
 
-A retry is accepted as already satisfied only when an existing user with the requested `sAMAccountName` matches the complete approved attribute set, is a direct child of the requested OU, and is still disabled.
+A provisioning retry is accepted as already satisfied only when an existing user with the requested `sAMAccountName` matches the complete approved attribute set, is a direct child of the requested OU, and is still disabled.
 
 Optional fields are not wildcards. Omitting `mail`, `employee_id`, `description`, `given_name`, or `surname` means the corresponding existing AD attribute must also be unset before the request can be considered idempotently satisfied.
 
@@ -76,16 +84,57 @@ Provisioning is high risk and requires the same short-lived signed grant as the 
 
 Changing the OU, UPN, employee ID, display name, or any other bound field after approval invalidates the grant.
 
-## Credential bootstrap is intentionally separate
+## Credential bootstrap
 
-The public model-facing MCP does **not** accept an initial password. Passing a joiner's password as ordinary MCP tool input risks exposing the secret to model context, tracing, logs, orchestration history, or audit payloads.
+The model-facing MCP still does **not** accept an initial password. Instead the `ad.user.credential-bootstrap.*` lifecycle accepts only an opaque `secret_ref` such as `joiner-alice-20260822`.
 
-A later credential-bootstrap capability must therefore use an opaque secret reference or another non-model secret-delivery boundary. Until such a boundary is implemented and tested, accounts created here remain disabled and cannot be enabled by the joiner workflow without a separately established credential.
+Production credential bootstrap is separately fail-closed behind:
 
-This is a deliberate security boundary, not a missing implicit password default.
+```text
+AD_WRITES_ENABLED=true
+AD_APPROVAL_SECRET=<at least 32 bytes>
+AD_CREDENTIAL_BOOTSTRAP_ENABLED=true
+AD_CREDENTIAL_SECRET_DIRECTORY=<runtime secret mount/directory>
+AD_CREDENTIAL_RECEIPT_STORE=<persistent non-secret receipt JSON path>
+```
+
+`AD_CREDENTIAL_SECRET_DIRECTORY` is runtime configuration, not MCP input. A `secret_ref` may address only one direct, non-symlink child of that directory and cannot contain `/`, `\\`, or traversal segments. The file contents are read only inside the credential-change path. Protect the directory with the host/service-account ACL appropriate to the secret provider that populates it.
+
+The password value is never included in:
+
+- an MCP tool argument;
+- approval bindings;
+- audit metadata;
+- JSON payloads passed to PowerShell;
+- PowerShell source;
+- process command-line arguments;
+- MCP tool output.
+
+The Python runner delivers the resolved secret to exactly one allowlisted static PowerShell script through child-process stdin. That script converts the value to `SecureString`, calls `Set-ADAccountPassword`, clears its local plaintext/secure variables, and returns only non-secret state.
+
+### GUID binding and initial-only semantics
+
+Credential bootstrap is not a generic password-reset endpoint. The plan first resolves the AD identity and binds approval to its immutable object GUID, the opaque secret reference, and the idempotency key. The mutation re-checks the GUID and refuses to continue if the user is enabled.
+
+A fresh bootstrap also requires `PasswordLastSet` to be unset. If AD already has password state and there is no matching verified local receipt, the service fails closed instead of silently resetting an existing credential.
+
+The current bootstrap intentionally establishes the initial password **without** setting `ChangePasswordAtLogon`. This makes independent verification possible through `PasswordLastSet` while the user remains disabled. A separate, explicitly designed first-logon/password-rotation policy may be added later rather than weakening this bootstrap verification boundary.
+
+### Crash-safe idempotency receipts
+
+Before mutation the service writes a non-secret `pending` receipt keyed by the caller's idempotency key. The receipt binds:
+
+- the AD object GUID;
+- a SHA-256 digest of the opaque secret reference;
+- an HMAC-SHA256 fingerprint of the resolved secret keyed by `AD_APPROVAL_SECRET`;
+- the pre-change `PasswordLastSet` state.
+
+The secret itself and the clear-text secret reference are not stored. After independent readback succeeds, the receipt is marked `verified` with the observed password timestamp.
+
+This allows safe retries to return a no-op when the exact approved bootstrap is already verified, and allows a pending operation to recover after a response/process interruption without accepting a different GUID, reference, or resolved secret under the same idempotency key.
 
 ## Least-privilege delegation
 
-For provisioning deployments, delegate the Windows service identity only the rights required to create user objects and write the explicitly supported attributes in the approved target OUs. Do not run the MCP service as Domain Admin merely because user creation is enabled.
+For provisioning deployments, delegate the Windows service identity only the rights required to create user objects, write the explicitly supported attributes in approved target OUs, and reset passwords for the intended user scope. Do not run the MCP service as Domain Admin merely because user creation or credential bootstrap is enabled.
 
-Keep organization-specific OU mappings, naming rules, HR identifiers, group policy, and entitlement logic outside this public repository. Those belong in the caller's orchestration/policy layer.
+Keep organization-specific OU mappings, naming rules, HR identifiers, group policy, entitlement logic, secret names, secret mount locations, and approval policy outside this public repository. Those belong in the caller's deployment/orchestration/policy layer.
