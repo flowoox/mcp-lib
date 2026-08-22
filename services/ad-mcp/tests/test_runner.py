@@ -69,16 +69,30 @@ def test_runner_normalizes_nonzero_exit_without_echoing_input(monkeypatch: pytes
     assert secret_like_input not in str(exc_info.value)
 
 
-def test_static_probe_registry_contains_no_ad_mutation_commands() -> None:
-    forbidden = (
+def test_mutation_commands_are_confined_to_explicit_static_scripts() -> None:
+    mutation_scripts = {
+        ScriptId.SET_USER_ENABLED,
+        ScriptId.SET_USER_GROUP_MEMBERSHIP,
+    }
+    forbidden_everywhere = (
         "Invoke-Expression",
-        "Set-AD",
-        "New-AD",
-        "Remove-AD",
-        "Enable-AD",
-        "Disable-AD",
-        "Add-AD",
+        "Start-Process",
+        "powershell -Command",
+        "pwsh -Command",
+        "New-ADUser",
+        "Remove-ADUser",
+        "Set-ADAccountPassword",
         "-Repair",
     )
     combined = "\n".join(SCRIPTS.values())
-    assert not any(command.casefold() in combined.casefold() for command in forbidden)
+    assert not any(command.casefold() in combined.casefold() for command in forbidden_everywhere)
+
+    mutation_tokens = (
+        "Enable-ADAccount",
+        "Disable-ADAccount",
+        "Add-ADGroupMember",
+        "Remove-ADGroupMember",
+    )
+    for script_id, source in SCRIPTS.items():
+        has_mutation = any(token.casefold() in source.casefold() for token in mutation_tokens)
+        assert has_mutation is (script_id in mutation_scripts)

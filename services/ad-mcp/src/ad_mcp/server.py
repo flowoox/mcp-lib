@@ -13,10 +13,23 @@ from mcp_common.operations import (
     OperationResult,
     OperationStatus,
     RiskLevel,
+    Verification,
 )
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .baseline import BaselineProfile, evaluate_security_snapshot
+from .changes import (
+    GroupMembershipRequest,
+    PlanRequest,
+    UserEnabledRequest,
+    authorize_change,
+    build_group_membership_plan,
+    build_user_enabled_plan,
+    change_response,
+    group_membership_target,
+    user_enabled_target,
+    verify_response,
+)
 from .config import get_settings
 from .contract import capabilities
 from .runner import PowerShellRunner
@@ -84,6 +97,14 @@ def _observe_response(
     return payload
 
 
+def _direct_membership(groups: dict[str, Any], group_dn: str) -> bool:
+    return any(
+        str(item.get("distinguishedName", "")).casefold() == group_dn.casefold()
+        for item in groups.get("directGroups", [])
+        if isinstance(item, dict)
+    )
+
+
 def create_server() -> FastMCP:
     settings = get_settings()
     runner = PowerShellRunner(
@@ -94,8 +115,10 @@ def create_server() -> FastMCP:
     mcp = FastMCP(
         "Flowoox Active Directory MCP",
         instructions=(
-            "Read-only, typed Microsoft Active Directory diagnostics. The service executes only "
-            "repository-owned PowerShell probes and never accepts arbitrary PowerShell input."
+            "Typed Microsoft Active Directory diagnostics and controlled lifecycle operations. "
+            "The service executes only repository-owned PowerShell probes, never accepts arbitrary "
+            "PowerShell input, and keeps state-changing tools disabled unless an explicit runtime "
+            "write boundary and signed out-of-band approval grants are configured."
         ),
         host=settings.mcp_host,
         port=settings.mcp_port,
@@ -109,10 +132,14 @@ def create_server() -> FastMCP:
     async def probe(script_id: ScriptId, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         return await asyncio.to_thread(runner.run, script_id, payload)
 
+    def require_writes() -> None:
+        if not settings.ad_writes_enabled:
+            raise PermissionError("AD mutation tools are disabled by AD_WRITES_ENABLED=false")
+
     @mcp.tool()
     async def get_capabilities() -> dict[str, Any]:
         """Return the stable AD MCP contract and runtime requirements."""
-        return capabilities()
+        return capabilities(writes_enabled=settings.ad_writes_enabled)
 
     @mcp.tool()
     async def domain_summary(correlation_id: str = "") -> dict[str, Any]:
@@ -169,6 +196,15 @@ def create_server() -> FastMCP:
         )
 
     @mcp.tool()
+    async def get_user_groups(identity: str, correlation_id: str = "") -> dict[str, Any]:
+        """Return direct AD group memberships for one user; nested expansion is intentionally omitted."""
+        request = IdentityInput(identity=identity)
+        output = await probe(ScriptId.GET_USER_GROUPS, {"identity": request.identity})
+        return _observe_response(
+            "ad.user.groups", correlation_id, output, target=f"user:{request.identity}"
+        )
+
+    @mcp.tool()
     async def get_computer(identity: str, correlation_id: str = "") -> dict[str, Any]:
         """Return bounded properties for one computer identified by AD -Identity."""
         request = IdentityInput(identity=identity)
@@ -194,6 +230,195 @@ def create_server() -> FastMCP:
         request = ListLimitInput(limit=limit)
         output = await probe(ScriptId.LIST_OUS, {"limit": request.limit})
         return _observe_response("ad.ou.list", correlation_id, output)
+
+    @mcp.tool()
+    async def plan_user_enabled(
+        identity: str,
+        enabled: bool,
+        idempotency_key: str,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Plan an approved enable/disable mutation and capture current AD pre-state."""
+        identity_request = IdentityInput(identity=identity)
+        plan_request = PlanRequest(idempotency_key=idempotency_key)
+        current = await probe(ScriptId.GET_USER, {"identity": identity_request.identity})
+        return build_user_enabled_plan(
+            identity=identity_request.identity,
+            enabled=enabled,
+            current=current,
+            correlation_id=correlation_id,
+            idempotency_key=plan_request.idempotency_key,
+        )
+
+    @mcp.tool()
+    async def change_user_enabled(
+        identity: str,
+        enabled: bool,
+        idempotency_key: str,
+        approval_grant: str,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Enable/disable one user only after verifying an exact signed approval grant."""
+        require_writes()
+        request = UserEnabledRequest(
+            identity=identity,
+            enabled=enabled,
+            idempotency_key=idempotency_key,
+            approval_grant=approval_grant,
+        )
+        target = user_enabled_target(request.identity)
+        approval = authorize_change(
+            grant=request.approval_grant,
+            secret=settings.ad_approval_secret,
+            operation="ad.user.enabled.change",
+            target=target,
+            idempotency_key=request.idempotency_key,
+            intent={"enabled": request.enabled},
+        )
+        output = await probe(
+            ScriptId.SET_USER_ENABLED,
+            {"identity": request.identity, "enabled": request.enabled},
+        )
+        observed = await probe(ScriptId.GET_USER, {"identity": request.identity})
+        passed = bool(observed.get("enabled")) == request.enabled
+        verification = Verification(
+            check="independent user enabled-state readback",
+            passed=passed,
+            details={"expectedEnabled": request.enabled, "observedEnabled": observed.get("enabled")},
+        )
+        return change_response(
+            operation="ad.user.enabled.change",
+            target=target,
+            correlation_id=correlation_id,
+            idempotency_key=request.idempotency_key,
+            changed=bool(output.get("changed")),
+            output=output,
+            approval=approval,
+            verification=verification,
+        )
+
+    @mcp.tool()
+    async def verify_user_enabled(
+        identity: str,
+        enabled: bool,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Independently verify the current enabled state for one user."""
+        request = IdentityInput(identity=identity)
+        observed = await probe(ScriptId.GET_USER, {"identity": request.identity})
+        actual = bool(observed.get("enabled"))
+        return verify_response(
+            operation="ad.user.enabled.verify",
+            target=user_enabled_target(request.identity),
+            correlation_id=correlation_id,
+            check="user enabled-state equals requested state",
+            passed=actual == enabled,
+            details={"expectedEnabled": enabled, "observedEnabled": actual},
+        )
+
+    @mcp.tool()
+    async def plan_user_group_membership(
+        user_identity: str,
+        group_identity: str,
+        present: bool,
+        idempotency_key: str,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Plan a direct user/group membership mutation and capture its current state."""
+        user = IdentityInput(identity=user_identity)
+        group = IdentityInput(identity=group_identity)
+        plan_request = PlanRequest(idempotency_key=idempotency_key)
+        group_object = await probe(ScriptId.GET_GROUP, {"identity": group.identity})
+        groups = await probe(ScriptId.GET_USER_GROUPS, {"identity": user.identity})
+        current_present = _direct_membership(groups, str(group_object["distinguishedName"]))
+        return build_group_membership_plan(
+            user_identity=user.identity,
+            group_identity=group.identity,
+            present=present,
+            current_present=current_present,
+            correlation_id=correlation_id,
+            idempotency_key=plan_request.idempotency_key,
+        )
+
+    @mcp.tool()
+    async def change_user_group_membership(
+        user_identity: str,
+        group_identity: str,
+        present: bool,
+        idempotency_key: str,
+        approval_grant: str,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Add/remove one direct group membership after exact signed approval verification."""
+        require_writes()
+        request = GroupMembershipRequest(
+            user_identity=user_identity,
+            group_identity=group_identity,
+            present=present,
+            idempotency_key=idempotency_key,
+            approval_grant=approval_grant,
+        )
+        target = group_membership_target(request.user_identity, request.group_identity)
+        approval = authorize_change(
+            grant=request.approval_grant,
+            secret=settings.ad_approval_secret,
+            operation="ad.user.group-membership.change",
+            target=target,
+            idempotency_key=request.idempotency_key,
+            intent={"present": request.present},
+        )
+        output = await probe(
+            ScriptId.SET_USER_GROUP_MEMBERSHIP,
+            {
+                "userIdentity": request.user_identity,
+                "groupIdentity": request.group_identity,
+                "present": request.present,
+            },
+        )
+        group_object = await probe(ScriptId.GET_GROUP, {"identity": request.group_identity})
+        groups = await probe(ScriptId.GET_USER_GROUPS, {"identity": request.user_identity})
+        observed_present = _direct_membership(groups, str(group_object["distinguishedName"]))
+        verification = Verification(
+            check="independent direct group-membership readback",
+            passed=observed_present == request.present,
+            details={
+                "expectedPresent": request.present,
+                "observedPresent": observed_present,
+                "groupObjectGuid": group_object.get("objectGuid"),
+            },
+        )
+        return change_response(
+            operation="ad.user.group-membership.change",
+            target=target,
+            correlation_id=correlation_id,
+            idempotency_key=request.idempotency_key,
+            changed=bool(output.get("changed")),
+            output=output,
+            approval=approval,
+            verification=verification,
+        )
+
+    @mcp.tool()
+    async def verify_user_group_membership(
+        user_identity: str,
+        group_identity: str,
+        present: bool,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Independently verify one direct user/group membership state."""
+        user = IdentityInput(identity=user_identity)
+        group = IdentityInput(identity=group_identity)
+        group_object = await probe(ScriptId.GET_GROUP, {"identity": group.identity})
+        groups = await probe(ScriptId.GET_USER_GROUPS, {"identity": user.identity})
+        actual = _direct_membership(groups, str(group_object["distinguishedName"]))
+        return verify_response(
+            operation="ad.user.group-membership.verify",
+            target=group_membership_target(user.identity, group.identity),
+            correlation_id=correlation_id,
+            check="direct group membership equals requested state",
+            passed=actual == present,
+            details={"expectedPresent": present, "observedPresent": actual},
+        )
 
     return mcp
 

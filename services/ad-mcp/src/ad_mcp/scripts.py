@@ -13,6 +13,9 @@ class ScriptId(StrEnum):
     GET_COMPUTER = "get_computer"
     GET_GROUP = "get_group"
     LIST_OUS = "list_ous"
+    GET_USER_GROUPS = "get_user_groups"
+    SET_USER_ENABLED = "set_user_enabled"
+    SET_USER_GROUP_MEMBERSHIP = "set_user_group_membership"
 
 
 SCRIPTS: dict[ScriptId, str] = {
@@ -235,5 +238,80 @@ $items = @(Get-ADOrganizationalUnit -Filter * -Properties Description,ProtectedF
     limit = $limit
     items = $items
 } | ConvertTo-Json -Depth 7 -Compress
+""",
+    ScriptId.GET_USER_GROUPS: r"""
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory -ErrorAction Stop
+$p = $env:FLOWOOX_MCP_INPUT | ConvertFrom-Json -ErrorAction Stop
+$user = Get-ADUser -Identity $p.identity -Properties MemberOf -ErrorAction Stop
+$groups = @($user.MemberOf | Sort-Object | ForEach-Object {
+    $group = Get-ADGroup -Identity $_ -Properties Description -ErrorAction Stop
+    [pscustomobject]@{
+        objectGuid = $group.ObjectGUID.ToString()
+        samAccountName = $group.SamAccountName
+        name = $group.Name
+        distinguishedName = $group.DistinguishedName
+        groupCategory = $group.GroupCategory.ToString()
+        groupScope = $group.GroupScope.ToString()
+        description = $group.Description
+    }
+})
+[pscustomobject]@{
+    userObjectGuid = $user.ObjectGUID.ToString()
+    userDistinguishedName = $user.DistinguishedName
+    directGroupCount = $groups.Count
+    directGroups = $groups
+} | ConvertTo-Json -Depth 7 -Compress
+""",
+    ScriptId.SET_USER_ENABLED: r"""
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory -ErrorAction Stop
+$p = $env:FLOWOOX_MCP_INPUT | ConvertFrom-Json -ErrorAction Stop
+$user = Get-ADUser -Identity $p.identity -Properties Enabled -ErrorAction Stop
+$requested = [bool]$p.enabled
+$before = [bool]$user.Enabled
+$changed = $false
+if ($before -ne $requested) {
+    if ($requested) {
+        Enable-ADAccount -Identity $user -Confirm:$false -ErrorAction Stop
+    } else {
+        Disable-ADAccount -Identity $user -Confirm:$false -ErrorAction Stop
+    }
+    $changed = $true
+}
+[pscustomobject]@{
+    objectGuid = $user.ObjectGUID.ToString()
+    distinguishedName = $user.DistinguishedName
+    previousEnabled = $before
+    requestedEnabled = $requested
+    changed = $changed
+} | ConvertTo-Json -Depth 5 -Compress
+""",
+    ScriptId.SET_USER_GROUP_MEMBERSHIP: r"""
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory -ErrorAction Stop
+$p = $env:FLOWOOX_MCP_INPUT | ConvertFrom-Json -ErrorAction Stop
+$user = Get-ADUser -Identity $p.userIdentity -ErrorAction Stop
+$group = Get-ADGroup -Identity $p.groupIdentity -Properties Member -ErrorAction Stop
+$requestedPresent = [bool]$p.present
+$beforePresent = @($group.Member) -contains $user.DistinguishedName
+$changed = $false
+if ($beforePresent -ne $requestedPresent) {
+    if ($requestedPresent) {
+        Add-ADGroupMember -Identity $group -Members $user -Confirm:$false -ErrorAction Stop
+    } else {
+        Remove-ADGroupMember -Identity $group -Members $user -Confirm:$false -ErrorAction Stop
+    }
+    $changed = $true
+}
+[pscustomobject]@{
+    userObjectGuid = $user.ObjectGUID.ToString()
+    userDistinguishedName = $user.DistinguishedName
+    groupObjectGuid = $group.ObjectGUID.ToString()
+    groupDistinguishedName = $group.DistinguishedName
+    previousPresent = $beforePresent
+    requestedPresent = $requestedPresent
+    changed = $changed
+} | ConvertTo-Json -Depth 5 -Compress
 """,
 }
