@@ -5,6 +5,10 @@
 __pycache__
 .pytest_cache
 .ruff_cache
+**/__pycache__
+**/.pytest_cache
+**/.pytest-*
+**/.ruff_cache
 tests
 data
 *.pyc
