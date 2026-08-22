@@ -19,8 +19,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .baseline import BaselineProfile, evaluate_security_snapshot
 from .config import get_settings
 from .contract import capabilities
+from .ledger import OperationLedger
 from .runner import PowerShellRunner
 from .scripts import ScriptId
+from .write_models import AddGroupMemberInput, CreateDisabledUserInput
+from .writes import AdWriteService
 
 
 class IdentityInput(BaseModel):
@@ -45,15 +48,24 @@ class ListLimitInput(BaseModel):
     limit: int = Field(default=200, ge=1, le=1000)
 
 
-def _context(correlation_id: str) -> OperationContext:
+def _context(correlation_id: str, *, idempotency_key: str | None = None) -> OperationContext:
     value = correlation_id.strip()
     if not value:
-        return OperationContext(actor="mcp-client", source="ad-mcp")
+        return OperationContext(
+            actor="mcp-client",
+            source="ad-mcp",
+            idempotency_key=idempotency_key,
+        )
     try:
         parsed = UUID(value)
     except ValueError as exc:
         raise ValueError("correlation_id must be a UUID") from exc
-    return OperationContext(correlation_id=parsed, actor="mcp-client", source="ad-mcp")
+    return OperationContext(
+        correlation_id=parsed,
+        actor="mcp-client",
+        source="ad-mcp",
+        idempotency_key=idempotency_key,
+    )
 
 
 def _observe_response(
@@ -90,12 +102,16 @@ def create_server() -> FastMCP:
         settings.ad_powershell_executable,
         timeout_seconds=settings.ad_command_timeout_seconds,
     )
+    writes_enabled = settings.ad_write_mode == "approval_hmac"
     security = build_mcp_server_security(settings, service_hosts=("mcp-ad",))
     mcp = FastMCP(
         "Flowoox Active Directory MCP",
         instructions=(
-            "Read-only, typed Microsoft Active Directory diagnostics. The service executes only "
-            "repository-owned PowerShell probes and never accepts arbitrary PowerShell input."
+            "Typed Microsoft Active Directory diagnostics with an explicit static PowerShell "
+            "allowlist. Directory writes are disabled by default. When explicitly enabled, only "
+            "narrow lifecycle writes with pre-state, external HMAC approval, idempotency, "
+            "post-change verification and rollback are registered. Arbitrary PowerShell is never "
+            "accepted."
         ),
         host=settings.mcp_host,
         port=settings.mcp_port,
@@ -111,8 +127,8 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     async def get_capabilities() -> dict[str, Any]:
-        """Return the stable AD MCP contract and runtime requirements."""
-        return capabilities()
+        """Return the stable AD MCP contract and runtime availability."""
+        return capabilities(writes_enabled=writes_enabled)
 
     @mcp.tool()
     async def domain_summary(correlation_id: str = "") -> dict[str, Any]:
@@ -194,6 +210,82 @@ def create_server() -> FastMCP:
         request = ListLimitInput(limit=limit)
         output = await probe(ScriptId.LIST_OUS, {"limit": request.limit})
         return _observe_response("ad.ou.list", correlation_id, output)
+
+    if writes_enabled:
+        write_service = AdWriteService(
+            runner,
+            approval_secret=settings.ad_approval_hmac_key.get_secret_value(),
+            plan_ttl_seconds=settings.ad_plan_ttl_seconds,
+            ledger=OperationLedger(settings.ad_operation_store_file),
+        )
+
+        @mcp.tool()
+        async def plan_create_disabled_user(
+            sam_account_name: str,
+            user_principal_name: str,
+            display_name: str,
+            given_name: str,
+            surname: str,
+            path: str,
+            idempotency_key: str,
+            correlation_id: str = "",
+            mail: str | None = None,
+        ) -> dict[str, Any]:
+            """Plan a disabled-user creation and return an externally approvable challenge."""
+            request = CreateDisabledUserInput(
+                sam_account_name=sam_account_name,
+                user_principal_name=user_principal_name,
+                display_name=display_name,
+                given_name=given_name,
+                surname=surname,
+                path=path,
+                mail=mail,
+            )
+            context = _context(correlation_id, idempotency_key=idempotency_key)
+            return await asyncio.to_thread(write_service.plan_create_disabled_user, request, context)
+
+        @mcp.tool()
+        async def create_disabled_user(
+            approval_challenge: str,
+            approved_by: str,
+            approval_signature: str,
+        ) -> dict[str, Any]:
+            """Execute a separately approved disabled-user plan; no password is accepted."""
+            return await asyncio.to_thread(
+                write_service.create_disabled_user,
+                approval_challenge=approval_challenge,
+                approved_by=approved_by,
+                approval_signature=approval_signature,
+            )
+
+        @mcp.tool()
+        async def plan_add_group_member(
+            user_identity: str,
+            group_identity: str,
+            idempotency_key: str,
+            correlation_id: str = "",
+        ) -> dict[str, Any]:
+            """Plan one direct group-membership addition and return an approval challenge."""
+            request = AddGroupMemberInput(
+                user_identity=user_identity,
+                group_identity=group_identity,
+            )
+            context = _context(correlation_id, idempotency_key=idempotency_key)
+            return await asyncio.to_thread(write_service.plan_add_group_member, request, context)
+
+        @mcp.tool()
+        async def add_group_member(
+            approval_challenge: str,
+            approved_by: str,
+            approval_signature: str,
+        ) -> dict[str, Any]:
+            """Execute one separately approved direct group-membership addition."""
+            return await asyncio.to_thread(
+                write_service.add_group_member,
+                approval_challenge=approval_challenge,
+                approved_by=approved_by,
+                approval_signature=approval_signature,
+            )
 
     return mcp
 
