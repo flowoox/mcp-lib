@@ -40,6 +40,27 @@ Das ist bewusst streng. Gemessen: sämtliche Items der Sammlungen
 NC und ND werden akzeptiert: beide beschränken kommerzielle Nutzung und
 Bearbeitung, nicht das Anfertigen einer unveränderten Kopie.
 
+## Outbound-Sicherheitsgrenze
+
+`mcp-archive` ist bewusst **kein generischer HTTP-Client**. Der persistierbare
+`base_url`-Parameter bleibt aus Kompatibilitätsgründen im MCP-Vertrag, akzeptiert
+aber ausschließlich den kanonischen Ursprung `https://archive.org`.
+
+Jeder ausgehende API- und Download-Request wird vor dem Senden erneut geprüft.
+Automatische Redirects sind deaktiviert; jeder 30x-Hop wird einzeln auf HTTPS,
+Port 443 und einen Host unter `archive.org` validiert. Zusätzlich muss die
+vollständige aktuelle DNS-Antwort ausschließlich global routbare IPv4-/IPv6-
+Adressen enthalten. Loopback, RFC1918/ULA, Link-Local, Multicast, unspecified,
+reserved und IPv4-mapped lokale Ziele werden fail-closed blockiert. Damit kann
+ein MCP-Aufrufer weder die Basis-URL noch einen Redirect als SSRF-Pivot auf
+interne/Metadata-Ziele verwenden. Upstream-Fehlertexte werden nicht in MCP-
+Fehlerantworten gespiegelt.
+
+Internet-Archive-Storage-Nodes wie `*.archive.org` bleiben für legitime
+Download-Redirects erlaubt. Neue externe Hosts müssen nicht als breite Allowlist
+nachgetragen werden; wenn sich die Archive-Infrastruktur ändert, wird die
+konkrete Policy geprüft und bewusst angepasst.
+
 ## Gemessene Eigenheiten der API
 
 Jede davon steht als Test mit Begründung im Code.
