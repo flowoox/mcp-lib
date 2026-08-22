@@ -22,10 +22,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
+COPY constraints/python312.lock /build/constraints/python312.lock
 COPY packages/mcp-common /build/packages/mcp-common
 COPY services/soulseek-mcp /build/service
-RUN python -m pip install --upgrade pip \
-    && python -m pip install ./packages/mcp-common ./service
+RUN python -m pip install --constraint /build/constraints/python312.lock --upgrade pip \
+    && python -m pip install --constraint /build/constraints/python312.lock ./packages/mcp-common ./service \
+    && python -m pip check
 
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --create-home app \
