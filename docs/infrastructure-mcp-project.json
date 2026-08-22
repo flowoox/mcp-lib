@@ -2,9 +2,9 @@
   "schema_version": 2,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus a reference employee-entry orchestration.",
-  "updated_at": "2026-08-22T23:54:35+02:00",
+  "updated_at": "2026-08-23T00:00:37+02:00",
   "current_work_item": "docker-mcp",
-  "active_branch": "feat/admin-ops-mcp-roadmap",
+  "active_branch": "main",
   "active_pr": null,
   "next_branch": "feat/docker-mcp-events-logs",
   "principles": [
@@ -201,7 +201,7 @@
       "blocks": ["prtg-mcp", "n8n-mcp", "acmp-mcp", "manageengine-mdm-mcp", "freshdesk-mcp", "mailstore-cloud-mcp", "codetwo-mcp", "abacus-mcp", "fileshare-mcp", "docker-mcp", "hyperv-mcp", "failovercluster-mcp", "windows-admincenter-mcp"],
       "verification": {
         "local": "32 mcp-common tests passed with one existing platform skip; Ruff compileall and locked dependency graph passed on the implementation branch",
-        "ci": "pending branch CI"
+        "ci": "PR #28 current head passed all required CI jobs before merge"
       }
     },
     {
@@ -430,6 +430,10 @@
         "command label environment host-path and raw-payload redaction",
         "CI matrix entry documentation configuration template and deterministic tests"
       ],
+      "verification": {
+        "local": "11 docker-mcp tests plus Ruff compileall locked dependency validation and cross-service regression tests passed on the implementation branch",
+        "ci": "PR #28 current head passed all required CI jobs before merge"
+      },
       "remaining": [
         "bounded container log tail and event-window diagnostics",
         "image volume and network top-level inventory",
