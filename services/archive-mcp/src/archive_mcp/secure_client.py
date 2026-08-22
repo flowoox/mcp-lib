@@ -4,6 +4,7 @@ import hashlib
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote, urljoin
 
 import httpx
@@ -31,19 +32,23 @@ class SecureArchiveClient(ArchiveClient):
 
     def __init__(
         self,
-        *args: object,
+        *args: Any,
         url_validator: UrlValidator = validate_archive_outbound_url,
-        **kwargs: object,
+        transport: httpx.AsyncBaseTransport | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.url_validator = url_validator
+        # Primarily useful for deterministic negative tests. Production leaves
+        # this unset and therefore uses HTTPX's normal network transport.
+        self.transport = transport
 
     async def _send_with_validated_redirects(
         self,
         client: httpx.AsyncClient,
         url: str,
         *,
-        params: dict[str, object] | list[tuple[str, object]] | None = None,
+        params: dict[str, Any] | list[tuple[str, Any]] | None = None,
         stream: bool = False,
     ) -> httpx.Response:
         current_url = url
@@ -69,12 +74,13 @@ class SecureArchiveClient(ArchiveClient):
                 return response
 
             location = response.headers.get("location")
+            next_url = urljoin(str(response.url), location) if location else ""
             await response.aclose()
             if not location:
                 raise ArchiveError("Archive redirect did not contain a Location header")
             if redirect_count >= MAX_REDIRECTS:
                 raise ArchiveError("Archive request exceeded the redirect limit")
-            current_url = urljoin(str(response.url), location)
+            current_url = next_url
 
         raise ArchiveError("Archive request exceeded the redirect limit")
 
@@ -82,8 +88,8 @@ class SecureArchiveClient(ArchiveClient):
         self,
         path: str,
         *,
-        params: dict[str, object] | list[tuple[str, object]] | None = None,
-    ) -> object:
+        params: dict[str, Any] | list[tuple[str, Any]] | None = None,
+    ) -> Any:
         if not path.startswith("/"):
             raise ArchiveError("Archive API path must be absolute")
         url = f"{self.config.base_url}{path}"
@@ -91,6 +97,7 @@ class SecureArchiveClient(ArchiveClient):
             headers=self.headers,
             timeout=self.config.search_timeout + 15,
             follow_redirects=False,
+            transport=self.transport,
         ) as client:
             response = await self._send_with_validated_redirects(
                 client,
