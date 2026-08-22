@@ -47,14 +47,20 @@ verify_user_provision_disabled
 
 ## Idempotency and collision handling
 
-A retry is accepted as already satisfied only when an existing user with the requested `sAMAccountName` matches the approved identity attributes, resides in the requested OU, and is still disabled.
+A retry is accepted as already satisfied only when an existing user with the requested `sAMAccountName` matches the complete approved attribute set, is a direct child of the requested OU, and is still disabled.
+
+Optional fields are not wildcards. Omitting `mail`, `employee_id`, `description`, `given_name`, or `surname` means the corresponding existing AD attribute must also be unset before the request can be considered idempotently satisfied.
+
+The preflight response is treated as security-sensitive evidence. Missing or malformed OU, sAMAccountName, UPN, or object-GUID data fails closed and prevents the mutation from running.
 
 The service refuses to modify an existing user merely to make a provisioning request fit. In particular it rejects:
 
 - a `sAMAccountName` collision with different approved attributes;
 - a UPN assigned to another user;
 - an existing matching account that is already enabled;
-- a target path that is not an Organizational Unit.
+- an account in a child or different OU;
+- a target path that is not an Organizational Unit;
+- incomplete or malformed preflight evidence.
 
 This keeps the provisioning tool an **ensure-this-disabled-identity-exists** primitive rather than a generic `Set-ADUser` endpoint.
 

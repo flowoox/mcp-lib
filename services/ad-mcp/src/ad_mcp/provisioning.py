@@ -144,14 +144,45 @@ def _eq(left: object, right: object) -> bool:
 
 
 def _optional_eq(requested: str | None, actual: object) -> bool:
-    return requested is None or _eq(requested, actual)
+    """Treat an omitted approved attribute as an explicit expectation that it is unset."""
+
+    return _eq(requested, actual)
+
+
+def _parent_distinguished_name(distinguished_name: str) -> str:
+    """Return the direct parent DN while respecting escaped commas in the RDN."""
+
+    escaped = False
+    for index, character in enumerate(distinguished_name):
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\":
+            escaped = True
+            continue
+        if character == ",":
+            return distinguished_name[index + 1 :]
+    return ""
+
+
+def _preflight_records(
+    preflight: dict[str, Any], key: str, conflicts: list[str]
+) -> list[dict[str, Any]]:
+    value = preflight.get(key)
+    if not isinstance(value, list):
+        conflicts.append(f"preflight did not return a valid {key} array")
+        return []
+    if any(not isinstance(item, dict) for item in value):
+        conflicts.append(f"preflight returned a malformed {key} record")
+    return [item for item in value if isinstance(item, dict)]
 
 
 def _existing_matches(
     existing: dict[str, Any], request: DisabledUserFields, ou_distinguished_name: str
 ) -> bool:
     distinguished_name = str(existing.get("distinguishedName") or "")
-    in_ou = distinguished_name.casefold().endswith("," + ou_distinguished_name.casefold())
+    direct_parent = _parent_distinguished_name(distinguished_name)
+    in_requested_ou = _eq(direct_parent, ou_distinguished_name)
     return all(
         (
             _eq(existing.get("name"), request.name),
@@ -163,7 +194,7 @@ def _existing_matches(
             _optional_eq(request.mail, existing.get("mail")),
             _optional_eq(request.employee_id, existing.get("employeeId")),
             _optional_eq(request.description, existing.get("description")),
-            in_ou,
+            in_requested_ou,
             existing.get("enabled") is False,
         )
     )
@@ -174,21 +205,35 @@ def analyze_preflight(
 ) -> tuple[bool, list[str], dict[str, Any] | None]:
     """Return (already_satisfied, conflicts, existing_user) from a static AD preflight."""
 
-    sam_matches = [item for item in preflight.get("samMatches", []) if isinstance(item, dict)]
-    upn_matches = [item for item in preflight.get("upnMatches", []) if isinstance(item, dict)]
-    ou_dn = str(preflight.get("ouDistinguishedName") or request.ou_dn)
     conflicts: list[str] = []
+    ou_value = preflight.get("ouDistinguishedName")
+    if not isinstance(ou_value, str) or not ou_value.strip():
+        conflicts.append("preflight did not return the target OU distinguished name")
+        ou_dn = ""
+    else:
+        ou_dn = ou_value.strip()
+        if not _eq(ou_dn, request.ou_dn):
+            conflicts.append("preflight target OU does not match the requested OU")
+
+    sam_matches = _preflight_records(preflight, "samMatches", conflicts)
+    upn_matches = _preflight_records(preflight, "upnMatches", conflicts)
     if len(sam_matches) > 1:
         conflicts.append("multiple users match the requested sAMAccountName")
         return False, conflicts, None
 
     existing = sam_matches[0] if sam_matches else None
-    existing_guid = str(existing.get("objectGuid")) if existing else None
-    upn_conflicts = [
-        item
-        for item in upn_matches
-        if existing_guid is None or str(item.get("objectGuid")) != existing_guid
-    ]
+    existing_guid = str(existing.get("objectGuid") or "") if existing else ""
+    if existing is not None and not existing_guid:
+        conflicts.append("preflight sAMAccountName record is missing objectGuid")
+
+    upn_conflicts: list[dict[str, Any]] = []
+    for item in upn_matches:
+        item_guid = str(item.get("objectGuid") or "")
+        if not item_guid:
+            conflicts.append("preflight userPrincipalName record is missing objectGuid")
+            continue
+        if not existing_guid or item_guid != existing_guid:
+            upn_conflicts.append(item)
     if upn_conflicts:
         conflicts.append("requested userPrincipalName is assigned to another user")
 

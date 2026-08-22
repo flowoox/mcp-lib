@@ -48,6 +48,17 @@ def _existing(**overrides: object) -> dict[str, object]:
     return values
 
 
+def _preflight(
+    request: DisabledUserPlanRequest, existing: dict[str, object] | None = None
+) -> dict[str, object]:
+    matches = [] if existing is None else [existing]
+    return {
+        "ouDistinguishedName": request.ou_dn,
+        "samMatches": matches,
+        "upnMatches": matches,
+    }
+
+
 def test_provisioning_fields_are_narrow_and_never_accept_password_material() -> None:
     request = _request()
     payload = request.directory_payload()
@@ -80,11 +91,7 @@ def test_identifiers_and_ou_are_conservatively_validated() -> None:
 def test_preflight_marks_exact_disabled_user_as_idempotently_satisfied() -> None:
     request = _request()
     existing = _existing()
-    preflight = {
-        "ouDistinguishedName": request.ou_dn,
-        "samMatches": [existing],
-        "upnMatches": [existing],
-    }
+    preflight = _preflight(request, existing)
     satisfied, conflicts, observed = analyze_preflight(preflight, request)
     assert satisfied is True
     assert conflicts == []
@@ -105,11 +112,7 @@ def test_preflight_marks_exact_disabled_user_as_idempotently_satisfied() -> None
 def test_preflight_rejects_sam_or_upn_collision_instead_of_modifying_existing_user() -> None:
     request = _request()
     mismatched = _existing(displayName="Different Person")
-    preflight = {
-        "ouDistinguishedName": request.ou_dn,
-        "samMatches": [mismatched],
-        "upnMatches": [mismatched],
-    }
+    preflight = _preflight(request, mismatched)
     satisfied, conflicts, _ = analyze_preflight(preflight, request)
     assert satisfied is False
     assert any("sAMAccountName" in conflict for conflict in conflicts)
@@ -130,15 +133,88 @@ def test_preflight_rejects_sam_or_upn_collision_instead_of_modifying_existing_us
     assert any("userPrincipalName" in conflict for conflict in conflicts)
 
 
+def test_preflight_shape_is_validated_fail_closed() -> None:
+    request = _request()
+    malformed_payloads = (
+        {},
+        {"ouDistinguishedName": request.ou_dn, "samMatches": {}, "upnMatches": []},
+        {
+            "ouDistinguishedName": request.ou_dn,
+            "samMatches": [{"samAccountName": request.sam_account_name}],
+            "upnMatches": [],
+        },
+        {
+            "ouDistinguishedName": "OU=Other,DC=example,DC=local",
+            "samMatches": [],
+            "upnMatches": [],
+        },
+    )
+    for preflight in malformed_payloads:
+        satisfied, conflicts, _ = analyze_preflight(preflight, request)
+        assert satisfied is False
+        assert conflicts
+        with pytest.raises(ValueError, match="preflight rejected"):
+            build_disabled_user_plan(
+                request=request,
+                preflight=preflight,
+                correlation_id="",
+            )
+
+
+def test_omitted_optional_attributes_are_exactly_unset_not_wildcards() -> None:
+    request = _request(
+        given_name=None,
+        surname=None,
+        mail=None,
+        employee_id=None,
+        description=None,
+    )
+    populated_existing = _existing()
+    satisfied, conflicts, _ = analyze_preflight(
+        _preflight(request, populated_existing), request
+    )
+    assert satisfied is False
+    assert conflicts
+
+    unset_existing = _existing(
+        givenName=None,
+        surname=None,
+        mail=None,
+        employeeId=None,
+        description=None,
+    )
+    satisfied, conflicts, _ = analyze_preflight(_preflight(request, unset_existing), request)
+    assert satisfied is True
+    assert conflicts == []
+
+
+def test_existing_user_must_be_directly_in_requested_ou() -> None:
+    request = _request()
+    nested = _existing(
+        distinguishedName="CN=Alice Example,OU=Child,OU=Users,DC=example,DC=local"
+    )
+    satisfied, conflicts, _ = analyze_preflight(_preflight(request, nested), request)
+    assert satisfied is False
+    assert conflicts
+
+    escaped_name_request = _request(name="Doe, Alice", display_name="Doe, Alice")
+    escaped_name_existing = _existing(
+        name="Doe, Alice",
+        displayName="Doe, Alice",
+        distinguishedName=r"CN=Doe\, Alice,OU=Users,DC=example,DC=local",
+    )
+    satisfied, conflicts, _ = analyze_preflight(
+        _preflight(escaped_name_request, escaped_name_existing), escaped_name_request
+    )
+    assert satisfied is True
+    assert conflicts == []
+
+
 def test_provisioning_verification_requires_exact_disabled_readback() -> None:
     request = _request()
     exact = _existing()
     verification = provisioning_verification(
-        preflight={
-            "ouDistinguishedName": request.ou_dn,
-            "samMatches": [exact],
-            "upnMatches": [exact],
-        },
+        preflight=_preflight(request, exact),
         request=request,
     )
     assert verification.passed is True
@@ -146,11 +222,7 @@ def test_provisioning_verification_requires_exact_disabled_readback() -> None:
 
     enabled = _existing(enabled=True)
     failed = provisioning_verification(
-        preflight={
-            "ouDistinguishedName": request.ou_dn,
-            "samMatches": [enabled],
-            "upnMatches": [enabled],
-        },
+        preflight=_preflight(request, enabled),
         request=request,
     )
     assert failed.passed is False
