@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
 
 from mcp_common.operations import (
     Approval,
@@ -17,6 +16,7 @@ from mcp_common.operations import (
     RiskLevel,
     ToolPolicy,
 )
+from pydantic import ValidationError
 
 
 def context(*, key: str | None = "joiner:alice:2026-08-22") -> OperationContext:
@@ -96,9 +96,10 @@ def test_non_change_result_cannot_claim_mutation() -> None:
 
 
 def test_audit_event_requires_aware_timestamp() -> None:
+    naive_timestamp = datetime.now(timezone.utc).replace(tzinfo=None)
     with pytest.raises(ValidationError):
         AuditEvent(
-            timestamp=datetime(2026, 8, 22, 8, 0, 0),
+            timestamp=naive_timestamp,
             operation="ad.domain.observe",
             phase=OperationPhase.OBSERVE,
             risk=RiskLevel.READ_ONLY,
