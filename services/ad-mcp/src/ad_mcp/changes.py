@@ -119,6 +119,12 @@ def build_user_enabled_plan(
     context = operation_context(correlation_id, idempotency_key=idempotency_key)
     target = user_enabled_target(identity)
     before = bool(current.get("enabled"))
+    password_last_set = current.get("passwordLastSet")
+    credential_established = isinstance(password_last_set, str) and bool(password_last_set.strip())
+    if enabled and not credential_established:
+        raise ValueError(
+            "AD user cannot be enabled before an independently observed credential is established"
+        )
     operation = "ad.user.enabled.change"
     intent = {"enabled": enabled}
     plan = ChangePlan(
@@ -133,7 +139,11 @@ def build_user_enabled_plan(
                 rollback_action=f"restore enabled={str(before).lower()}",
             )
         ],
-        pre_state={"enabled": before, "objectGuid": current.get("objectGuid")},
+        pre_state={
+            "enabled": before,
+            "objectGuid": current.get("objectGuid"),
+            "credentialEstablished": credential_established,
+        },
         approval=Approval(
             state=ApprovalState.REQUIRED,
             reason="Enabling or disabling a directory identity can affect access and requires approval.",
@@ -146,7 +156,10 @@ def build_user_enabled_plan(
         context=context,
         target=target,
         status=OperationStatus.PLANNED,
-        metadata={"requestedEnabled": enabled},
+        metadata={
+            "requestedEnabled": enabled,
+            "credentialEstablished": credential_established,
+        },
     )
     return {
         "plan": plan.model_dump(mode="json"),

@@ -25,18 +25,47 @@ def test_user_enabled_plan_captures_prestate_and_requires_approval() -> None:
     result = build_user_enabled_plan(
         identity="alice",
         enabled=False,
-        current={"enabled": True, "objectGuid": "guid-1"},
+        current={"enabled": True, "objectGuid": "guid-1", "passwordLastSet": None},
         correlation_id=correlation_id,
         idempotency_key="offboard/alice/disable",
     )
     plan = result["plan"]
-    assert plan["pre_state"] == {"enabled": True, "objectGuid": "guid-1"}
+    assert plan["pre_state"] == {
+        "enabled": True,
+        "objectGuid": "guid-1",
+        "credentialEstablished": False,
+    }
     assert plan["approval"]["state"] == "required"
     assert plan["risk"] == "high"
     assert plan["steps"][0]["rollback_action"] == "restore enabled=true"
     assert result["approvalBinding"]["intent"] == {"enabled": False}
     assert result["alreadySatisfied"] is False
     assert result["audit"]["context"]["correlation_id"] == correlation_id
+
+
+def test_user_enable_plan_requires_independent_credential_evidence() -> None:
+    with pytest.raises(ValueError, match="credential is established"):
+        build_user_enabled_plan(
+            identity="alice",
+            enabled=True,
+            current={"enabled": False, "objectGuid": "guid-1", "passwordLastSet": None},
+            correlation_id="",
+            idempotency_key="joiner/alice/enable",
+        )
+
+    result = build_user_enabled_plan(
+        identity="alice",
+        enabled=True,
+        current={
+            "enabled": False,
+            "objectGuid": "guid-1",
+            "passwordLastSet": "2026-08-22T08:00:00Z",
+        },
+        correlation_id="",
+        idempotency_key="joiner/alice/enable",
+    )
+    assert result["plan"]["pre_state"]["credentialEstablished"] is True
+    assert result["audit"]["metadata"]["credentialEstablished"] is True
 
 
 def test_group_membership_plan_is_target_state_idempotent() -> None:
