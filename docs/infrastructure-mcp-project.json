@@ -2,10 +2,11 @@
   "schema_version": 1,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus a reference employee-entry orchestration.",
-  "updated_at": "2026-08-22T10:45:00+02:00",
+  "updated_at": "2026-08-22T10:55:00+02:00",
   "current_work_item": "ad-mcp",
-  "active_branch": null,
-  "next_branch": "feat/ad-mcp-provisioning",
+  "active_branch": "feat/ad-mcp-provisioning",
+  "active_pr": 20,
+  "next_branch": "feat/ad-mcp-credential-bootstrap",
   "principles": [
     "observe-plan-change-verify",
     "least-privilege",
@@ -61,18 +62,21 @@
         "fail-closed runtime write enablement and least-privilege deployment guidance",
         "plan change verify for user enabled state",
         "plan change verify for direct user group membership",
-        "pre-state rollback intent target-state idempotence and independent AD readback verification"
+        "pre-state rollback intent target-state idempotence and independent AD readback verification",
+        "typed disabled-user provisioning with OU and identity collision preflight",
+        "disabled-user provisioning retry safety that refuses to reshape conflicting existing identities",
+        "password-free provisioning boundary with exact approval binding and independent readback verification"
       ],
       "verification": {
-        "github_ci": "CI #116 passed all jobs on implementation head b22f9d1cb36799a9e28adb86fafb48997e66fc27",
-        "merged_pr": "#18 squash-merged as 79c751c067144063d9b056b535b341270371b2e4"
+        "approved_write_slice": "PR #18 squash-merged as 79c751c067144063d9b056b535b341270371b2e4 after CI #116 passed all jobs",
+        "provisioning_branch": "PR #20 active on feat/ad-mcp-provisioning; ad-mcp lint tests and compile passed in CI #120 on head 2acef6466c207b9833dc5c3f386b4986ba093d48 before this status-only update"
       },
       "remaining": [
-        "safe disabled-user provisioning with a narrow typed attribute allowlist",
         "opaque password/bootstrap secret-reference design that does not expose password material to the model-facing MCP boundary",
-        "creation rollback and independent provisioning verification"
+        "safe credential establishment and end-to-end verification before an account may be enabled",
+        "decide whether an explicitly approved GUID-bound rollback/delete primitive is warranted for freshly created disabled users"
       ],
-      "next_branch": "feat/ad-mcp-provisioning"
+      "next_branch": "feat/ad-mcp-credential-bootstrap"
     },
     {
       "id": "network-mcp",
