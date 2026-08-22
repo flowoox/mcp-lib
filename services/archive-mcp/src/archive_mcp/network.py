@@ -12,7 +12,7 @@ MAX_REDIRECTS = 5
 REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 
 
-class ArchiveOutboundError(RuntimeError):
+class ArchiveOutboundError(ValueError):
     """Raised when an outbound Archive request violates the network policy."""
 
 
@@ -84,7 +84,9 @@ def validate_resolved_addresses(addresses: Iterable[str]) -> None:
         try:
             address = ipaddress.ip_address(value)
         except ValueError as exc:
-            raise ArchiveOutboundError(f"Archive host resolved to an invalid address: {raw}") from exc
+            raise ArchiveOutboundError(
+                f"Archive host resolved to an invalid address: {raw}"
+            ) from exc
         seen = True
         mapped = getattr(address, "ipv4_mapped", None)
         if mapped is not None:
