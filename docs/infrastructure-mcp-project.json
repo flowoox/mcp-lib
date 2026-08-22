@@ -1,12 +1,12 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus a reference employee-entry orchestration.",
-  "updated_at": "2026-08-22T11:47:00+02:00",
-  "current_work_item": "network-mcp",
-  "active_branch": "feat/network-mcp-path-diagnostics-main",
+  "updated_at": "2026-08-22T23:54:35+02:00",
+  "current_work_item": "docker-mcp",
+  "active_branch": "feat/admin-ops-mcp-roadmap",
   "active_pr": null,
-  "next_branch": "feat/fortigate-mcp-observe",
+  "next_branch": "feat/docker-mcp-events-logs",
   "principles": [
     "observe-plan-change-verify",
     "least-privilege",
@@ -16,7 +16,67 @@
     "approval-for-high-risk-writes",
     "idempotent-writes",
     "capture-pre-state-and-rollback-where-possible",
-    "no-private-topology-or-credentials-in-public-repo"
+    "no-private-topology-or-credentials-in-public-repo",
+    "read-only-and-fail-closed-by-default",
+    "separate-explicit-write-identity",
+    "bounded-agent-diagnostics",
+    "server-load-protection"
+  ],
+  "roadmap_profiles": {
+    "standard_read_only": {
+      "default_mode": "read_only",
+      "backend_connection": "explicit least-privilege read-only identity or authorization proxy",
+      "startup_policy": "fail closed when read-only backend mode cannot be asserted",
+      "tool_surface": "typed explicit operation allowlist; no arbitrary URL, method, query, command, script or provider call",
+      "audit": "actor, reason/source and correlation ID; result payloads and credentials excluded from audit metadata"
+    },
+    "agent_optimized_diagnostics": {
+      "bounded_queries": true,
+      "pagination": "bounded opaque cursors where upstream supports stable pagination",
+      "sampling": "deterministic bounded sampling after raw-cost accounting",
+      "rate_limits": "per-connector start-rate limit plus upstream rate-limit handling",
+      "timeouts": "per-request limit clipped by one monotonic per-tool total deadline",
+      "query_budgets": ["requests", "items", "response_bytes", "fan_out", "elapsed_time"],
+      "aggregation_before_fan_out": true,
+      "cache_hints": "product-neutral max-age hints that never weaken authorization",
+      "concurrency_caps": true,
+      "server_load_protection": "reject over-broad work before dispatch and reject oversized streamed responses before parsing"
+    },
+    "optional_write_layer": {
+      "enabled_by_default": false,
+      "identity": "separate least-privilege write identity",
+      "lifecycle": ["plan", "change", "verify"],
+      "required_controls": [
+        "approval bound to exact target and desired state",
+        "idempotency key",
+        "pre-state capture",
+        "rollback declaration where possible",
+        "independent read-back verification",
+        "structured audit and correlation ID"
+      ]
+    }
+  },
+  "pattern_reuse": [
+    {
+      "pattern": "mcp-common operation approval secret-reference and transport-security contracts",
+      "existing_sources": ["mcp-common", "ad-mcp", "network-mcp"],
+      "applies_to": ["all-admin-ops-mcps"]
+    },
+    {
+      "pattern": "bounded read-only REST/API connector with pagination rate limits and cache hints",
+      "existing_sources": ["archive-mcp bounded probe fan-out", "network-mcp timeouts"],
+      "applies_to": ["prtg-mcp", "n8n-mcp", "manageengine-mdm-mcp", "freshdesk-mcp", "mailstore-cloud-mcp", "codetwo-mcp", "abacus-mcp", "docker-mcp", "windows-admincenter-mcp"]
+    },
+    {
+      "pattern": "fixed Windows-native probe allowlist with bounded structured output and no arbitrary PowerShell",
+      "existing_sources": ["ad-mcp", "network-mcp path diagnostics"],
+      "applies_to": ["acmp-mcp", "fileshare-mcp", "hyperv-mcp", "failovercluster-mcp"]
+    },
+    {
+      "pattern": "inventory health and relationship graph normalized before detail fan-out",
+      "existing_sources": ["network-mcp diagnostic bundle"],
+      "applies_to": ["prtg-mcp", "docker-mcp", "hyperv-mcp", "failovercluster-mcp", "windows-admincenter-mcp"]
+    }
   ],
   "work_items": [
     {
@@ -90,7 +150,7 @@
     {
       "id": "network-mcp",
       "name": "Network analysis MCP",
-      "status": "in_progress",
+      "status": "complete",
       "depends_on": ["foundation"],
       "minimum_scope": [
         "DNS resolution",
@@ -116,14 +176,33 @@
         "child stdin and stderr isolation minimal deterministic environment and anonymous file-backed stdout capture",
         "fail-closed 32 KiB path-trace output contract"
       ],
-      "remaining": [
-        "run and fix full CI for the synchronized bounded path-trace slice",
-        "merge bounded path tracing when green and still synchronized"
-      ],
+      "verification": {
+        "bounded_path_diagnostics": "PR #26 merged on current main as 918d481b4fac6b470a0c01ca495c8ee365b5b4b1 with all main CI jobs green"
+      },
       "optional_future_hardening": [
         "add explicit DNS SRV TXT or reverse lookup tools only when a concrete troubleshooting workflow requires them"
       ],
       "next_branch": "feat/fortigate-mcp-observe"
+    },
+    {
+      "id": "agent-diagnostics-foundation",
+      "name": "Shared query budget and read-only connector boundary",
+      "status": "complete",
+      "depends_on": ["foundation"],
+      "deliverables": [
+        "per-tool request item byte fan-out and total-time budgets",
+        "read-only backend transport assertion",
+        "explicit provider operation allowlist",
+        "bounded pagination and deterministic sampling",
+        "rate limits request timeouts cache hints and concurrency caps",
+        "aggregation-before-fan-out enforcement",
+        "provider-neutral documentation and deterministic tests"
+      ],
+      "blocks": ["prtg-mcp", "n8n-mcp", "acmp-mcp", "manageengine-mdm-mcp", "freshdesk-mcp", "mailstore-cloud-mcp", "codetwo-mcp", "abacus-mcp", "fileshare-mcp", "docker-mcp", "hyperv-mcp", "failovercluster-mcp", "windows-admincenter-mcp"],
+      "verification": {
+        "local": "32 mcp-common tests passed with one existing platform skip; Ruff compileall and locked dependency graph passed on the implementation branch",
+        "ci": "pending branch CI"
+      }
     },
     {
       "id": "fortigate-mcp",
@@ -162,6 +241,252 @@
       ]
     },
     {
+      "id": "prtg-mcp",
+      "name": "PRTG monitoring MCP",
+      "status": "queued",
+      "priority": "high",
+      "depends_on": ["agent-diagnostics-foundation", "network-mcp"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "observe_scope": [
+        "bounded probes groups devices sensors channels and status inventory",
+        "active alarms acknowledged state dependencies maintenance windows and notification metadata",
+        "bounded historical samples aggregated by the backend before return",
+        "health summaries and correlation-ready diagnostic bundles"
+      ],
+      "load_guards": ["bounded time windows", "sensor pagination", "channel sampling", "no unbounded historic-data export"],
+      "optional_write_scope": ["acknowledge alarm", "pause or resume an exact object", "apply an allowlisted maintenance window"],
+      "reuse": ["read-only REST connector", "network target policy", "operation approval and audit envelopes"]
+    },
+    {
+      "id": "n8n-mcp",
+      "name": "n8n administration MCP",
+      "status": "queued",
+      "priority": "medium",
+      "depends_on": ["agent-diagnostics-foundation"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "observe_scope": [
+        "workflow inventory activation state tags and dependency summaries",
+        "bounded execution status timing failure and retry diagnostics",
+        "credential references and types without credential values",
+        "queue worker and webhook health where the deployed API exposes them"
+      ],
+      "load_guards": ["execution time-window cap", "redacted error summaries", "workflow graph aggregation before node fan-out"],
+      "optional_write_scope": ["activate or deactivate exact workflow", "run allowlisted workflow with typed input", "retry exact failed execution when upstream supports idempotent retry"],
+      "reuse": ["read-only REST connector", "secret-reference boundary", "operation approval and idempotency envelopes"]
+    },
+    {
+      "id": "acmp-mcp",
+      "name": "ACMP client-management MCP",
+      "status": "queued",
+      "priority": "medium",
+      "depends_on": ["agent-diagnostics-foundation", "windows-mcp"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "observe_scope": [
+        "client hardware operating-system and agent-health inventory",
+        "software compliance vulnerability and rollout-state summaries",
+        "job history and bounded client diagnostics",
+        "collection membership and policy assignment metadata"
+      ],
+      "load_guards": ["collection-first aggregation", "bounded client detail fan-out", "no arbitrary WMI SQL or remote script"],
+      "optional_write_scope": ["assign allowlisted job or package", "move exact client between approved collections", "trigger approved agent inventory"],
+      "reuse": ["read-only API connector", "fixed Windows probe allowlist", "operation approval and audit envelopes"]
+    },
+    {
+      "id": "manageengine-mdm-mcp",
+      "name": "ManageEngine MDM MCP",
+      "status": "queued",
+      "priority": "medium",
+      "depends_on": ["agent-diagnostics-foundation"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "observe_scope": [
+        "bounded devices users groups enrollment and agent-health inventory",
+        "profiles applications compliance findings and deployment status",
+        "security posture lost-device and command-state summaries",
+        "audit and diagnostic bundles without personal application content"
+      ],
+      "load_guards": ["tenant-scoped pagination", "device sampling", "no bulk device-detail fan-out by default"],
+      "optional_write_scope": ["assign approved profile or application", "issue separately approved device command", "retire or wipe only through critical-risk exact-device approval"],
+      "reuse": ["read-only REST connector", "operation approvals", "secret references", "normalized security findings"]
+    },
+    {
+      "id": "freshdesk-mcp",
+      "name": "Freshdesk ticket-system MCP",
+      "status": "queued",
+      "priority": "medium",
+      "depends_on": ["agent-diagnostics-foundation"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "observe_scope": [
+        "bounded tickets conversations contacts groups agents SLA and assignment metadata",
+        "typed status priority tag and time-window filters",
+        "attachment metadata without automatic content download",
+        "incident and trend summaries aggregated before ticket-detail fan-out"
+      ],
+      "load_guards": ["updated-since windows", "opaque cursor pagination", "conversation and attachment caps", "PII-aware output minimization"],
+      "optional_write_scope": ["create or update exact ticket", "add bounded note or reply", "assign change status or tag through allowlisted fields"],
+      "reuse": ["read-only REST connector", "operation audit envelopes", "n8n orchestration boundary"]
+    },
+    {
+      "id": "mailstore-cloud-mcp",
+      "name": "MailStore Cloud MCP",
+      "status": "queued",
+      "priority": "medium",
+      "depends_on": ["agent-diagnostics-foundation"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "observe_scope": [
+        "tenant archive mailbox licensing ingestion and retention health metadata exposed by the supported cloud API",
+        "bounded audit and delivery diagnostics",
+        "message search metadata only unless a separate policy explicitly permits minimal content evidence",
+        "connector journal and synchronization-state summaries"
+      ],
+      "load_guards": ["strict time windows", "mailbox and result caps", "no bulk archive export", "no unbounded message bodies or attachments"],
+      "optional_write_scope": ["exact supported connector or retention changes after API capability validation", "retry allowlisted failed ingestion job"],
+      "reuse": ["read-only REST connector", "secret redaction", "cache hints", "security finding normalization"]
+    },
+    {
+      "id": "codetwo-mcp",
+      "name": "CodeTwo signature-management MCP",
+      "status": "queued",
+      "priority": "low",
+      "depends_on": ["agent-diagnostics-foundation", "entra-mcp"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "observe_scope": [
+        "tenant connector health signature-rule inventory scope priority and activation state",
+        "bounded deployment and processing diagnostics",
+        "template metadata and version hashes without unrestricted HTML or asset streaming",
+        "directory synchronization status without directory credentials"
+      ],
+      "load_guards": ["rule pagination", "template byte caps", "aggregate assignment counts before recipient fan-out"],
+      "optional_write_scope": ["activate deactivate reorder or publish an exact approved rule version"],
+      "reuse": ["read-only REST connector", "Entra inventory references", "operation approval and pre-state envelopes"]
+    },
+    {
+      "id": "abacus-mcp",
+      "name": "Abacus administration MCP",
+      "status": "discovery_required",
+      "priority": "low",
+      "depends_on": ["agent-diagnostics-foundation"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "discovery_gate": "select the exact Abacus product edition supported API and least-privilege role before freezing the public contract",
+      "observe_scope": [
+        "product-neutral tenant module integration job and service-health metadata",
+        "bounded master-data or transaction metadata only after data-classification approval",
+        "audit and failed-job diagnostics with financial payroll HR and personal content minimized by default"
+      ],
+      "load_guards": ["module-specific field allowlists", "fiscal/time-window caps", "no arbitrary report SQL or export"],
+      "optional_write_scope": ["only exact API-supported administrative actions defined after discovery; no generic record mutation"],
+      "reuse": ["read-only connector", "approval and audit envelopes", "deployment-owned policy adapter"]
+    },
+    {
+      "id": "fileshare-mcp",
+      "name": "Windows file-share diagnostics MCP",
+      "status": "queued",
+      "priority": "high",
+      "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "ad-mcp"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "observe_scope": [
+        "read-only file and directory metadata analysis inside configured share roots",
+        "SMB share and NTFS path-resolution diagnostics",
+        "owner inheritance explicit and inherited ACE analysis",
+        "effective-rights evidence only when identity group token share ACL NTFS ACL and deny precedence are safely available",
+        "bounded hashes MIME or text statistics for allowlisted file classes without returning full content"
+      ],
+      "mandatory_guards": [
+        "canonical parsed path containment under deployment-owned roots with reparse-point and DFS boundary checks",
+        "no caller-selected host share root credential or arbitrary PowerShell",
+        "directory depth entry file-count byte and wall-time budgets",
+        "never stream arbitrary file content unbounded to an agent",
+        "effective-rights answers include evidence completeness and return indeterminate instead of guessing"
+      ],
+      "optional_write_scope": ["none in initial releases", "future ACL changes only as exact ACE plan change verify with approval idempotency pre-state and rollback"],
+      "reuse": ["fixed Windows probe allowlist", "AD SID and group lookup", "path containment", "query budget"]
+    },
+    {
+      "id": "docker-mcp",
+      "name": "Docker host diagnostics MCP",
+      "status": "in_progress",
+      "priority": "highest",
+      "depends_on": ["agent-diagnostics-foundation", "network-mcp"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "observe_scope": [
+        "host daemon container image volume and network inventory",
+        "health resource and bounded log or event diagnostics",
+        "container image network volume and published-port relationship summaries",
+        "bounded diagnostic bundles aggregated before container inspect fan-out"
+      ],
+      "mandatory_guards": [
+        "production read-only authorization proxy or API identity preferred because a Docker socket mount marked read-only is still protocol-privileged",
+        "fixed GET endpoint allowlist with no exec attach build pull push create start stop delete or arbitrary path",
+        "log tail time-window and byte caps",
+        "environment secret label and raw inspect-field redaction"
+      ],
+      "optional_write_scope": ["exact container lifecycle or deployment actions only through plan change verify approval idempotency pre-state and independent health verification"],
+      "reuse": ["read-only connector", "network target policy", "query budget", "operation and audit envelopes"],
+      "completed_deliverables": [
+        "flowoox.docker-diagnostics v1 read-only contract",
+        "explicit fixed Docker Engine GET adapter for ping info and bounded container list",
+        "HTTPS read-only proxy mode plus fail-closed direct-socket override",
+        "daemon resource container network storage and published-port summaries",
+        "aggregate diagnostic bundle sharing one query budget",
+        "command label environment host-path and raw-payload redaction",
+        "CI matrix entry documentation configuration template and deterministic tests"
+      ],
+      "remaining": [
+        "bounded container log tail and event-window diagnostics",
+        "image volume and network top-level inventory",
+        "bounded per-container resource statistics",
+        "diagnostic bundle detail fan-out after aggregate candidate selection",
+        "production authorization-proxy integration example",
+        "optional separately designed write layer only after observe contract stabilizes"
+      ]
+    },
+    {
+      "id": "hyperv-mcp",
+      "name": "Hyper-V diagnostics MCP",
+      "status": "queued",
+      "priority": "high",
+      "depends_on": ["agent-diagnostics-foundation", "windows-mcp"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "observe_scope": [
+        "host VM checkpoint switch adapter disk and replication inventory",
+        "VM integration health resource pressure and bounded Hyper-V event diagnostics",
+        "VM-to-switch-to-adapter and VM-to-VHD-to-volume relationship summaries",
+        "bounded host or VM diagnostic bundles"
+      ],
+      "mandatory_guards": ["fixed signed PowerShell/CIM probe allowlist", "no arbitrary script WMI query console or guest command", "event time and count caps", "aggregate host health before VM fan-out"],
+      "optional_write_scope": ["start stop checkpoint migration and configuration changes only through plan change verify approval idempotency pre-state and independent state readback"],
+      "reuse": ["AD fixed Windows probes", "query budget", "network diagnostics", "operation approval envelopes"]
+    },
+    {
+      "id": "failovercluster-mcp",
+      "name": "Windows Failover Cluster diagnostics MCP",
+      "status": "queued",
+      "priority": "high",
+      "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "network-mcp"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "observe_scope": [
+        "cluster node group role resource network storage witness and quorum inventory",
+        "health state ownership dependency and failover-history summaries",
+        "bounded cluster and system event diagnostics",
+        "node network CSV disk resource and role relationship bundles"
+      ],
+      "mandatory_guards": ["fixed FailoverClusters cmdlet allowlist", "no arbitrary PowerShell CIM or remote command", "aggregate cluster state before node/resource fan-out", "event and diagnostic-report byte caps"],
+      "optional_write_scope": ["move drain pause resume or resource actions only through plan change verify approval idempotency pre-state quorum-safety checks and independent cluster readback"],
+      "reuse": ["fixed Windows probes", "network diagnostics", "query budget", "critical-risk approval envelopes"]
+    },
+    {
+      "id": "windows-admincenter-mcp",
+      "name": "Windows Admin Center gateway MCP",
+      "status": "decision_gate",
+      "priority": "optional",
+      "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "hyperv-mcp", "failovercluster-mcp"],
+      "profiles": ["standard_read_only", "agent_optimized_diagnostics", "optional_write_layer"],
+      "decision_gate": "implement only if a supported stable gateway API and least-privilege read-only role reduce duplicated Windows Hyper-V and cluster adapters without becoming a generic PowerShell proxy",
+      "observe_scope": ["gateway connection inventory", "delegated server health", "supported normalized Windows Hyper-V and cluster diagnostics"],
+      "mandatory_guards": ["no gateway extension passthrough", "no arbitrary PowerShell", "target allowlist", "delegation identity and correlation preservation"],
+      "optional_write_scope": ["only supported typed gateway operations using the same plan change verify boundary"],
+      "reuse": ["Windows Hyper-V and cluster contracts", "read-only connector", "query budget"]
+    },
+    {
       "id": "security-audit-mcp",
       "name": "Cross-service security audit MCP",
       "status": "queued",
@@ -194,7 +519,7 @@
       "name": "Additional infrastructure MCPs",
       "status": "queued",
       "depends_on": ["security-audit-mcp"],
-      "candidates": ["unifi", "veeam", "hyperv", "wazuh", "checkmk", "pki", "exchange-m365"]
+      "candidates": ["unifi", "veeam", "wazuh", "checkmk", "pki", "exchange-m365"]
     }
   ]
 }

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "flowoox-mcp-common"
-version = "0.1.0"
+version = "0.2.0"
 description = "Small product-neutral helpers shared by flowoox MCP services."
 requires-python = ">=3.12"
 license = {text = "MIT"}

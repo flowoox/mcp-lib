@@ -27,9 +27,19 @@ The shared models in `mcp_common.operations` provide correlation IDs, actor/sour
 - Reversible plan steps declare their rollback action before execution.
 - Pre-state is captured before mutation where the upstream API permits it.
 - Read-only tools cannot report mutation success.
+- Observe services support a separately provisioned read-only backend connection and fail closed
+  unless the adapter declares that mode; an optional write identity belongs behind a distinct,
+  disabled-by-default plan/change/verify layer.
+- Agent-facing diagnostics use per-invocation query budgets, bounded pagination and sampling,
+  response-size limits, timeouts, rate limits, concurrency caps and aggregation before fan-out.
 - External MCP endpoints reuse the existing `mcp_common.mcp_security` trust-boundary controls.
 
 Approval is an interface boundary, not a hard-coded business workflow. Deployments may connect it to n8n, an agent policy engine, a ticket system, or another authoritative approval source.
+
+The concrete provider adapter remains responsible for enforcing a raw response byte limit while
+streaming and for mapping its typed operation allowlist to fixed upstream methods and paths. The
+shared `mcp_common.read_only_connector` boundary never accepts a caller-selected URL, HTTP method,
+SQL statement or shell command. See [`QUERY-SAFETY.md`](QUERY-SAFETY.md).
 
 ## Service sequence
 
