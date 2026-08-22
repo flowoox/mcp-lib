@@ -2,11 +2,11 @@
   "schema_version": 1,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus a reference employee-entry orchestration.",
-  "updated_at": "2026-08-22T11:18:00+02:00",
+  "updated_at": "2026-08-22T11:47:00+02:00",
   "current_work_item": "network-mcp",
-  "active_branch": "feat/network-mcp",
+  "active_branch": "feat/network-mcp-path-diagnostics-main",
   "active_pr": null,
-  "next_branch": "feat/network-mcp-path-diagnostics",
+  "next_branch": "feat/fortigate-mcp-observe",
   "principles": [
     "observe-plan-change-verify",
     "least-privilege",
@@ -31,11 +31,13 @@
         "pre-state and rollback metadata",
         "verification and audit envelopes",
         "tool policy invariants",
+        "one-time target-bound expiring secret-reference envelopes",
         "dedicated mcp-common CI tests",
         "architecture documentation"
       ],
       "verification": {
-        "github_ci": "CI #100 passed all jobs on implementation head fbd290853c1515f5565bc54a04fb4a941b33d61b"
+        "operation_contracts": "CI #100 passed all jobs on implementation head fbd290853c1515f5565bc54a04fb4a941b33d61b",
+        "secret_reference_boundary": "PR #25 squash-merged as dd8ac8f3d6de80f9a560af073373f681e0f56cc3 after CI #146 passed every repository job"
       }
     },
     {
@@ -66,14 +68,19 @@
         "disabled-user provisioning retry safety that refuses to reshape conflicting existing identities",
         "opaque initial-password secret references that never expose password material as MCP values",
         "GUID-bound approval and initial-only credential establishment while the user remains disabled",
+        "one-time purpose target idempotency and expiry-bound credential envelopes",
         "stdin-only password delivery to one static allowlisted PowerShell mutation script",
-        "crash-safe non-secret pending and verified idempotency receipts",
-        "independent PasswordLastSet object-GUID and disabled-state verification"
+        "child stderr suppression for secret-backed execution",
+        "non-secret pending and verified idempotency receipts without password-derived verifiers",
+        "fail-closed handling of ambiguous pending-receipt password state",
+        "independent PasswordLastSet object-GUID and disabled-state verification",
+        "credential-before-enable gate in both plan and static PowerShell mutation paths"
       ],
       "verification": {
         "approved_write_slice": "PR #18 squash-merged as 79c751c067144063d9b056b535b341270371b2e4 after CI #116 passed all jobs",
         "disabled_user_provisioning": "PR #20 merged after green CI and subsequently hardened on main by PR #21",
-        "credential_bootstrap": "PR #22 squash-merged as 809b473e19f1d62bc3b1a980d02f145de16ae69e after CI #129 passed every repository job including ad-mcp lint tests and compile"
+        "credential_bootstrap": "PR #22 squash-merged as 809b473e19f1d62bc3b1a980d02f145de16ae69e after CI #129 passed every repository job",
+        "credential_hardening": "PR #25 squash-merged as dd8ac8f3d6de80f9a560af073373f681e0f56cc3 after CI #146 passed all service tests compile gates Action-pin policy and container builds"
       },
       "optional_future_hardening": [
         "evaluate an explicitly approved GUID-bound rollback/delete primitive for freshly created disabled users",
@@ -93,7 +100,7 @@
         "structured diagnostic bundles"
       ],
       "completed_deliverables": [
-        "network-mcp package and explicit read-only v1 contract scaffolded on feat/network-mcp",
+        "network-mcp package and explicit read-only flowoox.network-diagnostics contract",
         "fail-closed NETWORK_ALLOWED_CIDRS authorization after one DNS resolution",
         "mixed allowed and denied DNS answers rejected before probing",
         "bounded single-port TCP reachability using authorized numeric addresses",
@@ -101,15 +108,22 @@
         "IPv4 and IPv6 subnet/address validation",
         "bounded DNS route and TCP diagnostic bundle",
         "unit tests for contract target policy and socket diagnostic behavior",
-        "CI matrix entry for network-mcp"
+        "CI matrix coverage for network-mcp",
+        "PR #23 squash-merged as 72c139a891f255149136f9e0b26af20a08bc323a after CI #132 passed all repository jobs",
+        "separately gated path trace tool with fixed platform argv numeric authorized destination and no shell",
+        "path-trace executable discovery restricted to fixed absolute operating-system paths without PATH lookup",
+        "bounded hop count per-hop timeout process timeout structured parser and four-address-per-hop cap",
+        "child stdin and stderr isolation minimal deterministic environment and anonymous file-backed stdout capture",
+        "fail-closed 32 KiB path-trace output contract"
       ],
       "remaining": [
-        "run and fix CI for initial network-mcp slice",
-        "merge initial network-mcp slice when green and still synchronized",
-        "add bounded hop/path diagnostics without introducing generic command execution",
-        "decide whether additional DNS record-type diagnostics are required for infrastructure troubleshooting"
+        "run and fix full CI for the synchronized bounded path-trace slice",
+        "merge bounded path tracing when green and still synchronized"
       ],
-      "next_branch": "feat/network-mcp-path-diagnostics"
+      "optional_future_hardening": [
+        "add explicit DNS SRV TXT or reverse lookup tools only when a concrete troubleshooting workflow requires them"
+      ],
+      "next_branch": "feat/fortigate-mcp-observe"
     },
     {
       "id": "fortigate-mcp",

@@ -21,6 +21,7 @@ from .contract import capabilities
 from .diagnostics import diagnostic_bundle as build_diagnostic_bundle
 from .diagnostics import dns_result, subnet_validation, tcp_probe
 from .diagnostics import route_selection as build_route_selection
+from .path_trace import PathTraceConfig, PathTracer
 from .policy import TargetPolicy, validate_port
 
 
@@ -84,6 +85,23 @@ def create_server(settings: Settings | None = None) -> FastMCP:
         settings.network_allowed_cidrs,
         max_addresses=settings.network_max_resolved_addresses,
     )
+    path_tracer: PathTracer | None = None
+
+    def require_path_tracer() -> PathTracer:
+        nonlocal path_tracer
+        if not settings.network_path_trace_enabled:
+            raise PermissionError(
+                "path tracing is disabled by NETWORK_PATH_TRACE_ENABLED=false"
+            )
+        if path_tracer is None:
+            path_tracer = PathTracer(
+                config=PathTraceConfig(
+                    max_hops_limit=settings.network_path_trace_max_hops,
+                    process_timeout_seconds=settings.network_path_trace_process_timeout_seconds,
+                )
+            )
+        return path_tracer
+
     security = build_mcp_server_security(settings, service_hosts=("mcp-network",))
     mcp = FastMCP(
         "Flowoox Network Diagnostics MCP",
@@ -107,6 +125,8 @@ def create_server(settings: Settings | None = None) -> FastMCP:
         return capabilities(
             allowed_cidrs=settings.network_allowed_cidrs,
             max_ports_per_bundle=settings.network_max_ports_per_bundle,
+            path_trace_enabled=settings.network_path_trace_enabled,
+            path_trace_max_hops=settings.network_path_trace_max_hops,
         )
 
     @mcp.tool()
@@ -174,6 +194,34 @@ def create_server(settings: Settings | None = None) -> FastMCP:
             correlation_id,
             output,
             target=f"host:{target.normalized_host}",
+        )
+
+    @mcp.tool()
+    async def path_trace(
+        host: str,
+        max_hops: int = 20,
+        hop_timeout_seconds: float = 1.0,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Trace a bounded path to one authorized numeric destination with fixed platform argv."""
+        tracer = require_path_tracer()
+        target = await _bounded_call(
+            settings.network_operation_timeout_seconds,
+            policy.resolve,
+            host,
+        )
+        output = await _bounded_call(
+            settings.network_path_trace_process_timeout_seconds + 1.0,
+            tracer.trace,
+            target,
+            max_hops=max_hops,
+            hop_timeout_seconds=hop_timeout_seconds,
+        )
+        return _observe_response(
+            "network.path.trace",
+            correlation_id,
+            output,
+            target=f"host:{target.normalized_host}|address:{output['selectedAddress']}",
         )
 
     @mcp.tool()
