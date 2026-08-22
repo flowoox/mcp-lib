@@ -59,20 +59,30 @@ NETWORK_PATH_TRACE_MAX_HOPS=20
 NETWORK_PATH_TRACE_PROCESS_TIMEOUT_SECONDS=30
 ```
 
-When enabled, `network.path.trace` first applies the same DNS/CIDR authorization boundary. It then selects the first already-authorized resolver address and invokes only the platform traceroute executable discovered from a fixed basename allowlist (`traceroute` on Unix-like systems, `tracert.exe`/`tracert` on Windows).
+When enabled, `network.path.trace` first applies the same DNS/CIDR authorization boundary. It then selects the first already-authorized resolver address and invokes only a fixed absolute operating-system path:
+
+- Unix-like systems: `/usr/bin/traceroute`, `/bin/traceroute`, `/usr/sbin/traceroute`, or `/sbin/traceroute`;
+- Windows: `%SystemRoot%\System32\tracert.exe` or `%WINDIR%\System32\tracert.exe`.
+
+The service does not search `PATH`. A discovered candidate must resolve to an executable regular file. No MCP value can select or alter the executable.
 
 The subprocess boundary is intentionally narrow:
 
-- `shell=False`;
+- `shell=False` with a fixed absolute `argv[0]`;
 - destination is a validated numeric IPv4/IPv6 address, never the hostname;
 - reverse DNS is disabled (`-n`/`-d`);
 - hop count and per-hop timeout are bounded;
 - query count is fixed to one on Unix traceroute;
 - no MCP value can become an executable path or arbitrary command-line option;
-- only a minimal non-secret process environment is inherited;
-- captured output is bounded and converted into structured hop/address evidence instead of returning raw process output.
+- child `stdin` and `stderr` are connected to `DEVNULL`;
+- the child receives a minimal deterministic environment without `PATH`;
+- stdout is written to an anonymous temporary file instead of unbounded in-memory capture;
+- output above 32 KiB fails closed;
+- only structured hop/address evidence is returned, never raw process output.
 
-On Linux/Unix the host must provide a compatible `traceroute` binary and any OS capabilities it needs. On Windows the service uses the built-in/supported `tracert` executable when available. If no supported binary exists, the tool fails closed without attempting another command.
+At most four numeric addresses are retained per parsed hop. The maximum hop count and process timeout remain independently bounded even if the operating-system utility behaves unexpectedly.
+
+On Linux/Unix the host must provide a compatible `traceroute` binary and any OS capabilities it needs. On Windows the service uses the built-in/supported `tracert` executable when available. If no supported fixed binary exists, the tool fails closed without attempting another command.
 
 ## Deployment principle
 
