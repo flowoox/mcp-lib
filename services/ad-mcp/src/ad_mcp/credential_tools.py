@@ -5,7 +5,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from .changes import authorize_change, change_response, verify_response
+from .changes import authorize_change, change_response, clean_identity, verify_response
 from .config import Settings
 from .credential_bootstrap import (
     CredentialBootstrapChangeRequest,
@@ -14,6 +14,7 @@ from .credential_bootstrap import (
     FileSecretResolver,
     analyze_credential_preflight,
     build_credential_bootstrap_plan,
+    clean_object_guid,
     credential_bootstrap_verification,
     credential_target,
     receipt_matches_plan,
@@ -212,6 +213,7 @@ def register_credential_tools(
             },
             secret=secret,
         )
+        del secret
         readback = await probe(
             ProvisioningScriptId.PREFLIGHT_CREDENTIAL_BOOTSTRAP,
             {"identity": request.identity},
@@ -253,34 +255,21 @@ def register_credential_tools(
     ) -> dict[str, Any]:
         """Verify credential state without resolving or returning password material."""
 
-        request = CredentialBootstrapChangeRequest.model_construct(
-            identity=identity,
-            secret_ref="unused",
-            expected_object_guid=expected_object_guid,
-            idempotency_key="unused000",
-            approval_grant="unused-approval-grant",
-        )
+        validated_identity = clean_identity(identity)
+        validated_guid = clean_object_guid(expected_object_guid)
         preflight = await probe(
             ProvisioningScriptId.PREFLIGHT_CREDENTIAL_BOOTSTRAP,
-            {"identity": clean_identity_for_verify(request.identity)},
+            {"identity": validated_identity},
         )
         verification = credential_bootstrap_verification(
             preflight=preflight,
-            expected_object_guid=request.expected_object_guid,
+            expected_object_guid=validated_guid,
         )
         return verify_response(
             operation="ad.user.credential-bootstrap.verify",
-            target=credential_target(request.expected_object_guid),
+            target=credential_target(validated_guid),
             correlation_id=correlation_id,
             check=verification.check,
             passed=verification.passed,
             details=verification.details,
         )
-
-
-def clean_identity_for_verify(identity: str) -> str:
-    """Validate verify-only identity without constructing mutation-only fields."""
-
-    from .changes import clean_identity
-
-    return clean_identity(identity)
