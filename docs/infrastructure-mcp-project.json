@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "project": "infrastructure-mcp-toolbox",
+  "goal": "Production-ready, product-neutral infrastructure MCP services plus a reference employee-entry orchestration.",
+  "updated_at": "2026-08-22T10:02:36+02:00",
+  "current_work_item": "foundation",
+  "branch": "feat/infrastructure-mcp-foundation",
+  "principles": [
+    "observe-plan-change-verify",
+    "least-privilege",
+    "typed-contracts",
+    "explicit-tool-allowlist",
+    "correlation-and-audit",
+    "approval-for-high-risk-writes",
+    "idempotent-writes",
+    "capture-pre-state-and-rollback-where-possible",
+    "no-private-topology-or-credentials-in-public-repo"
+  ],
+  "work_items": [
+    {
+      "id": "foundation",
+      "name": "mcp-common infrastructure safety contracts",
+      "status": "verification_pending",
+      "depends_on": [],
+      "deliverables": [
+        "operation lifecycle models",
+        "risk and approval models",
+        "idempotency enforcement",
+        "pre-state and rollback metadata",
+        "verification and audit envelopes",
+        "tool policy invariants",
+        "dedicated mcp-common CI tests",
+        "architecture documentation"
+      ],
+      "verification": {
+        "local_pytest": "8 passed",
+        "github_ci": "pending"
+      }
+    },
+    {
+      "id": "ad-mcp",
+      "name": "Active Directory MCP",
+      "status": "queued",
+      "depends_on": ["foundation"],
+      "minimum_scope": [
+        "domain-controller and replication diagnostics",
+        "DNS and secure-channel diagnostics",
+        "user computer group and OU inventory",
+        "security posture checks",
+        "controlled user/group lifecycle writes",
+        "independent post-change verification"
+      ]
+    },
+    {
+      "id": "network-mcp",
+      "name": "Network analysis MCP",
+      "status": "queued",
+      "depends_on": ["foundation"],
+      "minimum_scope": [
+        "DNS resolution",
+        "TCP reachability",
+        "routing and path diagnostics",
+        "subnet and address validation",
+        "structured diagnostic bundles"
+      ]
+    },
+    {
+      "id": "fortigate-mcp",
+      "name": "FortiGate/FortiManager MCP",
+      "status": "queued",
+      "depends_on": ["foundation", "network-mcp"],
+      "minimum_scope": [
+        "inventory and HA status",
+        "policy object route and VPN observation",
+        "security-policy analysis",
+        "controlled configuration changes",
+        "pre-state rollback and verification"
+      ]
+    },
+    {
+      "id": "entra-mcp",
+      "name": "Microsoft Entra MCP",
+      "status": "queued",
+      "depends_on": ["foundation"],
+      "minimum_scope": [
+        "users groups devices and roles",
+        "Conditional Access and authentication posture",
+        "controlled lifecycle writes",
+        "Microsoft Graph least-privilege permission mapping"
+      ]
+    },
+    {
+      "id": "windows-mcp",
+      "name": "Windows Server MCP",
+      "status": "queued",
+      "depends_on": ["foundation"],
+      "minimum_scope": [
+        "services features and event diagnostics",
+        "certificate and update diagnostics",
+        "Hyper-V host observation hooks"
+      ]
+    },
+    {
+      "id": "security-audit-mcp",
+      "name": "Cross-service security audit MCP",
+      "status": "queued",
+      "depends_on": ["ad-mcp", "network-mcp", "fortigate-mcp", "entra-mcp", "windows-mcp"],
+      "minimum_scope": [
+        "normalized findings",
+        "baseline controls",
+        "evidence references",
+        "severity and remediation guidance",
+        "cross-service correlation"
+      ]
+    },
+    {
+      "id": "employee-entry-reference",
+      "name": "Employee-entry n8n/agent reference orchestration",
+      "status": "queued",
+      "depends_on": ["ad-mcp", "entra-mcp", "network-mcp", "security-audit-mcp"],
+      "minimum_scope": [
+        "validated joiner request",
+        "shared correlation ID",
+        "per-write idempotency keys",
+        "approval boundaries",
+        "AD and Entra lifecycle",
+        "entitlement orchestration",
+        "end-to-end verification and audit"
+      ]
+    },
+    {
+      "id": "extensions",
+      "name": "Additional infrastructure MCPs",
+      "status": "queued",
+      "depends_on": ["security-audit-mcp"],
+      "candidates": ["unifi", "veeam", "hyperv", "wazuh", "checkmk", "pki", "exchange-m365"]
+    }
+  ]
+}
