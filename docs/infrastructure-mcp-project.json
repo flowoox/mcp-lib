@@ -2,9 +2,10 @@
   "schema_version": 1,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus a reference employee-entry orchestration.",
-  "updated_at": "2026-08-22T10:02:36+02:00",
-  "current_work_item": "foundation",
-  "branch": "feat/infrastructure-mcp-foundation",
+  "updated_at": "2026-08-22T10:10:00+02:00",
+  "current_work_item": "ad-mcp",
+  "active_branch": null,
+  "next_branch": "feat/ad-mcp",
   "principles": [
     "observe-plan-change-verify",
     "least-privilege",
@@ -20,7 +21,7 @@
     {
       "id": "foundation",
       "name": "mcp-common infrastructure safety contracts",
-      "status": "verification_pending",
+      "status": "complete",
       "depends_on": [],
       "deliverables": [
         "operation lifecycle models",
@@ -34,7 +35,7 @@
       ],
       "verification": {
         "local_pytest": "8 passed",
-        "github_ci": "pending"
+        "github_ci": "CI #100 passed all jobs on implementation head fbd290853c1515f5565bc54a04fb4a941b33d61b"
       }
     },
     {
