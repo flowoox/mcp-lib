@@ -2,10 +2,10 @@
   "schema_version": 1,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus a reference employee-entry orchestration.",
-  "updated_at": "2026-08-22T10:10:00+02:00",
+  "updated_at": "2026-08-22T10:45:00+02:00",
   "current_work_item": "ad-mcp",
   "active_branch": null,
-  "next_branch": "feat/ad-mcp",
+  "next_branch": "feat/ad-mcp-provisioning",
   "principles": [
     "observe-plan-change-verify",
     "least-privilege",
@@ -41,7 +41,7 @@
     {
       "id": "ad-mcp",
       "name": "Active Directory MCP",
-      "status": "queued",
+      "status": "in_progress",
       "depends_on": ["foundation"],
       "minimum_scope": [
         "domain-controller and replication diagnostics",
@@ -50,7 +50,29 @@
         "security posture checks",
         "controlled user/group lifecycle writes",
         "independent post-change verification"
-      ]
+      ],
+      "completed_deliverables": [
+        "Windows-native fixed PowerShell probe allowlist with no arbitrary command execution",
+        "domain forest FSMO and domain-controller inventory",
+        "replication DNS SRV and local secure-channel diagnostics",
+        "bounded user computer group OU and direct group-membership observation",
+        "read-only AD security baseline findings",
+        "shared signed approval grants bound to operation target idempotency key and exact desired-state intent",
+        "fail-closed runtime write enablement and least-privilege deployment guidance",
+        "plan change verify for user enabled state",
+        "plan change verify for direct user group membership",
+        "pre-state rollback intent target-state idempotence and independent AD readback verification"
+      ],
+      "verification": {
+        "github_ci": "CI #116 passed all jobs on implementation head b22f9d1cb36799a9e28adb86fafb48997e66fc27",
+        "merged_pr": "#18 squash-merged as 79c751c067144063d9b056b535b341270371b2e4"
+      },
+      "remaining": [
+        "safe disabled-user provisioning with a narrow typed attribute allowlist",
+        "opaque password/bootstrap secret-reference design that does not expose password material to the model-facing MCP boundary",
+        "creation rollback and independent provisioning verification"
+      ],
+      "next_branch": "feat/ad-mcp-provisioning"
     },
     {
       "id": "network-mcp",
