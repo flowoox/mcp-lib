@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-
 from mcp_common.secret_refs import (
     SecretReferenceEnvelope,
     consume_secret_reference,
