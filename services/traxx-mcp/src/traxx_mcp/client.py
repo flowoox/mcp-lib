@@ -970,15 +970,20 @@ class TraxxClient:
         date_value = release_date if re.fullmatch(r"\d{4}-\d{2}-\d{2}", release_date) else ""
         if not date_value and re.fullmatch(r"\d{4}", release_date):
             date_value = f"{release_date}-01-01"
+        payload: dict[str, Any] = {
+            "name": name,
+            "image": image or None,
+            "artists": [artist_id],
+        }
+        # Traxx accepts a missing optional release date, but its date
+        # validator rejects an explicit JSON null. Do not invent a date for
+        # catalogue results that only say "unknown".
+        if date_value:
+            payload["release_date"] = date_value
         created = await self.request(
             "POST",
             "/api/v1/albums",
-            json={
-                "name": name,
-                "release_date": date_value or None,
-                "image": image or None,
-                "artists": [artist_id],
-            },
+            json=payload,
         )
         value = recursive_find(created, {"id"})
         if value is None:

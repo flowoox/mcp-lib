@@ -76,6 +76,22 @@ async def test_album_deduplication_requires_matching_artist(tmp_path: Path) -> N
     album_id = await client.ensure_album("Shared Name", artist_id=1)
     assert album_id == 42
     assert client.created[0]["path"] == "/api/v1/albums"
+    assert "release_date" not in client.created[0]["json"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [("2026", "2026-01-01"), ("2026-08-21", "2026-08-21")],
+)
+async def test_album_creation_normalizes_known_release_dates(
+    tmp_path: Path, source: str, expected: str
+) -> None:
+    client = ResourceClient(tmp_path)
+
+    await client.ensure_album("Shared Name", artist_id=1, release_date=source)
+
+    assert client.created[0]["json"]["release_date"] == expected
 
 
 @pytest.mark.asyncio
