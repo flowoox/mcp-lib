@@ -1,7 +1,6 @@
 from uuid import uuid4
 
 import pytest
-
 from mcp_common.approval_grants import issue_approval_grant
 from mcp_common.operations import ApprovalState, Verification
 
