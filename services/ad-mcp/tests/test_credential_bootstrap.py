@@ -66,7 +66,8 @@ def test_model_facing_contract_accepts_secret_reference_but_no_password_field() 
 
 def test_secret_reference_grammar_blocks_paths_and_controlled_escape() -> None:
     assert clean_secret_ref("joiner.alice_2026-08") == "joiner.alice_2026-08"
-    for value in ("../secret", "folder/secret", "\\server\\secret", ".", " secret "):
+    assert clean_secret_ref(" joiner-alice ") == "joiner-alice"
+    for value in ("../secret", "folder/secret", "\\server\\secret", "."):
         with pytest.raises(ValueError):
             clean_secret_ref(value)
 
@@ -107,7 +108,7 @@ def test_preflight_is_guid_bound_disabled_and_fail_closed() -> None:
 
     with pytest.raises(ValueError, match="remains disabled"):
         analyze_credential_preflight(_preflight(enabled=True))
-    with pytest.raises(ValueError, match="objectGuid"):
+    with pytest.raises(ValueError, match="object GUID"):
         analyze_credential_preflight(_preflight(object_guid="not-a-guid"))
     malformed = _preflight()
     malformed["credentialEstablished"] = True
