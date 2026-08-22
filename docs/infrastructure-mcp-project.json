@@ -2,11 +2,11 @@
   "schema_version": 1,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus a reference employee-entry orchestration.",
-  "updated_at": "2026-08-22T11:18:00+02:00",
+  "updated_at": "2026-08-22T11:34:00+02:00",
   "current_work_item": "network-mcp",
-  "active_branch": "feat/network-mcp",
+  "active_branch": "feat/network-mcp-path-diagnostics",
   "active_pr": null,
-  "next_branch": "feat/network-mcp-path-diagnostics",
+  "next_branch": "feat/fortigate-mcp-observe",
   "principles": [
     "observe-plan-change-verify",
     "least-privilege",
@@ -24,16 +24,6 @@
       "name": "mcp-common infrastructure safety contracts",
       "status": "complete",
       "depends_on": [],
-      "deliverables": [
-        "operation lifecycle models",
-        "risk and approval models",
-        "idempotency enforcement",
-        "pre-state and rollback metadata",
-        "verification and audit envelopes",
-        "tool policy invariants",
-        "dedicated mcp-common CI tests",
-        "architecture documentation"
-      ],
       "verification": {
         "github_ci": "CI #100 passed all jobs on implementation head fbd290853c1515f5565bc54a04fb4a941b33d61b"
       }
@@ -43,37 +33,20 @@
       "name": "Active Directory MCP",
       "status": "complete",
       "depends_on": ["foundation"],
-      "minimum_scope": [
-        "domain-controller and replication diagnostics",
-        "DNS and secure-channel diagnostics",
-        "user computer group and OU inventory",
-        "security posture checks",
-        "controlled user/group lifecycle writes",
-        "independent post-change verification"
-      ],
       "completed_deliverables": [
-        "Windows-native fixed PowerShell probe allowlist with no arbitrary command execution",
-        "domain forest FSMO and domain-controller inventory",
-        "replication DNS SRV and local secure-channel diagnostics",
-        "bounded user computer group OU and direct group-membership observation",
-        "read-only AD security baseline findings",
-        "shared signed approval grants bound to operation target idempotency key and exact desired-state intent",
-        "fail-closed runtime write enablement and least-privilege deployment guidance",
-        "plan change verify for user enabled state",
-        "plan change verify for direct user group membership",
-        "pre-state rollback intent target-state idempotence and independent AD readback verification",
-        "typed disabled-user provisioning with OU and identity collision preflight",
-        "disabled-user provisioning retry safety that refuses to reshape conflicting existing identities",
-        "opaque initial-password secret references that never expose password material as MCP values",
-        "GUID-bound approval and initial-only credential establishment while the user remains disabled",
-        "stdin-only password delivery to one static allowlisted PowerShell mutation script",
-        "crash-safe non-secret pending and verified idempotency receipts",
-        "independent PasswordLastSet object-GUID and disabled-state verification"
+        "domain forest FSMO domain-controller replication DNS secure-channel and security-baseline observation",
+        "bounded user computer group OU and direct membership inventory",
+        "signed approval grants bound to operation target idempotency and exact desired-state intent",
+        "plan change verify for user enabled state and direct group membership",
+        "typed disabled-user provisioning with collision and OU preflight",
+        "opaque initial-password bootstrap with GUID-bound approval and no model-facing password value",
+        "stdin-only password delivery to one allowlisted static PowerShell mutation script",
+        "crash-safe non-secret idempotency receipts and independent PasswordLastSet verification"
       ],
       "verification": {
         "approved_write_slice": "PR #18 squash-merged as 79c751c067144063d9b056b535b341270371b2e4 after CI #116 passed all jobs",
         "disabled_user_provisioning": "PR #20 merged after green CI and subsequently hardened on main by PR #21",
-        "credential_bootstrap": "PR #22 squash-merged as 809b473e19f1d62bc3b1a980d02f145de16ae69e after CI #129 passed every repository job including ad-mcp lint tests and compile"
+        "credential_bootstrap": "PR #22 squash-merged as 809b473e19f1d62bc3b1a980d02f145de16ae69e after CI #129 passed every repository job"
       },
       "optional_future_hardening": [
         "evaluate an explicitly approved GUID-bound rollback/delete primitive for freshly created disabled users",
@@ -93,7 +66,7 @@
         "structured diagnostic bundles"
       ],
       "completed_deliverables": [
-        "network-mcp package and explicit read-only v1 contract scaffolded on feat/network-mcp",
+        "network-mcp package and explicit read-only flowoox.network-diagnostics contract",
         "fail-closed NETWORK_ALLOWED_CIDRS authorization after one DNS resolution",
         "mixed allowed and denied DNS answers rejected before probing",
         "bounded single-port TCP reachability using authorized numeric addresses",
@@ -101,15 +74,18 @@
         "IPv4 and IPv6 subnet/address validation",
         "bounded DNS route and TCP diagnostic bundle",
         "unit tests for contract target policy and socket diagnostic behavior",
-        "CI matrix entry for network-mcp"
+        "CI matrix coverage for network-mcp",
+        "PR #23 squash-merged as 72c139a891f255149136f9e0b26af20a08bc323a after CI #132 passed all repository jobs",
+        "separately gated path trace implementation on feat/network-mcp-path-diagnostics using fixed platform argv numeric destination no shell and bounded structured output"
       ],
       "remaining": [
-        "run and fix CI for initial network-mcp slice",
-        "merge initial network-mcp slice when green and still synchronized",
-        "add bounded hop/path diagnostics without introducing generic command execution",
-        "decide whether additional DNS record-type diagnostics are required for infrastructure troubleshooting"
+        "run and fix CI for bounded path trace slice",
+        "merge bounded path trace slice when green and synchronized"
       ],
-      "next_branch": "feat/network-mcp-path-diagnostics"
+      "optional_future_hardening": [
+        "add explicit DNS SRV TXT or reverse lookup tools only when a concrete troubleshooting workflow requires them"
+      ],
+      "next_branch": "feat/fortigate-mcp-observe"
     },
     {
       "id": "fortigate-mcp",
