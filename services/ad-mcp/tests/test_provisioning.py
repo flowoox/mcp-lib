@@ -64,7 +64,9 @@ def test_provisioning_fields_are_narrow_and_never_accept_password_material() -> 
     payload = request.directory_payload()
     assert payload["samAccountName"] == "alice.example"
     assert request.approval_intent()["enabled"] is False
-    assert not any("password" in key.casefold() for key in request.model_fields)
+    assert not any(
+        "password" in key.casefold() for key in DisabledUserPlanRequest.model_fields
+    )
 
     with pytest.raises(ValidationError, match="extra_forbidden"):
         DisabledUserFields(
