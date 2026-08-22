@@ -72,10 +72,13 @@ A grant is bound to exactly:
 - one operation ID;
 - one target string;
 - one idempotency key;
+- the non-secret desired-state intent reviewed by the approver (stored as a canonical SHA-256 digest);
 - an approver and reason;
 - a short validity window (maximum one hour).
 
-The service verifies the HMAC signature and binding before running a mutation. Reusing a grant for another user, group, operation, or idempotency key is rejected. The signing secret stays in the trusted approval workflow and the AD MCP verifier; it is never returned by an MCP tool. The opaque grant itself is not included in operation output or audit metadata.
+The service verifies the HMAC signature and every binding before running a mutation. Reusing a grant for another user, group, operation, idempotency key, **or opposite desired state** is rejected. For example, a grant approving `enabled=true` cannot be reused to disable the same account. The signing secret stays in the trusted approval workflow and the AD MCP verifier; it is never returned by an MCP tool. The opaque grant itself is not included in operation output or audit metadata.
+
+Every plan returns an `approvalBinding` object. Use that exact operation, target, idempotency key and intent when minting the grant rather than rebuilding them from organization-specific logic.
 
 Example approval data for enabling `alice`:
 
@@ -83,6 +86,7 @@ Example approval data for enabling `alice`:
 operation: ad.user.enabled.change
 target: user:alice
 idempotency_key: joiner/alice/enable
+intent: {"enabled": true}
 ```
 
 Example approval data for adding `alice` to `VPN-Users`:
@@ -91,9 +95,10 @@ Example approval data for adding `alice` to `VPN-Users`:
 operation: ad.user.group-membership.change
 target: user:alice|group:VPN-Users
 idempotency_key: joiner/alice/vpn-membership
+intent: {"present": true}
 ```
 
-The exact target emitted by the plan should be used when minting the grant. Organization-specific mappings and approval policy do not belong in this public repository.
+Organization-specific mappings and approval policy do not belong in this public repository.
 
 ## Plan -> change -> verify
 
@@ -103,10 +108,10 @@ The intended flow is:
 observe current state
         |
         v
-plan mutation + capture pre-state
+plan mutation + capture pre-state + exact approvalBinding
         |
         v
-external approval workflow signs exact plan identity
+external approval workflow signs exact plan identity + desired state
         |
         v
 change tool verifies grant + applies target state
@@ -115,7 +120,7 @@ change tool verifies grant + applies target state
 independent AD readback verification
 ```
 
-The change scripts are target-state idempotent: enabling an already enabled user or adding an already present direct membership returns `changed=false`. The idempotency key is still mandatory and is included in operation/audit context. Verification is performed through a separate read probe rather than trusting the mutation command's return value.
+The change scripts are target-state idempotent: enabling an already enabled user or adding an already present direct membership returns `changed=false`. The idempotency key is still mandatory and is included in operation/audit context. Invalid idempotency keys are rejected before any AD mutation command executes. Verification is performed through a separate read probe rather than trusting the mutation command's return value.
 
 ## DNS and inventory bounds
 
