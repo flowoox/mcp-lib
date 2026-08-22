@@ -6,11 +6,13 @@ from enum import StrEnum
 class ScriptId(StrEnum):
     DOMAIN_SUMMARY = "domain_summary"
     REPLICATION_HEALTH = "replication_health"
+    DNS_DISCOVERY = "dns_discovery"
     LOCAL_SECURE_CHANNEL = "local_secure_channel"
     SECURITY_SNAPSHOT = "security_snapshot"
     GET_USER = "get_user"
     GET_COMPUTER = "get_computer"
     GET_GROUP = "get_group"
+    LIST_OUS = "list_ous"
 
 
 SCRIPTS: dict[ScriptId, str] = {
@@ -72,6 +74,41 @@ $partners = @(Get-ADReplicationPartnerMetadata -Target * -Scope Forest -ErrorAct
     healthy = ($failures.Count -eq 0 -and @($partners | Where-Object { $_.LastReplicationResult -ne 0 }).Count -eq 0)
     failures = $failures
     partners = $partners
+} | ConvertTo-Json -Depth 8 -Compress
+""",
+    ScriptId.DNS_DISCOVERY: r"""
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory -ErrorAction Stop
+$domain = Get-ADDomain -ErrorAction Stop
+$dnsRoot = $domain.DNSRoot
+$queries = @(
+    [pscustomobject]@{ purpose = 'dc_ldap'; name = "_ldap._tcp.dc._msdcs.$dnsRoot" },
+    [pscustomobject]@{ purpose = 'domain_ldap'; name = "_ldap._tcp.$dnsRoot" },
+    [pscustomobject]@{ purpose = 'kerberos'; name = "_kerberos._tcp.$dnsRoot" }
+)
+$results = @($queries | ForEach-Object {
+    $query = $_
+    $records = @(Resolve-DnsName -Name $query.name -Type SRV -DnsOnly -ErrorAction SilentlyContinue |
+        Where-Object { $_.Type -eq 'SRV' } | ForEach-Object {
+            [pscustomobject]@{
+                target = $_.NameTarget
+                port = [int]$_.Port
+                priority = [int]$_.Priority
+                weight = [int]$_.Weight
+                ttl = [int]$_.TTL
+            }
+        })
+    [pscustomobject]@{
+        purpose = $query.purpose
+        name = $query.name
+        recordCount = $records.Count
+        records = $records
+    }
+})
+[pscustomobject]@{
+    dnsRoot = $dnsRoot
+    healthy = (@($results | Where-Object { $_.recordCount -eq 0 }).Count -eq 0)
+    queries = $results
 } | ConvertTo-Json -Depth 8 -Compress
 """,
     ScriptId.LOCAL_SECURE_CHANNEL: r"""
@@ -173,5 +210,30 @@ $group = Get-ADGroup -Identity $p.identity -Properties Description,ManagedBy,Whe
     whenCreated = $group.WhenCreated
     whenChanged = $group.WhenChanged
 } | ConvertTo-Json -Depth 5 -Compress
+""",
+    ScriptId.LIST_OUS: r"""
+$ErrorActionPreference = 'Stop'
+Import-Module ActiveDirectory -ErrorAction Stop
+$p = $env:FLOWOOX_MCP_INPUT | ConvertFrom-Json -ErrorAction Stop
+$limit = [int]$p.limit
+$items = @(Get-ADOrganizationalUnit -Filter * -Properties Description,ProtectedFromAccidentalDeletion,WhenCreated,WhenChanged -ErrorAction Stop |
+    Sort-Object DistinguishedName |
+    Select-Object -First $limit |
+    ForEach-Object {
+        [pscustomobject]@{
+            objectGuid = $_.ObjectGUID.ToString()
+            name = $_.Name
+            distinguishedName = $_.DistinguishedName
+            description = $_.Description
+            protectedFromAccidentalDeletion = [bool]$_.ProtectedFromAccidentalDeletion
+            whenCreated = $_.WhenCreated
+            whenChanged = $_.WhenChanged
+        }
+    })
+[pscustomobject]@{
+    returned = $items.Count
+    limit = $limit
+    items = $items
+} | ConvertTo-Json -Depth 7 -Compress
 """,
 }

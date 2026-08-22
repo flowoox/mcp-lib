@@ -8,13 +8,15 @@ The service is intentionally **not** a generic PowerShell bridge. Every upstream
 
 - domain/forest, FSMO and domain-controller summary
 - replication failure and partner metadata
+- AD LDAP/Kerberos SRV DNS discovery checks
 - local member-computer secure-channel test (no repair)
 - domain security-baseline evidence and findings
 - bounded user lookup
 - bounded computer lookup
 - bounded group lookup
+- bounded organizational-unit inventory
 
-All v1.0 capabilities are `observe` / `read_only`. There are no directory mutation tools in this release.
+All v1.x capabilities currently shipped are `observe` / `read_only`. There are no directory mutation tools in this release.
 
 ## Runtime
 
@@ -50,6 +52,10 @@ The default listener is `127.0.0.1:8084`. Use the shared MCP trust-boundary sett
 | `AD_COMMAND_TIMEOUT_SECONDS` | `30` | Per-probe execution timeout (3-180s) |
 
 `AD_POWERSHELL_EXECUTABLE` is fail-closed to PowerShell/pwsh basenames. Pointing it at `cmd.exe`, a shell wrapper or another interpreter is rejected.
+
+## DNS and inventory bounds
+
+`dns_discovery` resolves only the domain-derived LDAP and Kerberos SRV names used for AD service discovery. It does not accept arbitrary DNS names. `list_organizational_units` exposes only a numeric result limit, validated to 1-1000; callers cannot supply an LDAP filter or arbitrary PowerShell expression.
 
 ## Security baseline
 

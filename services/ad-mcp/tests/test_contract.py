@@ -6,17 +6,19 @@ from ad_mcp.contract import CONTRACT, CONTRACT_VERSION, TOOL_POLICIES, capabilit
 def test_contract_is_versioned_and_explicit() -> None:
     document = capabilities()
     assert CONTRACT == "flowoox.active-directory"
-    assert CONTRACT_VERSION == "1.0.0"
+    assert CONTRACT_VERSION == "1.1.0"
     assert document["contract"] == CONTRACT
     assert document["version"] == CONTRACT_VERSION
     assert {item["id"] for item in document["capabilities"]} == {
         "ad.domain.summary",
         "ad.replication.health",
+        "ad.dns.discovery",
         "ad.secure-channel.local",
         "ad.security.baseline",
         "ad.user.get",
         "ad.computer.get",
         "ad.group.get",
+        "ad.ou.list",
     }
 
 

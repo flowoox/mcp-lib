@@ -3,12 +3,18 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from ad_mcp.server import IdentityInput, _observe_response
+from ad_mcp.server import IdentityInput, ListLimitInput, _observe_response
 
 
 def test_identity_rejects_control_characters() -> None:
     with pytest.raises(ValidationError):
         IdentityInput(identity="alice\nGet-ADUser")
+
+
+def test_ou_inventory_limit_is_bounded() -> None:
+    assert ListLimitInput(limit=1000).limit == 1000
+    with pytest.raises(ValidationError):
+        ListLimitInput(limit=1001)
 
 
 def test_observe_response_preserves_correlation_and_cannot_claim_change() -> None:
