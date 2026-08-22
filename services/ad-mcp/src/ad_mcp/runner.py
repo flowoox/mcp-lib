@@ -113,10 +113,11 @@ class PowerShellRunner:
             ) from exc
 
         if completed.returncode != 0:
-            detail = (completed.stderr or "").strip().replace("\x00", "")[-1200:]
-            if secret:
-                detail = detail.replace(secret, "[REDACTED]")
-            suffix = f": {detail}" if detail else ""
+            if secret is None:
+                detail = (completed.stderr or "").strip().replace("\x00", "")[-1200:]
+                suffix = f": {detail}" if detail else ""
+            else:
+                suffix = ": child stderr suppressed for secret-backed execution"
             raise PowerShellExecutionError(
                 f"AD probe {script_id.value} failed with exit code {completed.returncode}{suffix}"
             )
