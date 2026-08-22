@@ -63,11 +63,31 @@ if ($upnConflict.Count -gt 0) {
     throw 'The requested userPrincipalName is already assigned to another user.'
 }
 function Test-OptionalMatch([object]$requested, [object]$actual) {
-    if ($null -eq $requested -or [string]::IsNullOrWhiteSpace([string]$requested)) { return $true }
-    return [string]::Equals([string]$requested, [string]$actual, [System.StringComparison]::OrdinalIgnoreCase)
+    $requestedText = if ($null -eq $requested) { '' } else { [string]$requested }
+    $actualText = if ($null -eq $actual) { '' } else { [string]$actual }
+    return [string]::Equals($requestedText, $actualText, [System.StringComparison]::OrdinalIgnoreCase)
+}
+function Get-ParentDistinguishedName([string]$distinguishedName) {
+    $escaped = $false
+    for ($index = 0; $index -lt $distinguishedName.Length; $index++) {
+        $character = $distinguishedName[$index]
+        if ($escaped) {
+            $escaped = $false
+            continue
+        }
+        if ($character -eq [char]92) {
+            $escaped = $true
+            continue
+        }
+        if ($character -eq ',') {
+            return $distinguishedName.Substring($index + 1)
+        }
+    }
+    return ''
 }
 if ($null -ne $existing) {
-    $inOu = $existing.DistinguishedName.EndsWith(',' + $ou.DistinguishedName, [System.StringComparison]::OrdinalIgnoreCase)
+    $parentDn = Get-ParentDistinguishedName $existing.DistinguishedName
+    $inOu = [string]::Equals($parentDn, $ou.DistinguishedName, [System.StringComparison]::OrdinalIgnoreCase)
     $matches = (
         [string]::Equals($existing.Name, [string]$p.name, [System.StringComparison]::OrdinalIgnoreCase) -and
         [string]::Equals($existing.SamAccountName, $sam, [System.StringComparison]::OrdinalIgnoreCase) -and
