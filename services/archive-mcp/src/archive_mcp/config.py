@@ -8,9 +8,11 @@ from mcp_common.store import AtomicJsonStore
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .network import ARCHIVE_ORIGIN, normalize_archive_base_url
+
 
 class RuntimeConfig(BaseModel):
-    base_url: str = "https://archive.org"
+    base_url: str = ARCHIVE_ORIGIN
     # The Archive asks callers to identify themselves; a contact address makes
     # a blocked client reachable instead of anonymous.
     user_agent: str = "flowoox-mcp-archive/0.1 (+https://github.com/flowoox/mcp-lib)"
@@ -31,7 +33,7 @@ class RuntimeConfig(BaseModel):
     @field_validator("base_url")
     @classmethod
     def normalize_url(cls, value: str) -> str:
-        return (value or "").strip().rstrip("/") or "https://archive.org"
+        return normalize_archive_base_url(value)
 
     @field_validator("preferred_formats", mode="before")
     @classmethod
@@ -62,7 +64,9 @@ class Settings(BaseSettings):
     archive_batch_file: Path = Path("/data/batches.json")
     downloads_dir: Path = Path("/downloads")
 
-    archive_url: str = "https://archive.org"
+    # Kept as an environment/config compatibility knob, but RuntimeConfig
+    # validates it back to the one supported Internet Archive origin.
+    archive_url: str = ARCHIVE_ORIGIN
     archive_user_agent: str = (
         "flowoox-mcp-archive/0.1 (+https://github.com/flowoox/mcp-lib)"
     )
