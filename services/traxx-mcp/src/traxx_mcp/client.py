@@ -1255,6 +1255,12 @@ class TraxxClient:
             observed_titles={path: clean_title_from_filename(path) for path in files},
         )
         files = [path for path in files if path not in rejected]
+        if not files:
+            reasons = "; ".join(dict.fromkeys(rejected.values()))
+            raise TraxxError(
+                "No verified audio files remain; Traxx was not changed. "
+                f"{reasons[:900]}"
+            )
         tag_results: list[dict[str, Any]] = []
         for path in files:
             tag_results.append(
@@ -1359,7 +1365,13 @@ class TraxxClient:
                     continue
                 extracted = await self.extract_metadata(
                     str(file_id),
-                    auto_match_album=True,
+                    # The importer already resolved the authoritative album
+                    # above and passes its id explicitly when creating the
+                    # track. Letting BeMusic auto-match here can create a
+                    # second, empty album from a featured track artist before
+                    # the real track is saved (for example an album by George
+                    # Fitzgerald with one Bonobo feature).
+                    auto_match_album=False,
                 )
                 metadata = (
                     get_case_insensitive(extracted, "metadata", default=extracted)

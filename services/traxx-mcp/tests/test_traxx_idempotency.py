@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from mcp_common.store import AtomicJsonStore
 
-from traxx_mcp.client import TraxxClient
+from traxx_mcp.client import TraxxClient, TraxxError
 from traxx_mcp.config import RuntimeConfig
 
 
@@ -196,6 +196,7 @@ async def test_import_assigns_all_track_artists_to_traxx(tmp_path: Path) -> None
             )
             self.artist_ids = {"Album Artist": 1, "Main Artist": 2, "Guest Artist": 3}
             self.track_payload: dict[str, Any] | None = None
+            self.auto_match_album: bool | None = None
 
         async def ensure_artist(self, name: str, **_: Any) -> int:
             return self.artist_ids[name]
@@ -222,8 +223,11 @@ async def test_import_assigns_all_track_artists_to_traxx(tmp_path: Path) -> None
                 "file_url": upload.file_url,
             }
 
-        async def extract_metadata(self, file_entry_id: str, **_: Any):
+        async def extract_metadata(
+            self, file_entry_id: str, *, auto_match_album: bool = True
+        ):
             assert file_entry_id == "entry-1"
+            self.auto_match_album = auto_match_album
             return {"metadata": {"title": "Collaboration", "number": 1}}
 
         async def create_track(self, payload: dict[str, Any]):
@@ -249,6 +253,52 @@ async def test_import_assigns_all_track_artists_to_traxx(tmp_path: Path) -> None
     assert result["unresolved_count"] == 0
     assert client.track_payload is not None
     assert client.track_payload["artists"] == [2, 3]
+    assert client.auto_match_album is False
+
+
+@pytest.mark.asyncio
+async def test_fully_rejected_folder_never_creates_an_empty_album(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import wave
+
+    album = tmp_path / "library" / "Artist" / "Wrong Album"
+    album.mkdir(parents=True)
+    audio_path = album / "01 - Wrong Track.wav"
+    with wave.open(str(audio_path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(8000)
+        handle.writeframes(b"\x00\x00" * 800)
+
+    monkeypatch.setattr(
+        "traxx_mcp.client.verify_assignment",
+        lambda assigned, *_args, **_kwargs: {
+            path: "The file belongs to another release" for path in assigned
+        },
+    )
+
+    class NoEntityClient(TraxxClient):
+        async def ensure_artist(self, *_args: Any, **_kwargs: Any) -> int:
+            raise AssertionError("artist must not be created")
+
+        async def ensure_album(self, *_args: Any, **_kwargs: Any) -> int:
+            raise AssertionError("album must not be created")
+
+    client = NoEntityClient(
+        RuntimeConfig(base_url="https://traxx.test"), downloads_dir=tmp_path
+    )
+
+    with pytest.raises(TraxxError, match="No verified audio files remain"):
+        await client.import_album_folder(
+            "library/Artist/Wrong Album",
+            dry_run=False,
+            rights_confirmed=True,
+            rights_basis="owned-copy",
+            artist="Artist",
+            album="Wrong Album",
+            track_hints=[{"title": "Expected", "number": 1}],
+        )
 
 
 @pytest.mark.asyncio
