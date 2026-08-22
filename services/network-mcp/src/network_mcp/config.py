@@ -22,3 +22,7 @@ class Settings(BaseSettings):
     network_operation_timeout_seconds: float = Field(default=5.0, ge=0.25, le=30.0)
     network_max_resolved_addresses: int = Field(default=16, ge=1, le=64)
     network_max_ports_per_bundle: int = Field(default=8, ge=1, le=32)
+
+    network_path_trace_enabled: bool = False
+    network_path_trace_max_hops: int = Field(default=20, ge=1, le=30)
+    network_path_trace_process_timeout_seconds: float = Field(default=30.0, ge=1.0, le=60.0)
