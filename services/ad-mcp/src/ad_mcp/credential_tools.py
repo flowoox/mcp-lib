@@ -17,10 +17,27 @@ from .credential_bootstrap import (
     clean_object_guid,
     credential_bootstrap_verification,
     credential_target,
+    receipt_matches_intent,
     receipt_matches_plan,
 )
 from .provisioning_scripts import ProvisioningScriptId
 from .runner import PowerShellRunner
+
+
+def _receipt_bound_to_request(
+    receipt: dict[str, Any] | None,
+    *,
+    object_guid: str,
+    secret_ref: str,
+) -> bool:
+    if receipt is None:
+        return False
+    return receipt_matches_intent(
+        receipt,
+        object_guid=object_guid,
+        secret_ref=secret_ref,
+        pre_password_last_set=receipt.get("prePasswordLastSet"),
+    )
 
 
 def register_credential_tools(
@@ -65,7 +82,7 @@ def register_credential_tools(
         idempotency_key: str,
         correlation_id: str = "",
     ) -> dict[str, Any]:
-        """Plan initial password establishment using only an opaque runtime secret reference."""
+        """Plan initial password establishment using a one-time opaque secret reference."""
 
         request = CredentialBootstrapPlanRequest(
             identity=identity,
@@ -79,6 +96,22 @@ def register_credential_tools(
         observed = analyze_credential_preflight(preflight)
         store = receipt_store(required=False)
         receipt = store.get(request.idempotency_key) if store is not None else None
+        if receipt is not None and not _receipt_bound_to_request(
+            receipt,
+            object_guid=observed["objectGuid"],
+            secret_ref=request.secret_ref,
+        ):
+            raise PermissionError(
+                "idempotency key is already bound to a different credential-bootstrap intent"
+            )
+        if (
+            receipt is not None
+            and receipt.get("status") == "pending"
+            and observed["credentialEstablished"]
+        ):
+            raise RuntimeError(
+                "pending credential receipt and established AD password state are ambiguous; operator review is required"
+            )
         matching_receipt = receipt_matches_plan(
             receipt,
             object_guid=observed["objectGuid"],
@@ -100,7 +133,7 @@ def register_credential_tools(
         approval_grant: str,
         correlation_id: str = "",
     ) -> dict[str, Any]:
-        """Set one initial AD password from a runtime-only secret reference after approval."""
+        """Set one initial AD password from a one-time secret reference after approval."""
 
         resolver, store = require_bootstrap()
         request = CredentialBootstrapChangeRequest(
@@ -128,6 +161,14 @@ def register_credential_tools(
             expected_object_guid=request.expected_object_guid,
         )
         existing_receipt = store.get(request.idempotency_key)
+        if existing_receipt is not None and not _receipt_bound_to_request(
+            existing_receipt,
+            object_guid=request.expected_object_guid,
+            secret_ref=request.secret_ref,
+        ):
+            raise PermissionError(
+                "idempotency key is already bound to a different credential-bootstrap intent"
+            )
         if receipt_matches_plan(
             existing_receipt,
             object_guid=request.expected_object_guid,
@@ -150,70 +191,51 @@ def register_credential_tools(
                 output={
                     "objectGuid": request.expected_object_guid,
                     "credentialEstablished": True,
+                    "enabled": False,
                     "idempotentReceipt": True,
                 },
                 approval=approval,
                 verification=verification,
             )
 
-        if existing_receipt is None and observed["credentialEstablished"]:
+        if existing_receipt is not None and existing_receipt.get("status") != "pending":
+            raise RuntimeError("credential receipt status is invalid")
+        if observed["credentialEstablished"]:
+            if existing_receipt is not None:
+                raise RuntimeError(
+                    "pending credential receipt and established AD password state are ambiguous; operator review is required"
+                )
             raise ValueError(
-                "AD user already has credential state without a matching bootstrap receipt; refusing an implicit password reset"
+                "AD user already has credential state without a matching verified bootstrap receipt; refusing an implicit password reset"
             )
 
-        secret = await asyncio.to_thread(resolver.resolve, request.secret_ref)
-        fingerprint = CredentialReceiptStore.secret_fingerprint(
-            secret,
-            key=settings.ad_approval_secret,
-        )
-        receipt = store.prepare(
+        store.prepare(
             idempotency_key=request.idempotency_key,
             object_guid=request.expected_object_guid,
             secret_ref=request.secret_ref,
-            secret_fingerprint=fingerprint,
             pre_password_last_set=observed["passwordLastSet"],
         )
-
-        if receipt.get("status") == "pending" and observed["credentialEstablished"]:
-            verification = credential_bootstrap_verification(
-                preflight=preflight,
-                expected_object_guid=request.expected_object_guid,
-            )
-            if not verification.passed:
-                raise RuntimeError("pending credential receipt could not be recovered safely")
-            password_last_set = str(verification.details.get("passwordLastSet") or "")
-            if not password_last_set:
-                raise RuntimeError("credential recovery did not produce passwordLastSet evidence")
-            store.mark_verified(
-                idempotency_key=request.idempotency_key,
-                object_guid=request.expected_object_guid,
-                observed_password_last_set=password_last_set,
-            )
-            return change_response(
-                operation="ad.user.credential-bootstrap.change",
-                target=target,
-                correlation_id=correlation_id,
-                idempotency_key=request.idempotency_key,
-                changed=False,
-                output={
-                    "objectGuid": request.expected_object_guid,
-                    "credentialEstablished": True,
-                    "recoveredPendingReceipt": True,
-                },
-                approval=approval,
-                verification=verification,
-            )
-
-        output = await asyncio.to_thread(
-            runner.run_with_secret,
-            ProvisioningScriptId.SET_INITIAL_PASSWORD,
-            {
-                "identity": request.identity,
-                "expectedObjectGuid": request.expected_object_guid,
-            },
-            secret=secret,
+        secret = await asyncio.to_thread(
+            resolver.consume,
+            request.secret_ref,
+            target=target,
+            idempotency_key=request.idempotency_key,
         )
-        del secret
+        secret_value = secret.get_secret_value()
+        try:
+            output = await asyncio.to_thread(
+                runner.run_with_secret,
+                ProvisioningScriptId.SET_INITIAL_PASSWORD,
+                {
+                    "identity": request.identity,
+                    "expectedObjectGuid": request.expected_object_guid,
+                },
+                secret=secret_value,
+            )
+        finally:
+            secret_value = ""
+            del secret
+
         readback = await probe(
             ProvisioningScriptId.PREFLIGHT_CREDENTIAL_BOOTSTRAP,
             {"identity": request.identity},
@@ -229,6 +251,7 @@ def register_credential_tools(
             store.mark_verified(
                 idempotency_key=request.idempotency_key,
                 object_guid=request.expected_object_guid,
+                secret_ref=request.secret_ref,
                 observed_password_last_set=password_last_set,
             )
         return change_response(
@@ -241,7 +264,6 @@ def register_credential_tools(
                 "objectGuid": output.get("objectGuid"),
                 "enabled": output.get("enabled"),
                 "credentialEstablished": output.get("credentialEstablished"),
-                "passwordLastSet": output.get("passwordLastSet"),
             },
             approval=approval,
             verification=verification,
