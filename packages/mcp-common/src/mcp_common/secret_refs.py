@@ -11,7 +11,14 @@ from secrets import token_urlsafe
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 _REFERENCE_PREFIX = "mcpsecret:v1:"
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
@@ -81,7 +88,7 @@ def parse_secret_reference(reference: str) -> str:
 
 def secret_reference_sha256(reference: str) -> str:
     token = parse_secret_reference(reference)
-    canonical = f"{_REFERENCE_PREFIX}{token}".encode("utf-8")
+    canonical = f"{_REFERENCE_PREFIX}{token}".encode()
     return hashlib.sha256(canonical).hexdigest()
 
 

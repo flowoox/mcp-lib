@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import hmac
 import re
 from pathlib import Path
@@ -17,17 +16,21 @@ from mcp_common.operations import (
     RiskLevel,
     Verification,
 )
+from mcp_common.secret_refs import (
+    consume_secret_reference,
+    parse_secret_reference,
+    secret_reference_sha256,
+)
 from mcp_common.store import AtomicJsonStore
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from .changes import clean_idempotency_key, clean_identity, operation_context
 
-_SECRET_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _GUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
-_RECEIPT_SCHEMA_VERSION = 1
-_MAX_SECRET_BYTES = 8192
+_RECEIPT_SCHEMA_VERSION = 2
+_SECRET_PURPOSE = "ad.password-bootstrap"
 
 
 class CredentialBootstrapPlanRequest(BaseModel):
@@ -36,7 +39,7 @@ class CredentialBootstrapPlanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     identity: str = Field(min_length=1, max_length=512)
-    secret_ref: str = Field(min_length=1, max_length=128)
+    secret_ref: str = Field(min_length=1, max_length=160)
     idempotency_key: str = Field(min_length=8, max_length=128)
 
     @field_validator("identity")
@@ -57,8 +60,9 @@ class CredentialBootstrapPlanRequest(BaseModel):
     def approval_intent(self, object_guid: str) -> dict[str, Any]:
         return {
             "objectGuid": clean_object_guid(object_guid),
-            "secretRef": self.secret_ref,
+            "secretRefSha256": secret_reference_sha256(self.secret_ref),
             "credentialEstablished": True,
+            "enabled": False,
         }
 
 
@@ -77,46 +81,31 @@ class SecretResolutionError(RuntimeError):
 
 
 class FileSecretResolver:
-    """Resolve an opaque reference to one direct child of a configured secret directory.
-
-    The MCP caller supplies only a conservative reference token. It can never
-    supply an arbitrary filesystem path. The resolved secret is returned only to
-    the internal credential mutation path and must never be included in MCP
-    output, audit metadata, command arguments or the JSON payload environment.
-    """
+    """Consume one purpose-, target-, and idempotency-bound secret envelope."""
 
     def __init__(self, root: str | Path):
         root_text = str(root).strip()
         if not root_text:
             raise ValueError("AD_CREDENTIAL_SECRET_DIRECTORY must not be blank")
-        self.root = Path(root_text).expanduser().resolve()
+        self.root = Path(root_text).expanduser()
 
-    def resolve(self, secret_ref: str) -> str:
-        reference = clean_secret_ref(secret_ref)
-        candidate = self.root / reference
-        if candidate.is_symlink():
-            raise SecretResolutionError("credential secret references must not be symbolic links")
+    def consume(
+        self,
+        secret_ref: str,
+        *,
+        target: str,
+        idempotency_key: str,
+    ) -> SecretStr:
         try:
-            resolved = candidate.resolve(strict=True)
-        except OSError as exc:
-            raise SecretResolutionError("credential secret reference is unavailable") from exc
-        if resolved.parent != self.root or not resolved.is_file():
-            raise SecretResolutionError("credential secret reference escaped the configured directory")
-        try:
-            raw = resolved.read_bytes()
-        except OSError as exc:
-            raise SecretResolutionError("credential secret reference could not be read") from exc
-        if not raw:
-            raise SecretResolutionError("credential secret reference is empty")
-        if len(raw) > _MAX_SECRET_BYTES:
-            raise SecretResolutionError("credential secret reference exceeds the maximum size")
-        try:
-            secret = raw.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise SecretResolutionError("credential secret reference must contain UTF-8 text") from exc
-        if "\x00" in secret:
-            raise SecretResolutionError("credential secret reference contains an invalid NUL character")
-        return secret
+            return consume_secret_reference(
+                self.root,
+                clean_secret_ref(secret_ref),
+                purpose=_SECRET_PURPOSE,
+                target=target,
+                idempotency_key=clean_idempotency_key(idempotency_key),
+            )
+        except (OSError, PermissionError, ValueError) as exc:
+            raise SecretResolutionError(str(exc)) from exc
 
 
 class CredentialReceiptStore:
@@ -133,21 +122,30 @@ class CredentialReceiptStore:
 
     @staticmethod
     def secret_ref_digest(secret_ref: str) -> str:
-        reference = clean_secret_ref(secret_ref)
-        return hashlib.sha256(reference.encode("utf-8")).hexdigest()
+        return secret_reference_sha256(clean_secret_ref(secret_ref))
 
     @staticmethod
-    def secret_fingerprint(secret: str, *, key: str) -> str:
-        if not key:
-            raise ValueError("credential fingerprint key must not be empty")
-        return hmac.new(key.encode("utf-8"), secret.encode("utf-8"), hashlib.sha256).hexdigest()
+    def _intent(
+        *, object_guid: str, secret_ref: str, pre_password_last_set: str | None
+    ) -> dict[str, Any]:
+        return {
+            "objectGuid": clean_object_guid(object_guid),
+            "secretRefDigest": CredentialReceiptStore.secret_ref_digest(secret_ref),
+            "prePasswordLastSet": pre_password_last_set,
+        }
 
-    def get(self, idempotency_key: str) -> dict[str, Any] | None:
-        key = clean_idempotency_key(idempotency_key)
+    def _document(self) -> tuple[dict[str, Any], dict[str, Any]]:
         document = self.store.read()
+        if document.get("schemaVersion") != _RECEIPT_SCHEMA_VERSION:
+            raise RuntimeError("credential receipt store schema is unsupported")
         receipts = document.get("receipts")
         if not isinstance(receipts, dict):
             raise RuntimeError("credential receipt store is malformed")
+        return document, receipts
+
+    def get(self, idempotency_key: str) -> dict[str, Any] | None:
+        key = clean_idempotency_key(idempotency_key)
+        _, receipts = self._document()
         value = receipts.get(key)
         if value is None:
             return None
@@ -161,39 +159,35 @@ class CredentialReceiptStore:
         idempotency_key: str,
         object_guid: str,
         secret_ref: str,
-        secret_fingerprint: str,
         pre_password_last_set: str | None,
     ) -> dict[str, Any]:
         key = clean_idempotency_key(idempotency_key)
-        guid = clean_object_guid(object_guid)
-        ref_digest = self.secret_ref_digest(secret_ref)
-        document = self.store.read()
-        receipts = document.setdefault("receipts", {})
-        if not isinstance(receipts, dict):
-            raise RuntimeError("credential receipt store is malformed")
+        expected = self._intent(
+            object_guid=object_guid,
+            secret_ref=secret_ref,
+            pre_password_last_set=pre_password_last_set,
+        )
+        document, receipts = self._document()
         existing = receipts.get(key)
-        expected = {
-            "objectGuid": guid,
-            "secretRefDigest": ref_digest,
-            "secretFingerprint": secret_fingerprint,
-        }
         if existing is not None:
             if not isinstance(existing, dict):
                 raise RuntimeError("credential receipt entry is malformed")
-            for field, value in expected.items():
-                if not hmac.compare_digest(str(existing.get(field, "")), str(value)):
-                    raise PermissionError(
-                        "idempotency key is already bound to a different credential-bootstrap intent"
-                    )
+            if not receipt_matches_intent(
+                existing,
+                object_guid=object_guid,
+                secret_ref=secret_ref,
+                pre_password_last_set=pre_password_last_set,
+            ):
+                raise PermissionError(
+                    "idempotency key is already bound to a different credential-bootstrap intent"
+                )
             return dict(existing)
         receipt = {
             **expected,
             "status": "pending",
-            "prePasswordLastSet": pre_password_last_set,
             "observedPasswordLastSet": None,
         }
         receipts[key] = receipt
-        document["schemaVersion"] = _RECEIPT_SCHEMA_VERSION
         self.store.write(document)
         return dict(receipt)
 
@@ -202,19 +196,27 @@ class CredentialReceiptStore:
         *,
         idempotency_key: str,
         object_guid: str,
+        secret_ref: str,
         observed_password_last_set: str,
     ) -> dict[str, Any]:
         key = clean_idempotency_key(idempotency_key)
         guid = clean_object_guid(object_guid)
-        if not observed_password_last_set:
+        if not observed_password_last_set.strip():
             raise ValueError("observed_password_last_set is required")
-        document = self.store.read()
-        receipts = document.get("receipts")
-        if not isinstance(receipts, dict) or not isinstance(receipts.get(key), dict):
+        document, receipts = self._document()
+        value = receipts.get(key)
+        if not isinstance(value, dict):
             raise RuntimeError("credential receipt is missing")
-        receipt = dict(receipts[key])
-        if not hmac.compare_digest(str(receipt.get("objectGuid", "")), guid):
-            raise PermissionError("credential receipt object GUID changed")
+        receipt = dict(value)
+        if not receipt_matches_intent(
+            receipt,
+            object_guid=guid,
+            secret_ref=secret_ref,
+            pre_password_last_set=receipt.get("prePasswordLastSet"),
+        ):
+            raise PermissionError("credential receipt intent changed")
+        if receipt.get("status") not in {"pending", "verified"}:
+            raise RuntimeError("credential receipt status is invalid")
         receipt["status"] = "verified"
         receipt["observedPasswordLastSet"] = observed_password_last_set
         receipts[key] = receipt
@@ -223,12 +225,8 @@ class CredentialReceiptStore:
 
 
 def clean_secret_ref(value: str) -> str:
-    value = value.strip()
-    if not _SECRET_REF_RE.fullmatch(value):
-        raise ValueError(
-            "secret_ref must be 1-128 characters using letters, digits, '.', '_', or '-'"
-        )
-    return value
+    token = parse_secret_reference(value)
+    return f"mcpsecret:v1:{token}"
 
 
 def clean_object_guid(value: str) -> str:
@@ -251,6 +249,8 @@ def analyze_credential_preflight(
     enabled = preflight.get("enabled")
     password_last_set = preflight.get("passwordLastSet")
     established = preflight.get("credentialEstablished")
+    distinguished_name = preflight.get("distinguishedName")
+    sam_account_name = preflight.get("samAccountName")
     if not isinstance(object_guid, str):
         raise ValueError("credential preflight did not return objectGuid")
     object_guid = clean_object_guid(object_guid)
@@ -260,21 +260,46 @@ def analyze_credential_preflight(
         raise ValueError("credential preflight did not return a boolean enabled state")
     if enabled:
         raise ValueError("credential bootstrap is allowed only while the AD user remains disabled")
-    if password_last_set is not None and not isinstance(password_last_set, str):
-        raise ValueError("credential preflight returned malformed passwordLastSet evidence")
     if not isinstance(established, bool):
         raise ValueError("credential preflight did not return credentialEstablished")
-    if established != bool(password_last_set):
+    if established:
+        if not isinstance(password_last_set, str) or not password_last_set.strip():
+            raise ValueError("credential preflight returned inconsistent password evidence")
+    elif password_last_set is not None:
         raise ValueError("credential preflight returned inconsistent password evidence")
+    if not isinstance(distinguished_name, str) or not distinguished_name.strip():
+        raise ValueError("credential preflight did not return distinguishedName")
+    if not isinstance(sam_account_name, str) or not sam_account_name.strip():
+        raise ValueError("credential preflight did not return samAccountName")
     return {
         "objectGuid": object_guid,
         "enabled": enabled,
         "credentialEstablished": established,
         "passwordLastSet": password_last_set,
-        "samAccountName": preflight.get("samAccountName"),
+        "samAccountName": sam_account_name,
         "userPrincipalName": preflight.get("userPrincipalName"),
-        "distinguishedName": preflight.get("distinguishedName"),
+        "distinguishedName": distinguished_name,
     }
+
+
+def receipt_matches_intent(
+    receipt: dict[str, Any] | None,
+    *,
+    object_guid: str,
+    secret_ref: str,
+    pre_password_last_set: str | None,
+) -> bool:
+    if receipt is None:
+        return False
+    expected = {
+        "objectGuid": clean_object_guid(object_guid),
+        "secretRefDigest": CredentialReceiptStore.secret_ref_digest(secret_ref),
+        "prePasswordLastSet": pre_password_last_set,
+    }
+    return all(
+        hmac.compare_digest(str(receipt.get(field, "")), str(value))
+        for field, value in expected.items()
+    )
 
 
 def receipt_matches_plan(
@@ -283,12 +308,15 @@ def receipt_matches_plan(
     object_guid: str,
     secret_ref: str,
 ) -> bool:
-    if receipt is None or receipt.get("status") != "verified":
-        return False
-    return hmac.compare_digest(
-        str(receipt.get("objectGuid", "")), clean_object_guid(object_guid)
-    ) and hmac.compare_digest(
-        str(receipt.get("secretRefDigest", "")), CredentialReceiptStore.secret_ref_digest(secret_ref)
+    return bool(
+        receipt is not None
+        and receipt.get("status") == "verified"
+        and receipt_matches_intent(
+            receipt,
+            object_guid=object_guid,
+            secret_ref=secret_ref,
+            pre_password_last_set=receipt.get("prePasswordLastSet"),
+        )
     )
 
 
@@ -317,7 +345,7 @@ def build_credential_bootstrap_plan(
         context=context,
         steps=[
             ChangeStep(
-                action="set-initial-password-from-opaque-secret-reference",
+                action="set-initial-password-from-one-time-secret-reference",
                 target=target,
                 reversible=False,
             )
@@ -343,6 +371,7 @@ def build_credential_bootstrap_plan(
         metadata={
             "credentialEstablished": observed["credentialEstablished"],
             "secretValueExposed": False,
+            "oneTimeSecretRequired": True,
         },
     )
     return {

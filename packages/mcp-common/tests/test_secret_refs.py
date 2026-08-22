@@ -4,8 +4,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from pydantic import SecretStr, ValidationError
-
 from mcp_common.secret_refs import (
     SecretReferenceEnvelope,
     consume_secret_reference,
@@ -14,6 +12,7 @@ from mcp_common.secret_refs import (
     secret_reference_sha256,
     stage_secret_reference,
 )
+from pydantic import SecretStr, ValidationError
 
 
 def _secure_dir(tmp_path: Path) -> Path:
