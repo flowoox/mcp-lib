@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -24,6 +25,7 @@ class ApprovalGrantPayload(BaseModel):
     operation: str = Field(min_length=1, max_length=200)
     target: str = Field(min_length=1, max_length=500)
     idempotency_key: str = Field(min_length=8, max_length=128)
+    intent_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     approver: str = Field(min_length=1, max_length=200)
     reason: str = Field(min_length=1, max_length=1000)
     issued_at: datetime
@@ -66,6 +68,25 @@ def _b64decode(value: str) -> bytes:
         raise ValueError("invalid approval grant encoding") from exc
 
 
+def _canonical_json(value: Mapping[str, Any]) -> bytes:
+    try:
+        return json.dumps(
+            dict(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("approval intent must be JSON-serializable") from exc
+
+
+def approval_intent_sha256(intent: Mapping[str, Any]) -> str:
+    """Return the stable digest used to bind approval to exact desired state."""
+
+    return hashlib.sha256(_canonical_json(intent)).hexdigest()
+
+
 def _payload_bytes(payload: ApprovalGrantPayload) -> bytes:
     data: dict[str, Any] = payload.model_dump(mode="json")
     return json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -77,6 +98,7 @@ def issue_approval_grant(
     operation: str,
     target: str,
     idempotency_key: str,
+    intent: Mapping[str, Any],
     approver: str,
     reason: str,
     ttl_seconds: int = 900,
@@ -84,8 +106,10 @@ def issue_approval_grant(
 ) -> str:
     """Create an opaque grant for an out-of-band approval workflow.
 
-    The signer belongs outside the agent-facing MCP service. The returned grant
-    can be supplied to a change tool without exposing the signing secret.
+    The signer belongs outside the agent-facing MCP service. ``intent`` must
+    contain only the non-secret desired-state fields that the approver reviewed.
+    Its canonical SHA-256 digest is embedded in the signed grant so changing a
+    boolean/action after approval invalidates the grant.
     """
 
     if ttl_seconds < 1 or ttl_seconds > int(_MAX_TTL.total_seconds()):
@@ -95,6 +119,7 @@ def issue_approval_grant(
         operation=operation,
         target=target,
         idempotency_key=idempotency_key,
+        intent_sha256=approval_intent_sha256(intent),
         approver=approver,
         reason=reason,
         issued_at=issued_at,
@@ -112,6 +137,7 @@ def verify_approval_grant(
     operation: str,
     target: str,
     idempotency_key: str,
+    intent: Mapping[str, Any],
     now: datetime | None = None,
 ) -> Approval:
     """Verify signature, expiry, and exact mutation binding for an approval grant."""
@@ -138,11 +164,13 @@ def verify_approval_grant(
         "operation": operation,
         "target": target,
         "idempotency_key": idempotency_key,
+        "intent_sha256": approval_intent_sha256(intent),
     }
     actual_fields = {
         "operation": payload.operation,
         "target": payload.target,
         "idempotency_key": payload.idempotency_key,
+        "intent_sha256": payload.intent_sha256,
     }
     if actual_fields != expected_fields:
         raise ValueError("approval grant does not match the requested mutation")
