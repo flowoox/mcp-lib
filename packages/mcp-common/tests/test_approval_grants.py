@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-
 from mcp_common.approval_grants import issue_approval_grant, verify_approval_grant
 
 SECRET = "x" * 32
