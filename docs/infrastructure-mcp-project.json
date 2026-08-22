@@ -2,11 +2,11 @@
   "schema_version": 1,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus a reference employee-entry orchestration.",
-  "updated_at": "2026-08-22T10:55:00+02:00",
-  "current_work_item": "ad-mcp",
-  "active_branch": "feat/ad-mcp-provisioning",
-  "active_pr": 20,
-  "next_branch": "feat/ad-mcp-credential-bootstrap",
+  "updated_at": "2026-08-22T11:18:00+02:00",
+  "current_work_item": "network-mcp",
+  "active_branch": "feat/network-mcp",
+  "active_pr": null,
+  "next_branch": "feat/network-mcp-path-diagnostics",
   "principles": [
     "observe-plan-change-verify",
     "least-privilege",
@@ -35,14 +35,13 @@
         "architecture documentation"
       ],
       "verification": {
-        "local_pytest": "8 passed",
         "github_ci": "CI #100 passed all jobs on implementation head fbd290853c1515f5565bc54a04fb4a941b33d61b"
       }
     },
     {
       "id": "ad-mcp",
       "name": "Active Directory MCP",
-      "status": "in_progress",
+      "status": "complete",
       "depends_on": ["foundation"],
       "minimum_scope": [
         "domain-controller and replication diagnostics",
@@ -65,23 +64,26 @@
         "pre-state rollback intent target-state idempotence and independent AD readback verification",
         "typed disabled-user provisioning with OU and identity collision preflight",
         "disabled-user provisioning retry safety that refuses to reshape conflicting existing identities",
-        "password-free provisioning boundary with exact approval binding and independent readback verification"
+        "opaque initial-password secret references that never expose password material as MCP values",
+        "GUID-bound approval and initial-only credential establishment while the user remains disabled",
+        "stdin-only password delivery to one static allowlisted PowerShell mutation script",
+        "crash-safe non-secret pending and verified idempotency receipts",
+        "independent PasswordLastSet object-GUID and disabled-state verification"
       ],
       "verification": {
         "approved_write_slice": "PR #18 squash-merged as 79c751c067144063d9b056b535b341270371b2e4 after CI #116 passed all jobs",
-        "provisioning_branch": "PR #20 active on feat/ad-mcp-provisioning; ad-mcp lint tests and compile passed in CI #120 on head 2acef6466c207b9833dc5c3f386b4986ba093d48 before this status-only update"
+        "disabled_user_provisioning": "PR #20 merged after green CI and subsequently hardened on main by PR #21",
+        "credential_bootstrap": "PR #22 squash-merged as 809b473e19f1d62bc3b1a980d02f145de16ae69e after CI #129 passed every repository job including ad-mcp lint tests and compile"
       },
-      "remaining": [
-        "opaque password/bootstrap secret-reference design that does not expose password material to the model-facing MCP boundary",
-        "safe credential establishment and end-to-end verification before an account may be enabled",
-        "decide whether an explicitly approved GUID-bound rollback/delete primitive is warranted for freshly created disabled users"
-      ],
-      "next_branch": "feat/ad-mcp-credential-bootstrap"
+      "optional_future_hardening": [
+        "evaluate an explicitly approved GUID-bound rollback/delete primitive for freshly created disabled users",
+        "add a separately designed first-logon password-rotation policy without weakening credential-bootstrap verification"
+      ]
     },
     {
       "id": "network-mcp",
       "name": "Network analysis MCP",
-      "status": "queued",
+      "status": "in_progress",
       "depends_on": ["foundation"],
       "minimum_scope": [
         "DNS resolution",
@@ -89,7 +91,25 @@
         "routing and path diagnostics",
         "subnet and address validation",
         "structured diagnostic bundles"
-      ]
+      ],
+      "completed_deliverables": [
+        "network-mcp package and explicit read-only v1 contract scaffolded on feat/network-mcp",
+        "fail-closed NETWORK_ALLOWED_CIDRS authorization after one DNS resolution",
+        "mixed allowed and denied DNS answers rejected before probing",
+        "bounded single-port TCP reachability using authorized numeric addresses",
+        "kernel source-address route selection without arbitrary shell execution",
+        "IPv4 and IPv6 subnet/address validation",
+        "bounded DNS route and TCP diagnostic bundle",
+        "unit tests for contract target policy and socket diagnostic behavior",
+        "CI matrix entry for network-mcp"
+      ],
+      "remaining": [
+        "run and fix CI for initial network-mcp slice",
+        "merge initial network-mcp slice when green and still synchronized",
+        "add bounded hop/path diagnostics without introducing generic command execution",
+        "decide whether additional DNS record-type diagnostics are required for infrastructure troubleshooting"
+      ],
+      "next_branch": "feat/network-mcp-path-diagnostics"
     },
     {
       "id": "fortigate-mcp",
