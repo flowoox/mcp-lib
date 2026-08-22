@@ -80,7 +80,7 @@ class Approval(StrictModel):
     approved_at: datetime | None = None
 
     @model_validator(mode="after")
-    def validate_decision(self) -> "Approval":
+    def validate_decision(self) -> Approval:
         if self.state == ApprovalState.APPROVED:
             if self.approver is None:
                 raise ValueError("approved operations require an approver")
@@ -98,7 +98,7 @@ class ChangeStep(StrictModel):
     rollback_action: str | None = Field(default=None, min_length=1, max_length=1000)
 
     @model_validator(mode="after")
-    def require_rollback_when_reversible(self) -> "ChangeStep":
+    def require_rollback_when_reversible(self) -> ChangeStep:
         if self.reversible and self.rollback_action is None:
             raise ValueError("reversible steps require rollback_action")
         return self
@@ -115,7 +115,7 @@ class ChangePlan(StrictModel):
     approval: Approval = Field(default_factory=Approval)
 
     @model_validator(mode="after")
-    def enforce_change_invariants(self) -> "ChangePlan":
+    def enforce_change_invariants(self) -> ChangePlan:
         if self.risk == RiskLevel.READ_ONLY:
             raise ValueError("ChangePlan cannot use read_only risk")
         if self.context.idempotency_key is None:
@@ -150,7 +150,7 @@ class OperationResult(StrictModel):
     rollback_performed: bool = False
 
     @model_validator(mode="after")
-    def validate_result(self) -> "OperationResult":
+    def validate_result(self) -> OperationResult:
         if self.phase != OperationPhase.CHANGE and self.changed:
             raise ValueError("only change-phase results may report changed=true")
         if self.rollback_performed and not self.changed:
@@ -188,7 +188,7 @@ class ToolPolicy(StrictModel):
     requires_approval: bool = False
 
     @model_validator(mode="after")
-    def validate_policy(self) -> "ToolPolicy":
+    def validate_policy(self) -> ToolPolicy:
         if self.phase == OperationPhase.OBSERVE and self.risk != RiskLevel.READ_ONLY:
             raise ValueError("observe tools must be read_only")
         if self.phase == OperationPhase.CHANGE and self.risk == RiskLevel.READ_ONLY:
