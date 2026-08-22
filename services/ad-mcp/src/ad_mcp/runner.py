@@ -24,9 +24,12 @@ class PowerShellExecutionError(RuntimeError):
 class PowerShellRunner:
     """Execute only repository-owned PowerShell scripts with JSON input.
 
-    Model/user input is never interpolated into PowerShell source. It is passed
-    through a dedicated environment variable and decoded inside the static
-    script. The subprocess is always launched with ``shell=False``.
+    Model/user input is never interpolated into PowerShell source. Normal
+    structured input is passed through a dedicated environment variable and
+    decoded inside the static script. Credential material uses a separate
+    ``run_with_secret`` path that writes the secret only to the child process
+    stdin; it is never placed in argv, PowerShell source or the JSON payload.
+    The subprocess is always launched with ``shell=False``.
     """
 
     def __init__(self, executable: str, *, timeout_seconds: int = 30):
@@ -41,7 +44,33 @@ class PowerShellRunner:
         self.executable = executable
         self.timeout_seconds = timeout_seconds
 
-    def run(self, script_id: AdScriptId, payload: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def run(
+        self, script_id: AdScriptId, payload: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        return self._run(script_id, payload, secret=None)
+
+    def run_with_secret(
+        self,
+        script_id: AdScriptId,
+        payload: Mapping[str, Any] | None = None,
+        *,
+        secret: str,
+    ) -> dict[str, Any]:
+        """Execute one static script while supplying secret text on stdin only."""
+
+        if not secret:
+            raise ValueError("secret must not be empty")
+        if "\x00" in secret:
+            raise ValueError("secret must not contain NUL characters")
+        return self._run(script_id, payload, secret=secret)
+
+    def _run(
+        self,
+        script_id: AdScriptId,
+        payload: Mapping[str, Any] | None,
+        *,
+        secret: str | None,
+    ) -> dict[str, Any]:
         try:
             script = _ALL_SCRIPTS[script_id]
         except KeyError as exc:
@@ -66,6 +95,7 @@ class PowerShellRunner:
                 check=False,
                 capture_output=True,
                 text=True,
+                input=secret,
                 timeout=self.timeout_seconds,
                 env=env,
                 shell=False,
@@ -81,6 +111,8 @@ class PowerShellRunner:
 
         if completed.returncode != 0:
             detail = (completed.stderr or "").strip().replace("\x00", "")[-1200:]
+            if secret:
+                detail = detail.replace(secret, "[REDACTED]")
             suffix = f": {detail}" if detail else ""
             raise PowerShellExecutionError(
                 f"AD probe {script_id.value} failed with exit code {completed.returncode}{suffix}"
