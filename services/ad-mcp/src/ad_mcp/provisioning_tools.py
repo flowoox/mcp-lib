@@ -7,6 +7,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .changes import authorize_change, change_response, verify_response
 from .config import Settings
+from .credential_tools import register_credential_tools
 from .provisioning import (
     DisabledUserChangeRequest,
     DisabledUserFields,
@@ -209,3 +210,5 @@ def register_provisioning_tools(
             passed=verification.passed,
             details=verification.details,
         )
+
+    register_credential_tools(mcp, runner=runner, settings=settings)
