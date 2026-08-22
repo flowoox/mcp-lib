@@ -13,6 +13,7 @@ class RecordingClient(TraxxClient):
         super().__init__(config, downloads_dir=None)
         self.responses = responses
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
+        self.json_bodies: dict[str, Any] = {}
 
     async def request(
         self,
@@ -24,6 +25,7 @@ class RecordingClient(TraxxClient):
         allow_error: bool = False,
     ) -> Any:
         self.calls.append((method, path, params))
+        self.json_bodies[path] = json
         result = self.responses[path]
         if isinstance(result, Exception):
             raise result
@@ -142,3 +144,60 @@ async def test_artist_lookup_goes_through_search() -> None:
 async def test_search_returns_nothing_for_an_unknown_name() -> None:
     client = RecordingClient(config(), {"/api/v1/search": {"artists": []}})
     assert await client._find_exact_resource("artists", "Nobody") is None
+
+
+@pytest.mark.asyncio
+async def test_library_refresh_updates_local_channels_and_nested_containers() -> None:
+    client = RecordingClient(
+        config(),
+        {
+            "/api/v1/channel": {
+                "pagination": {
+                    "data": [
+                        {
+                            "id": 12,
+                            "config": {
+                                "contentType": "autoUpdate",
+                                "autoUpdateProvider": "local",
+                                "contentModel": "track",
+                            },
+                        },
+                        {
+                            "id": 13,
+                            "config": {
+                                "contentType": "autoUpdate",
+                                "autoUpdateProvider": "spotify",
+                                "contentModel": "track",
+                            },
+                        },
+                        {
+                            "id": 8,
+                            "config": {
+                                "contentType": "manual",
+                                "contentModel": "channel",
+                            },
+                        },
+                        {
+                            "id": 23,
+                            "config": {
+                                "contentType": "listAll",
+                                "contentModel": "album",
+                            },
+                        },
+                    ]
+                }
+            },
+            "/api/v1/channel/12/update-content": {},
+            "/api/v1/channel/8/update-content": {},
+        },
+    )
+
+    result = await client.refresh_library_channels()
+
+    assert result["refreshed"] == [12, 8]
+    assert result["errors"] == []
+    assert client.json_bodies["/api/v1/channel/12/update-content"] == {}
+    revision = client.json_bodies["/api/v1/channel/8/update-content"]
+    assert revision["channelConfig"]["radarLibraryRevision"]
+    assert "/api/v1/channel/13/update-content" not in client.json_bodies
+    assert "/api/v1/channel/23/update-content" not in client.json_bodies

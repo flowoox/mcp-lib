@@ -278,7 +278,8 @@ def create_server() -> FastMCP:
         lock_key = idempotency_key.strip() or f"legacy:{path}"
         lock = import_locks.setdefault(lock_key, asyncio.Lock())
         async with lock:
-            return await client().import_album_folder(
+            active_client = client()
+            result = await active_client.import_album_folder(
                 path,
                 dry_run=dry_run,
                 rights_confirmed=rights_confirmed,
@@ -292,6 +293,20 @@ def create_server() -> FastMCP:
                 track_hints=track_hints,
                 idempotency_key=idempotency_key,
             )
+            if not dry_run and int(result.get("imported_count") or 0):
+                try:
+                    result["channel_refresh"] = (
+                        await active_client.refresh_library_channels()
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    # The music is already safely imported. A homepage refresh
+                    # failure must be visible and retryable, but must not turn
+                    # a completed album into a failed upload.
+                    result["channel_refresh"] = {
+                        "refreshed": [],
+                        "errors": [str(exc)],
+                    }
+            return result
 
     @mcp.tool()
     async def import_external_metadata(

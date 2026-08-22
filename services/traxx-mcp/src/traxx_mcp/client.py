@@ -394,6 +394,58 @@ class TraxxClient:
             params["query"] = query
         return await self.request("GET", f"/api/v1/{resource}", params=params)
 
+    async def refresh_library_channels(self) -> dict[str, Any]:
+        """Refresh local auto channels and invalidate every nested container.
+
+        BeMusic caches channels containing other channels for 24 hours. Album
+        and track APIs do not invalidate that cache, so a successful import can
+        remain invisible on the homepage. Refresh the dynamic local sections
+        and touch each nested container with an internal revision value. The
+        application ignores that value, but saving it advances ``updated_at``
+        and therefore changes the cache key immediately.
+        """
+        payload = await self.request(
+            "GET", "/api/v1/channel", params={"page": 1, "perPage": 100}
+        )
+        revision = datetime.now(UTC).isoformat()
+        refreshed: list[int] = []
+        errors: list[str] = []
+        for channel in extract_items(payload):
+            raw_id = get_case_insensitive(channel, "id")
+            try:
+                channel_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            config = get_case_insensitive(channel, "config", default={})
+            config = config if isinstance(config, dict) else {}
+            is_local_auto = (
+                get_case_insensitive(config, "contentType") == "autoUpdate"
+                and get_case_insensitive(
+                    config, "autoUpdateProvider", default="local"
+                )
+                == "local"
+            )
+            is_nested_container = (
+                get_case_insensitive(config, "contentModel") == "channel"
+            )
+            if not is_local_auto and not is_nested_container:
+                continue
+            body = (
+                {}
+                if is_local_auto
+                else {"channelConfig": {"radarLibraryRevision": revision}}
+            )
+            try:
+                await self.request(
+                    "POST",
+                    f"/api/v1/channel/{channel_id}/update-content",
+                    json=body,
+                )
+                refreshed.append(channel_id)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"channel {channel_id}: {exc}")
+        return {"refreshed": refreshed, "errors": errors, "revision": revision}
+
     async def list_liked(
         self,
         resource: str,
