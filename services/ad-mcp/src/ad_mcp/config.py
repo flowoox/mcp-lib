@@ -23,8 +23,19 @@ class Settings(BaseSettings):
 
     ad_powershell_executable: str = "powershell.exe"
     ad_command_timeout_seconds: int = Field(default=30, ge=3, le=180)
+    ad_writes_enabled: bool = False
+    ad_approval_secret: str = ""
+
+    def validate_write_boundary(self) -> None:
+        """Fail closed when mutation support is enabled without an approval verifier."""
+        if self.ad_writes_enabled and len(self.ad_approval_secret.encode("utf-8")) < 32:
+            raise ValueError(
+                "AD_WRITES_ENABLED requires AD_APPROVAL_SECRET with at least 32 bytes"
+            )
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    settings.validate_write_boundary()
+    return settings
