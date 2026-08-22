@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "project": "flowoox/mcp-lib infrastructure MCP toolbox",
+  "goal": "Production-ready, product-neutral infrastructure MCP services for agent and n8n orchestration.",
+  "updated": "2026-08-22",
+  "principles": [
+    "observe-plan-change-verify",
+    "least-privilege",
+    "explicit-tool-allowlisting",
+    "typed-contracts",
+    "audit-and-correlation",
+    "approval-for-risky-writes",
+    "idempotent-writes",
+    "capture-pre-state-for-rollback",
+    "no-private-customer-topology-in-public-repo"
+  ],
+  "work_packages": [
+    {"id":"INFRA-001","name":"common infrastructure contracts","status":"in_progress","depends_on":[]},
+    {"id":"INFRA-002","name":"Active Directory MCP","status":"planned","depends_on":["INFRA-001"]},
+    {"id":"INFRA-003","name":"network diagnostics MCP","status":"planned","depends_on":["INFRA-001"]},
+    {"id":"INFRA-004","name":"FortiGate MCP","status":"planned","depends_on":["INFRA-001"]},
+    {"id":"INFRA-005","name":"Microsoft Entra MCP","status":"planned","depends_on":["INFRA-001"]},
+    {"id":"INFRA-006","name":"Windows infrastructure MCP","status":"planned","depends_on":["INFRA-001"]},
+    {"id":"INFRA-007","name":"cross-provider security audit MCP","status":"planned","depends_on":["INFRA-002","INFRA-003","INFRA-004","INFRA-005","INFRA-006"]},
+    {"id":"INFRA-008","name":"employee onboarding reference workflow","status":"planned","depends_on":["INFRA-002","INFRA-005"]},
+    {"id":"INFRA-009","name":"additional provider MCPs","status":"planned","depends_on":["INFRA-001"]}
+  ],
+  "next_action": "Finish INFRA-001 contracts and tests, then scaffold INFRA-002 ad-mcp.",
+  "automation_contract": "Each worker must sync current main/PR state first, take the next unblocked package, implement and test it, update this file, and leave a deterministic next_action."
+}
