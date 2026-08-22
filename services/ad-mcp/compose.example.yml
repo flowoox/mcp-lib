@@ -1,0 +1,35 @@
+services:
+  ad-mcp:
+    build:
+      context: ../..
+      dockerfile: services/ad-mcp/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    secrets:
+      - ad_bind_password
+      - mcp_auth_token
+    ports:
+      - "127.0.0.1:8091:8091"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    networks:
+      - mcp-services
+
+secrets:
+  ad_bind_password:
+    file: ./secrets/ad_bind_password.txt
+  mcp_auth_token:
+    file: ./secrets/mcp_auth_token.txt
+
+networks:
+  mcp-services:
+    driver: bridge
