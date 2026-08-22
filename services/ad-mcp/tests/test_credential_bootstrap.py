@@ -5,6 +5,11 @@ import os
 from pathlib import Path
 
 import pytest
+from mcp_common.secret_refs import (
+    parse_secret_reference,
+    secret_reference_sha256,
+    stage_secret_reference,
+)
 from pydantic import SecretStr, ValidationError
 
 from ad_mcp.credential_bootstrap import (
@@ -19,11 +24,6 @@ from ad_mcp.credential_bootstrap import (
     credential_bootstrap_verification,
     receipt_matches_intent,
     receipt_matches_plan,
-)
-from mcp_common.secret_refs import (
-    parse_secret_reference,
-    secret_reference_sha256,
-    stage_secret_reference,
 )
 
 _GUID = "11111111-2222-3333-4444-555555555555"
