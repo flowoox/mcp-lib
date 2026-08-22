@@ -7,10 +7,10 @@ from mcp.server.fastmcp import FastMCP
 from mcp_common.mcp_security import build_mcp_server_security
 from mcp_common.rights import validate_rights
 
-from .client import ArchiveClient
 from .config import RuntimeConfig, RuntimeConfigStore, get_settings
 from .contract import capabilities
 from .repository import BatchRepository, CandidateRepository
+from .secure_client import SecureArchiveClient
 
 
 def create_server() -> FastMCP:
@@ -39,8 +39,8 @@ def create_server() -> FastMCP:
         token_verifier=security.token_verifier,
     )
 
-    def client() -> ArchiveClient:
-        return ArchiveClient(
+    def client() -> SecureArchiveClient:
+        return SecureArchiveClient(
             configs.get(),
             batches=batches,
             downloads_dir=settings.downloads_dir,
@@ -66,12 +66,12 @@ def create_server() -> FastMCP:
         max_parallel_downloads: int = 3,
         download_timeout_seconds: int = 900,
     ) -> dict[str, Any]:
-        """Persist endpoint, search and quality settings.
+        """Persist Archive search and quality settings.
 
-        Unlike the Soulseek connector this service needs no account and no
-        credentials: the Archive's search, metadata and download endpoints are
-        public. ``lossless_only`` defaults to off because most openly licensed
-        releases are published as MP3 only.
+        ``base_url`` is retained for backwards-compatible clients but is now a
+        fail-closed trust-boundary parameter: only the bare
+        ``https://archive.org`` origin is accepted. Download redirects are
+        separately revalidated hop-by-hop before any request is sent.
         """
         current = configs.get()
         config = RuntimeConfig(
