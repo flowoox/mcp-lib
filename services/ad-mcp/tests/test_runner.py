@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+from ad_mcp.provisioning_scripts import PROVISIONING_SCRIPTS, ProvisioningScriptId
 from ad_mcp.runner import PowerShellExecutionError, PowerShellRunner
 from ad_mcp.scripts import SCRIPTS, ScriptId
 
@@ -42,6 +43,27 @@ def test_runner_uses_static_encoded_script_and_json_environment(monkeypatch: pyt
     assert result == {"enabled": True}
 
 
+def test_runner_can_select_only_registered_provisioning_script(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured["args"] = args
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout='{"changed":true}', stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = PowerShellRunner("powershell.exe").run(
+        ProvisioningScriptId.CREATE_DISABLED_USER,
+        {"samAccountName": "alice"},
+    )
+    args = captured["args"]
+    assert isinstance(args, list)
+    encoded = args[args.index("-EncodedCommand") + 1]
+    decoded = base64.b64decode(encoded).decode("utf-16le")
+    assert decoded == PROVISIONING_SCRIPTS[ProvisioningScriptId.CREATE_DISABLED_USER]
+    assert result == {"changed": True}
+
+
 def test_runner_fails_closed_on_invalid_json(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="not-json", stderr="")
@@ -74,25 +96,39 @@ def test_mutation_commands_are_confined_to_explicit_static_scripts() -> None:
         ScriptId.SET_USER_ENABLED,
         ScriptId.SET_USER_GROUP_MEMBERSHIP,
     }
+    provisioning_mutation_scripts = {ProvisioningScriptId.CREATE_DISABLED_USER}
+    all_sources = {**SCRIPTS, **PROVISIONING_SCRIPTS}
+
     forbidden_everywhere = (
         "Invoke-Expression",
         "Start-Process",
         "powershell -Command",
         "pwsh -Command",
-        "New-ADUser",
         "Remove-ADUser",
         "Set-ADAccountPassword",
+        "ConvertTo-SecureString",
+        "-AccountPassword",
         "-Repair",
     )
-    combined = "\n".join(SCRIPTS.values())
+    combined = "\n".join(all_sources.values())
     assert not any(command.casefold() in combined.casefold() for command in forbidden_everywhere)
 
-    mutation_tokens = (
+    normal_mutation_tokens = (
         "Enable-ADAccount",
         "Disable-ADAccount",
         "Add-ADGroupMember",
         "Remove-ADGroupMember",
     )
     for script_id, source in SCRIPTS.items():
-        has_mutation = any(token.casefold() in source.casefold() for token in mutation_tokens)
+        has_mutation = any(token.casefold() in source.casefold() for token in normal_mutation_tokens)
         assert has_mutation is (script_id in mutation_scripts)
+
+    for script_id, source in PROVISIONING_SCRIPTS.items():
+        has_create = "New-ADUser".casefold() in source.casefold()
+        assert has_create is (script_id in provisioning_mutation_scripts)
+
+
+def test_provisioning_scripts_never_accept_or_emit_password_material() -> None:
+    combined = "\n".join(PROVISIONING_SCRIPTS.values()).casefold()
+    assert "password" not in combined
+    assert "credential" not in combined
