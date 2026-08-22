@@ -3,8 +3,11 @@ from uuid import uuid4
 import pytest
 from mcp_common.approval_grants import issue_approval_grant
 from mcp_common.operations import ApprovalState, Verification
+from pydantic import ValidationError
 
 from ad_mcp.changes import (
+    GroupMembershipRequest,
+    UserEnabledRequest,
     authorize_change,
     build_group_membership_plan,
     build_user_enabled_plan,
@@ -31,6 +34,7 @@ def test_user_enabled_plan_captures_prestate_and_requires_approval() -> None:
     assert plan["approval"]["state"] == "required"
     assert plan["risk"] == "high"
     assert plan["steps"][0]["rollback_action"] == "restore enabled=true"
+    assert result["approvalBinding"]["intent"] == {"enabled": False}
     assert result["alreadySatisfied"] is False
     assert result["audit"]["context"]["correlation_id"] == correlation_id
 
@@ -47,15 +51,22 @@ def test_group_membership_plan_is_target_state_idempotent() -> None:
     assert result["alreadySatisfied"] is True
     assert result["plan"]["pre_state"] == {"present": True}
     assert result["plan"]["approval"]["state"] == "required"
+    assert result["approvalBinding"] == {
+        "operation": "ad.user.group-membership.change",
+        "target": "user:alice|group:VPN-Users",
+        "idempotencyKey": "joiner/alice/vpn-membership",
+        "intent": {"present": True},
+    }
 
 
-def test_signed_grant_is_bound_to_exact_ad_target_and_idempotency_key() -> None:
+def test_signed_grant_is_bound_to_exact_ad_target_state_and_idempotency_key() -> None:
     target = user_enabled_target("alice")
     grant = issue_approval_grant(
         SECRET,
         operation="ad.user.enabled.change",
         target=target,
         idempotency_key="joiner/alice/enable",
+        intent={"enabled": True},
         approver="change-manager",
         reason="approved onboarding",
     )
@@ -65,6 +76,7 @@ def test_signed_grant_is_bound_to_exact_ad_target_and_idempotency_key() -> None:
         operation="ad.user.enabled.change",
         target=target,
         idempotency_key="joiner/alice/enable",
+        intent={"enabled": True},
     )
     assert approval.state == ApprovalState.APPROVED
     with pytest.raises(ValueError, match="does not match"):
@@ -74,6 +86,16 @@ def test_signed_grant_is_bound_to_exact_ad_target_and_idempotency_key() -> None:
             operation="ad.user.enabled.change",
             target=user_enabled_target("bob"),
             idempotency_key="joiner/alice/enable",
+            intent={"enabled": True},
+        )
+    with pytest.raises(ValueError, match="does not match"):
+        authorize_change(
+            grant=grant,
+            secret=SECRET,
+            operation="ad.user.enabled.change",
+            target=target,
+            idempotency_key="joiner/alice/enable",
+            intent={"enabled": False},
         )
 
 
@@ -84,6 +106,7 @@ def test_change_response_never_contains_approval_grant() -> None:
         operation="ad.user.group-membership.change",
         target=target,
         idempotency_key="joiner/alice/vpn-membership",
+        intent={"present": True},
         approver="change-manager",
         reason="approved onboarding",
     )
@@ -93,6 +116,7 @@ def test_change_response_never_contains_approval_grant() -> None:
         operation="ad.user.group-membership.change",
         target=target,
         idempotency_key="joiner/alice/vpn-membership",
+        intent={"present": True},
     )
     response = change_response(
         operation="ad.user.group-membership.change",
@@ -108,6 +132,24 @@ def test_change_response_never_contains_approval_grant() -> None:
     assert response["changed"] is True
     assert response["verification"][0]["passed"] is True
     assert response["audit"]["metadata"]["approver"] == "change-manager"
+
+
+def test_mutation_models_reject_invalid_idempotency_before_execution() -> None:
+    with pytest.raises(ValidationError, match="idempotency_key"):
+        UserEnabledRequest(
+            identity="alice",
+            enabled=True,
+            idempotency_key="bad key!",
+            approval_grant="v1.placeholder.placeholder",
+        )
+    with pytest.raises(ValidationError, match="idempotency_key"):
+        GroupMembershipRequest(
+            user_identity="alice",
+            group_identity="VPN-Users",
+            present=True,
+            idempotency_key="bad key!",
+            approval_grant="v1.placeholder.placeholder",
+        )
 
 
 def test_write_configuration_fails_closed_without_strong_approval_secret() -> None:
