@@ -13,6 +13,7 @@ Public MCP services
       |
       +-- Soulseek MCP
       +-- Traxx MCP
+      +-- Docker Diagnostics MCP
       +-- future reusable connectors
       |
       +-- templates/service-template
@@ -89,6 +90,7 @@ Current families:
 ```text
 flowoox.music-acquisition v1.x
 flowoox.music-library-import v1.x
+flowoox.docker-diagnostics v1.x
 ```
 
 Service/image versions and contract versions are separate. Additive tools and fields are compatible within a contract major; semantic breaks require a new major.
@@ -103,6 +105,13 @@ Wrapper for `slskd`. It configures the Soulseek account, web access and API key 
 
 Wrapper for Traxx/BeMusic 3.x. It uses the native TUS endpoint, metadata extraction and Artist/Album/Track APIs. Track and album artists remain distinct, guest artists are preserved and locally stored cover art is preferred to external hotlinks. A persistent import ledger prevents duplicate completed imports and keeps incomplete imports retryable.
 
+### Docker MCP
+
+Read-only, fail-closed Docker Engine diagnostics with explicit GET-operation allowlists, a required
+read-only backend attestation, bounded daemon/container inventory and agent-facing query budgets.
+Production deployments should use a read-only authorization proxy because a filesystem read-only
+mount does not make the Docker socket protocol read-only. Writes are absent from the v1 contract.
+
 ## `packages/mcp-common`
 
 This package is the seed for reusable MCP server helpers. New generally useful functionality should land here before being copied into multiple services.
@@ -113,7 +122,10 @@ Target responsibilities:
 - typed input/output validation
 - normalized errors
 - correlation/request IDs
-- timeout helpers
+- per-operation query budgets and timeout helpers
+- explicit read-only connector boundaries
+- bounded pagination, sampling, rate and concurrency policy
+- cache hints and aggregate-before-fan-out protection
 - optional idempotency helpers
 - safe HTTP client primitives
 - auth adapter interface
@@ -123,6 +135,9 @@ Target responsibilities:
 - contract-test fixtures
 
 The package must stay product-neutral and must not depend on private Tekoda services.
+
+See [`docs/QUERY-SAFETY.md`](docs/QUERY-SAFETY.md) for the shared agent-facing
+diagnostic load boundary and backend read-only requirements.
 
 ## Security model
 
