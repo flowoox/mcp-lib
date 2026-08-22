@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
 
@@ -25,6 +26,11 @@ class MutationInput(BaseModel):
 
     idempotency_key: str = Field(min_length=8, max_length=128)
     approval_grant: str = Field(min_length=16, max_length=8192)
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def validate_idempotency_key(cls, value: str) -> str:
+        return clean_idempotency_key(value)
 
 
 class UserEnabledRequest(MutationInput):
@@ -53,6 +59,11 @@ class PlanRequest(BaseModel):
 
     idempotency_key: str = Field(min_length=8, max_length=128)
 
+    @field_validator("idempotency_key")
+    @classmethod
+    def validate_idempotency_key(cls, value: str) -> str:
+        return clean_idempotency_key(value)
+
 
 def clean_identity(value: str) -> str:
     value = value.strip()
@@ -61,6 +72,15 @@ def clean_identity(value: str) -> str:
     if any(ord(character) < 32 for character in value):
         raise ValueError("identity must not contain control characters")
     return value
+
+
+def clean_idempotency_key(value: str) -> str:
+    """Apply the shared OperationContext idempotency grammar before any AD call."""
+
+    context = OperationContext(actor="validation", source="ad-mcp", idempotency_key=value)
+    if context.idempotency_key is None:  # pragma: no cover - required by the model above
+        raise ValueError("idempotency_key is required")
+    return context.idempotency_key
 
 
 def operation_context(correlation_id: str, *, idempotency_key: str | None = None) -> OperationContext:
@@ -99,8 +119,10 @@ def build_user_enabled_plan(
     context = operation_context(correlation_id, idempotency_key=idempotency_key)
     target = user_enabled_target(identity)
     before = bool(current.get("enabled"))
+    operation = "ad.user.enabled.change"
+    intent = {"enabled": enabled}
     plan = ChangePlan(
-        operation="ad.user.enabled.change",
+        operation=operation,
         risk=RiskLevel.HIGH,
         context=context,
         steps=[
@@ -128,6 +150,12 @@ def build_user_enabled_plan(
     )
     return {
         "plan": plan.model_dump(mode="json"),
+        "approvalBinding": {
+            "operation": operation,
+            "target": target,
+            "idempotencyKey": context.idempotency_key,
+            "intent": intent,
+        },
         "audit": audit.model_dump(mode="json"),
         "alreadySatisfied": before == enabled,
     }
@@ -144,8 +172,10 @@ def build_group_membership_plan(
 ) -> dict[str, Any]:
     context = operation_context(correlation_id, idempotency_key=idempotency_key)
     target = group_membership_target(user_identity, group_identity)
+    operation = "ad.user.group-membership.change"
+    intent = {"present": present}
     plan = ChangePlan(
-        operation="ad.user.group-membership.change",
+        operation=operation,
         risk=RiskLevel.HIGH,
         context=context,
         steps=[
@@ -173,6 +203,12 @@ def build_group_membership_plan(
     )
     return {
         "plan": plan.model_dump(mode="json"),
+        "approvalBinding": {
+            "operation": operation,
+            "target": target,
+            "idempotencyKey": context.idempotency_key,
+            "intent": intent,
+        },
         "audit": audit.model_dump(mode="json"),
         "alreadySatisfied": current_present == present,
     }
@@ -185,6 +221,7 @@ def authorize_change(
     operation: str,
     target: str,
     idempotency_key: str,
+    intent: Mapping[str, Any],
 ) -> Approval:
     return verify_approval_grant(
         grant,
@@ -192,6 +229,7 @@ def authorize_change(
         operation=operation,
         target=target,
         idempotency_key=idempotency_key,
+        intent=intent,
     )
 
 
