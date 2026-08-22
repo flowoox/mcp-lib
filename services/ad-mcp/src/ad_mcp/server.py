@@ -273,6 +273,7 @@ def create_server() -> FastMCP:
             operation="ad.user.enabled.change",
             target=target,
             idempotency_key=request.idempotency_key,
+            intent={"enabled": request.enabled},
         )
         output = await probe(
             ScriptId.SET_USER_ENABLED,
@@ -364,6 +365,7 @@ def create_server() -> FastMCP:
             operation="ad.user.group-membership.change",
             target=target,
             idempotency_key=request.idempotency_key,
+            intent={"present": request.present},
         )
         output = await probe(
             ScriptId.SET_USER_GROUP_MEMBERSHIP,
