@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "work_package": "INFRA-002-OBSERVE",
+  "service": "services/ad-mcp",
+  "branch": "feat/ad-mcp-readonly-v2",
+  "status": "implemented_pending_ci",
+  "contract": {
+    "family": "flowoox.active-directory",
+    "version": "1.0.0",
+    "mode": "read_only"
+  },
+  "implemented": [
+    "LDAPS and StartTLS with fail-closed plaintext policy",
+    "certificate validation enabled by default",
+    "environment and Docker-secret credential loading",
+    "parsed distinguished-name search-base allowlist",
+    "service-owned escaped LDAP filters",
+    "fixed per-tool attribute allowlists",
+    "bounded and truncation-aware query results",
+    "secret attribute omission and binary payload redaction",
+    "domain policy observation",
+    "exact user lookup",
+    "direct group membership observation",
+    "domain controller inventory",
+    "deterministic read-only AD security audit",
+    "actor, reason, source and correlation audit envelope",
+    "non-root read-only container example",
+    "path-scoped CI test, lint, compile and container-build job"
+  ],
+  "tests": [
+    "DN scope and escaped separator handling",
+    "fail-closed LDAP transport settings",
+    "LDAP filter injection escaping",
+    "runtime result capping",
+    "secret and binary output redaction",
+    "password and lockout policy findings",
+    "privileged account findings",
+    "AD FILETIME conversion",
+    "read-only contract invariants",
+    "audit event data minimization"
+  ],
+  "not_implemented": [
+    "AD writes",
+    "employee onboarding changes",
+    "nested effective privilege expansion",
+    "LDAP signing or channel binding verification",
+    "replication, DNS, SYSVOL, GPO, Kerberos or secure-channel diagnostics"
+  ],
+  "next_action": "Run branch CI, repair all failures, synchronize with current main, merge only when checks are green, then implement the plan/approval/idempotency layer for onboarding writes."
+}
