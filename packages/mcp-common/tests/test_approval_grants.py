@@ -12,6 +12,7 @@ def _grant(**overrides: object) -> str:
         "operation": "ad.user.enabled.change",
         "target": "user:alice",
         "idempotency_key": "joiner/alice/enable",
+        "intent": {"enabled": True},
         "approver": "change-manager@example.invalid",
         "reason": "Approved joiner workflow",
         "ttl_seconds": 900,
@@ -28,6 +29,7 @@ def test_approval_grant_verifies_exact_mutation_binding() -> None:
         operation="ad.user.enabled.change",
         target="user:alice",
         idempotency_key="joiner/alice/enable",
+        intent={"enabled": True},
         now=NOW + timedelta(minutes=1),
     )
     assert approval.state.value == "approved"
@@ -35,7 +37,7 @@ def test_approval_grant_verifies_exact_mutation_binding() -> None:
     assert approval.reason == "Approved joiner workflow"
 
 
-def test_approval_grant_rejects_replay_for_other_target_or_operation() -> None:
+def test_approval_grant_rejects_replay_for_other_target_operation_or_intent() -> None:
     grant = _grant()
     with pytest.raises(ValueError, match="does not match"):
         verify_approval_grant(
@@ -44,6 +46,7 @@ def test_approval_grant_rejects_replay_for_other_target_or_operation() -> None:
             operation="ad.user.enabled.change",
             target="user:bob",
             idempotency_key="joiner/alice/enable",
+            intent={"enabled": True},
             now=NOW,
         )
     with pytest.raises(ValueError, match="does not match"):
@@ -53,6 +56,17 @@ def test_approval_grant_rejects_replay_for_other_target_or_operation() -> None:
             operation="ad.user.group-membership.change",
             target="user:alice",
             idempotency_key="joiner/alice/enable",
+            intent={"enabled": True},
+            now=NOW,
+        )
+    with pytest.raises(ValueError, match="does not match"):
+        verify_approval_grant(
+            grant,
+            SECRET,
+            operation="ad.user.enabled.change",
+            target="user:alice",
+            idempotency_key="joiner/alice/enable",
+            intent={"enabled": False},
             now=NOW,
         )
 
@@ -68,6 +82,7 @@ def test_approval_grant_rejects_tamper_and_expiry() -> None:
             operation="ad.user.enabled.change",
             target="user:alice",
             idempotency_key="joiner/alice/enable",
+            intent={"enabled": True},
             now=NOW,
         )
     with pytest.raises(ValueError, match="expired"):
@@ -77,20 +92,24 @@ def test_approval_grant_rejects_tamper_and_expiry() -> None:
             operation="ad.user.enabled.change",
             target="user:alice",
             idempotency_key="joiner/alice/enable",
+            intent={"enabled": True},
             now=NOW + timedelta(minutes=16),
         )
 
 
-def test_approval_grant_requires_strong_secret_and_short_ttl() -> None:
+def test_approval_grant_requires_strong_secret_short_ttl_and_json_intent() -> None:
     with pytest.raises(ValueError, match="32 bytes"):
         issue_approval_grant(
             "short",
             operation="x",
             target="y",
             idempotency_key="abcdefgh",
+            intent={"enabled": True},
             approver="a",
             reason="r",
             now=NOW,
         )
     with pytest.raises(ValueError, match="3600"):
         _grant(ttl_seconds=3601)
+    with pytest.raises(ValueError, match="JSON-serializable"):
+        _grant(intent={"bad": object()})
