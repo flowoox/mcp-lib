@@ -6,7 +6,7 @@ from ad_mcp.contract import CONTRACT, CONTRACT_VERSION, TOOL_POLICIES, capabilit
 def test_contract_is_versioned_and_explicit() -> None:
     document = capabilities()
     assert CONTRACT == "flowoox.active-directory"
-    assert CONTRACT_VERSION == "1.3.0"
+    assert CONTRACT_VERSION == "1.4.0"
     assert document["contract"] == CONTRACT
     assert document["version"] == CONTRACT_VERSION
     assert {item["id"] for item in document["capabilities"]} == {
@@ -29,12 +29,16 @@ def test_contract_is_versioned_and_explicit() -> None:
         "ad.user.provision-disabled.plan",
         "ad.user.provision-disabled.change",
         "ad.user.provision-disabled.verify",
+        "ad.user.credential-bootstrap.plan",
+        "ad.user.credential-bootstrap.change",
+        "ad.user.credential-bootstrap.verify",
     }
 
 
 def test_write_contract_requires_approval_and_is_fail_closed_by_default() -> None:
     document = capabilities()
     assert document["runtime"]["writes_enabled"] is False
+    assert document["runtime"]["credential_bootstrap_enabled"] is False
     change_policies = [
         policy for policy in TOOL_POLICIES if policy.phase == OperationPhase.CHANGE
     ]
@@ -48,12 +52,17 @@ def test_write_contract_requires_approval_and_is_fail_closed_by_default() -> Non
 
 
 def test_contract_reports_runtime_write_enablement_without_changing_contract_version() -> None:
-    enabled = capabilities(writes_enabled=True)
+    enabled = capabilities(writes_enabled=True, credential_bootstrap_enabled=True)
     assert enabled["version"] == CONTRACT_VERSION
     assert enabled["runtime"]["writes_enabled"] is True
+    assert enabled["runtime"]["credential_bootstrap_enabled"] is True
 
 
-def test_contract_does_not_advertise_arbitrary_execution_or_password_input() -> None:
+def test_contract_does_not_advertise_arbitrary_execution_or_direct_password_input() -> None:
     ids = {policy.name for policy in TOOL_POLICIES}
     assert not any("shell" in item or "powershell" in item or "command" in item for item in ids)
-    assert not any("password" in item or "credential" in item for item in ids)
+    assert not any("password" in item for item in ids)
+    document = capabilities()
+    credential_model = document["runtime"]["credential_model"].casefold()
+    assert "opaque runtime secret references" in credential_model
+    assert "never accepted or returned as mcp values" in credential_model
