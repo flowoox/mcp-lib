@@ -71,11 +71,15 @@ def validate_archive_url_syntax(value: str) -> str:
 
 
 def validate_resolved_addresses(addresses: Iterable[str]) -> None:
-    """Reject any DNS answer that is not globally routable.
+    """Reject any DNS answer that is not safe for public Internet egress.
 
     Blocking the complete answer set prevents a mixed public/private DNS reply
     from being treated as safe. IPv4-mapped IPv6 is normalized before the
     classification so ``::ffff:127.0.0.1`` cannot bypass the IPv4 policy.
+
+    ``ipaddress.is_global`` alone is intentionally insufficient: Python treats
+    multicast addresses as global in some versions, but multicast is never a
+    valid destination for this HTTP connector.
     """
 
     seen = False
@@ -91,7 +95,16 @@ def validate_resolved_addresses(addresses: Iterable[str]) -> None:
         mapped = getattr(address, "ipv4_mapped", None)
         if mapped is not None:
             address = mapped
-        if not address.is_global:
+        blocked = (
+            not address.is_global
+            or address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_multicast
+            or address.is_reserved
+            or address.is_unspecified
+        )
+        if blocked:
             raise ArchiveOutboundError(
                 f"Archive host resolved to a non-public address: {address.compressed}"
             )
