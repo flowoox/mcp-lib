@@ -6,7 +6,7 @@ from ad_mcp.contract import CONTRACT, CONTRACT_VERSION, TOOL_POLICIES, capabilit
 def test_contract_is_versioned_and_explicit() -> None:
     document = capabilities()
     assert CONTRACT == "flowoox.active-directory"
-    assert CONTRACT_VERSION == "1.2.0"
+    assert CONTRACT_VERSION == "1.3.0"
     assert document["contract"] == CONTRACT
     assert document["version"] == CONTRACT_VERSION
     assert {item["id"] for item in document["capabilities"]} == {
@@ -26,6 +26,9 @@ def test_contract_is_versioned_and_explicit() -> None:
         "ad.user.group-membership.plan",
         "ad.user.group-membership.change",
         "ad.user.group-membership.verify",
+        "ad.user.provision-disabled.plan",
+        "ad.user.provision-disabled.change",
+        "ad.user.provision-disabled.verify",
     }
 
 
@@ -50,6 +53,7 @@ def test_contract_reports_runtime_write_enablement_without_changing_contract_ver
     assert enabled["runtime"]["writes_enabled"] is True
 
 
-def test_contract_does_not_advertise_arbitrary_execution() -> None:
+def test_contract_does_not_advertise_arbitrary_execution_or_password_input() -> None:
     ids = {policy.name for policy in TOOL_POLICIES}
     assert not any("shell" in item or "powershell" in item or "command" in item for item in ids)
+    assert not any("password" in item or "credential" in item for item in ids)

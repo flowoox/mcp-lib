@@ -5,12 +5,16 @@ import json
 import os
 import subprocess
 from collections.abc import Mapping
+from enum import StrEnum
 from typing import Any
 
+from .provisioning_scripts import PROVISIONING_SCRIPTS, ProvisioningScriptId
 from .scripts import SCRIPTS, ScriptId
 
 _ALLOWED_EXECUTABLES = {"powershell.exe", "pwsh.exe", "powershell", "pwsh"}
 _PASSTHROUGH_ENV = ("PATH", "SystemRoot", "WINDIR", "PSModulePath", "TEMP", "TMP")
+_ALL_SCRIPTS: dict[StrEnum, str] = {**SCRIPTS, **PROVISIONING_SCRIPTS}
+AdScriptId = ScriptId | ProvisioningScriptId
 
 
 class PowerShellExecutionError(RuntimeError):
@@ -37,9 +41,9 @@ class PowerShellRunner:
         self.executable = executable
         self.timeout_seconds = timeout_seconds
 
-    def run(self, script_id: ScriptId, payload: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def run(self, script_id: AdScriptId, payload: Mapping[str, Any] | None = None) -> dict[str, Any]:
         try:
-            script = SCRIPTS[script_id]
+            script = _ALL_SCRIPTS[script_id]
         except KeyError as exc:
             raise ValueError(f"Unknown AD script id: {script_id}") from exc
 

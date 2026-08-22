@@ -32,6 +32,7 @@ from .changes import (
 )
 from .config import get_settings
 from .contract import capabilities
+from .provisioning_tools import register_provisioning_tools
 from .runner import PowerShellRunner
 from .scripts import ScriptId
 
@@ -420,6 +421,7 @@ def create_server() -> FastMCP:
             details={"expectedPresent": present, "observedPresent": actual},
         )
 
+    register_provisioning_tools(mcp, runner=runner, settings=settings)
     return mcp
 
 

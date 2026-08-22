@@ -5,7 +5,7 @@ from typing import Any
 from mcp_common.operations import OperationPhase, RiskLevel, ToolPolicy
 
 CONTRACT = "flowoox.active-directory"
-CONTRACT_VERSION = "1.2.0"
+CONTRACT_VERSION = "1.3.0"
 
 TOOL_POLICIES = (
     ToolPolicy(name="ad.domain.summary", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
@@ -56,6 +56,23 @@ TOOL_POLICIES = (
         phase=OperationPhase.VERIFY,
         risk=RiskLevel.READ_ONLY,
     ),
+    ToolPolicy(
+        name="ad.user.provision-disabled.plan",
+        phase=OperationPhase.PLAN,
+        risk=RiskLevel.HIGH,
+        requires_approval=True,
+    ),
+    ToolPolicy(
+        name="ad.user.provision-disabled.change",
+        phase=OperationPhase.CHANGE,
+        risk=RiskLevel.HIGH,
+        requires_approval=True,
+    ),
+    ToolPolicy(
+        name="ad.user.provision-disabled.verify",
+        phase=OperationPhase.VERIFY,
+        risk=RiskLevel.READ_ONLY,
+    ),
 )
 
 _DESCRIPTIONS = {
@@ -75,6 +92,9 @@ _DESCRIPTIONS = {
     "ad.user.group-membership.plan": "Capture pre-state and plan one direct group membership change.",
     "ad.user.group-membership.change": "Add or remove one direct group membership with signed approval.",
     "ad.user.group-membership.verify": "Independently verify one direct group membership state.",
+    "ad.user.provision-disabled.plan": "Preflight and plan creation of one disabled AD user.",
+    "ad.user.provision-disabled.change": "Ensure one approved disabled AD user exists with exact attributes.",
+    "ad.user.provision-disabled.verify": "Independently verify the disabled user and approved attribute set.",
 }
 
 
@@ -88,7 +108,7 @@ def capabilities(*, writes_enabled: bool = False) -> dict[str, Any]:
             "credential_model": "inherited service identity; credentials are not accepted by MCP tools",
             "writes_enabled": writes_enabled,
             "approval_model": (
-                "short-lived HMAC-signed grant bound to operation, target and idempotency key"
+                "short-lived HMAC-signed grant bound to operation, target, idempotency key and exact desired-state intent"
             ),
         },
         "capabilities": [
