@@ -14,6 +14,7 @@ from .scripts import SCRIPTS, ScriptId
 _ALLOWED_EXECUTABLES = {"powershell.exe", "pwsh.exe", "powershell", "pwsh"}
 _PASSTHROUGH_ENV = ("PATH", "SystemRoot", "WINDIR", "PSModulePath", "TEMP", "TMP")
 _ALL_SCRIPTS: dict[StrEnum, str] = {**SCRIPTS, **PROVISIONING_SCRIPTS}
+_SECRET_STDIN_SCRIPTS = {ProvisioningScriptId.SET_INITIAL_PASSWORD}
 AdScriptId = ScriptId | ProvisioningScriptId
 
 
@@ -56,8 +57,10 @@ class PowerShellRunner:
         *,
         secret: str,
     ) -> dict[str, Any]:
-        """Execute one static script while supplying secret text on stdin only."""
+        """Execute the one allowlisted credential script with secret text on stdin only."""
 
+        if script_id not in _SECRET_STDIN_SCRIPTS:
+            raise ValueError("script is not allowlisted to receive secret stdin")
         if not secret:
             raise ValueError("secret must not be empty")
         if "\x00" in secret:
