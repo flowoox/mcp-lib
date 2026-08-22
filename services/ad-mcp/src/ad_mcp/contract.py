@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from mcp_common.operations import OperationPhase, RiskLevel, ToolPolicy
@@ -118,11 +119,17 @@ _DESCRIPTIONS = {
 }
 
 
+def _env_enabled(name: str) -> bool:
+    return os.getenv(name, "").strip().casefold() in {"1", "true", "yes", "on"}
+
+
 def capabilities(
     *,
     writes_enabled: bool = False,
-    credential_bootstrap_enabled: bool = False,
+    credential_bootstrap_enabled: bool | None = None,
 ) -> dict[str, Any]:
+    if credential_bootstrap_enabled is None:
+        credential_bootstrap_enabled = _env_enabled("AD_CREDENTIAL_BOOTSTRAP_ENABLED")
     return {
         "contract": CONTRACT,
         "version": CONTRACT_VERSION,
