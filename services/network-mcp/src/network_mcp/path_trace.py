@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import platform
 import re
 import shutil
@@ -14,6 +15,7 @@ from .policy import AuthorizedTarget
 _HOP_RE = re.compile(r"^\s*(\d{1,3})\s+(.*)$")
 _MAX_CAPTURE_BYTES = 32768
 _ALLOWED_BASENAMES = {"traceroute", "traceroute.exe", "tracert", "tracert.exe"}
+_PASSTHROUGH_ENV = ("PATH", "SystemRoot", "WINDIR", "LANG", "LC_ALL")
 
 
 class PathTraceUnavailableError(RuntimeError):
@@ -103,7 +105,7 @@ def _ip_tokens(text: str) -> list[str]:
     addresses: list[str] = []
     seen: set[str] = set()
     for token in text.split():
-        candidate = token.strip("()[]<>,;:")
+        candidate = token.strip("()[]<>,;")
         if not candidate:
             continue
         try:
@@ -183,6 +185,7 @@ class PathTracer:
             hop_timeout_seconds=hop_timeout_seconds,
             system_name=self.system_name,
         )
+        env = {name: os.environ[name] for name in _PASSTHROUGH_ENV if name in os.environ}
         try:
             completed = subprocess.run(
                 command,
@@ -191,6 +194,7 @@ class PathTracer:
                 text=True,
                 shell=False,
                 timeout=self.config.process_timeout_seconds,
+                env=env,
             )
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError("path trace exceeded the configured process timeout") from exc
