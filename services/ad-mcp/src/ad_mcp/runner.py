@@ -8,13 +8,24 @@ from collections.abc import Mapping
 from typing import Any
 
 from .scripts import SCRIPTS, ScriptId
+from .write_scripts import WRITE_SCRIPTS, WriteScriptId
 
 _ALLOWED_EXECUTABLES = {"powershell.exe", "pwsh.exe", "powershell", "pwsh"}
 _PASSTHROUGH_ENV = ("PATH", "SystemRoot", "WINDIR", "PSModulePath", "TEMP", "TMP")
 
+ScriptKey = ScriptId | WriteScriptId
+
 
 class PowerShellExecutionError(RuntimeError):
     """A static AD probe failed or returned an invalid response."""
+
+
+def _script_for(script_id: ScriptKey) -> str:
+    if isinstance(script_id, ScriptId):
+        return SCRIPTS[script_id]
+    if isinstance(script_id, WriteScriptId):
+        return WRITE_SCRIPTS[script_id]
+    raise ValueError(f"Unknown AD script id: {script_id}")
 
 
 class PowerShellRunner:
@@ -37,12 +48,8 @@ class PowerShellRunner:
         self.executable = executable
         self.timeout_seconds = timeout_seconds
 
-    def run(self, script_id: ScriptId, payload: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        try:
-            script = SCRIPTS[script_id]
-        except KeyError as exc:
-            raise ValueError(f"Unknown AD script id: {script_id}") from exc
-
+    def run(self, script_id: ScriptKey, payload: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        script = _script_for(script_id)
         encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
         env = {name: os.environ[name] for name in _PASSTHROUGH_ENV if name in os.environ}
         env["FLOWOOX_MCP_INPUT"] = json.dumps(
