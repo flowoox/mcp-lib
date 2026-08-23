@@ -100,6 +100,27 @@ async def test_completed_import_is_repaired_when_tracks_disappeared(tmp_path: Pa
     assert restarted.calls == 1
 
 
+@pytest.mark.asyncio
+async def test_missing_album_is_reported_as_repairable_drift(tmp_path: Path) -> None:
+    class MissingAlbumClient(TraxxClient):
+        async def request(self, method: str, path: str, **kwargs: Any) -> Any:
+            del method, path, kwargs
+            raise TraxxError("Traxx GET /api/v1/albums/84 failed (404): not found")
+
+    client = MissingAlbumClient(
+        RuntimeConfig(base_url="https://traxx.test"), downloads_dir=tmp_path
+    )
+    result = await client.inspect_album_import(84, expected_tracks=3)
+
+    assert result == {
+        "album_id": 84,
+        "exists": False,
+        "tracks_count": 0,
+        "expected_tracks": 3,
+        "complete": False,
+    }
+
+
 class ResourceClient(TraxxClient):
     def __init__(self, tmp_path: Path):
         super().__init__(RuntimeConfig(base_url="https://traxx.test"), downloads_dir=tmp_path)

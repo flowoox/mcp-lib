@@ -1072,7 +1072,10 @@ class TraxxClient:
         try:
             response = await self.request("GET", f"/api/v1/albums/{int(album_id)}")
         except TraxxError as exc:
-            if "returned 404" in str(exc):
+            # The low-level request error has used both "returned 404" and
+            # "failed (404)" over time. A missing resource is normal drift to
+            # reconcile, not a connector outage, so recognise both forms.
+            if re.search(r"(?:returned\s+404|failed\s+\(404\))", str(exc), re.IGNORECASE):
                 return {
                     "album_id": int(album_id),
                     "exists": False,
