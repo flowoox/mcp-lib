@@ -144,7 +144,7 @@ def first_tag(tags: Any, *keys: str) -> str:
         except AttributeError:
             value = None
         if value:
-            if isinstance(value, (list, tuple)):
+            if isinstance(value, list | tuple):
                 value = value[0]
             return str(value)
     return ""
@@ -201,7 +201,7 @@ def _id3_text(tags: Any, key: str) -> str:
     if frame is None:
         return ""
     text = getattr(frame, "text", None)
-    if isinstance(text, (list, tuple)) and text:
+    if isinstance(text, list | tuple) and text:
         return str(text[0])
     return str(text or "")
 

@@ -21,7 +21,23 @@ class StubImportClient(TraxxClient):
 
     async def _import_album_folder_once(self, folder: str | Path, **_: Any) -> dict[str, Any]:
         self.calls += 1
-        return {"folder": str(folder), "imported_count": 1, "unresolved_count": 0}
+        return {
+            "folder": str(folder),
+            "album_id": 42,
+            "imported_count": 1,
+            "unresolved_count": 0,
+        }
+
+    async def inspect_album_import(
+        self, album_id: int, *, expected_tracks: int = 1
+    ) -> dict[str, Any]:
+        return {
+            "album_id": album_id,
+            "exists": True,
+            "tracks_count": expected_tracks,
+            "expected_tracks": expected_tracks,
+            "complete": True,
+        }
 
 
 @pytest.mark.asyncio
@@ -47,6 +63,41 @@ async def test_completed_import_is_returned_from_persistent_ledger(tmp_path: Pat
     )
     assert second["idempotent"] is True
     assert restarted_client.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_completed_import_is_repaired_when_tracks_disappeared(tmp_path: Path) -> None:
+    first_client = StubImportClient(tmp_path)
+    await first_client.import_album_folder(
+        "library/Artist/Album",
+        dry_run=False,
+        rights_confirmed=True,
+        rights_basis="owned-copy",
+        idempotency_key="release-damaged:traxx",
+    )
+
+    class DamagedImportClient(StubImportClient):
+        async def inspect_album_import(
+            self, album_id: int, *, expected_tracks: int = 1
+        ) -> dict[str, Any]:
+            return {
+                "album_id": album_id,
+                "exists": True,
+                "tracks_count": expected_tracks - 1,
+                "expected_tracks": expected_tracks,
+                "complete": False,
+            }
+
+    restarted = DamagedImportClient(tmp_path)
+    result = await restarted.import_album_folder(
+        "library/Artist/Album",
+        dry_run=False,
+        rights_confirmed=True,
+        rights_basis="owned-copy",
+        idempotency_key="release-damaged:traxx",
+    )
+    assert result["idempotent"] is False
+    assert restarted.calls == 1
 
 
 class ResourceClient(TraxxClient):
@@ -76,6 +127,20 @@ async def test_album_deduplication_requires_matching_artist(tmp_path: Path) -> N
     album_id = await client.ensure_album("Shared Name", artist_id=1)
     assert album_id == 42
     assert client.created[0]["path"] == "/api/v1/albums"
+
+
+@pytest.mark.asyncio
+async def test_album_without_release_date_omits_invalid_null(tmp_path: Path) -> None:
+    client = ResourceClient(tmp_path)
+    await client.ensure_album("Undated", artist_id=1, release_date="")
+    assert "release_date" not in client.created[0]["json"]
+
+
+@pytest.mark.asyncio
+async def test_partial_release_dates_are_completed_for_traxx(tmp_path: Path) -> None:
+    client = ResourceClient(tmp_path)
+    await client.ensure_album("Month Known", artist_id=1, release_date="2024-07")
+    assert client.created[0]["json"]["release_date"] == "2024-07-01"
 
 
 @pytest.mark.asyncio
@@ -124,11 +189,13 @@ class RetriablePartialImportClient(StubImportClient):
         if self.calls == 1:
             return {
                 "folder": str(folder),
+                "album_id": 42,
                 "imported_count": 1,
                 "unresolved_count": 1,
             }
         return {
             "folder": str(folder),
+            "album_id": 42,
             "imported_count": 2,
             "unresolved_count": 0,
         }

@@ -5,7 +5,7 @@ def test_library_import_contract_is_versioned_and_normalizes_metadata() -> None:
     result = capabilities()
     assert result["contract"] == {
         "name": CONTRACT_NAME,
-        "version": "1.4",
+        "version": "1.5",
         "major": 1,
     }
     assert result["role"] == "library-target"

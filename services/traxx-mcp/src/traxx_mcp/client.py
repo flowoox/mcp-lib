@@ -1019,23 +1019,87 @@ class TraxxClient:
                 return int(value)
             except (TypeError, ValueError):
                 continue
-        date_value = release_date if re.fullmatch(r"\d{4}-\d{2}-\d{2}", release_date) else ""
-        if not date_value and re.fullmatch(r"\d{4}", release_date):
-            date_value = f"{release_date}-01-01"
+        date_value = self._normalise_release_date(release_date)
+        payload: dict[str, Any] = {
+            "name": name,
+            "image": image or None,
+            "artists": [artist_id],
+        }
+        # Laravel's ``date`` validation accepts an absent optional field, but
+        # rejects an explicitly supplied null value. Older connector versions
+        # always sent null when Spotify only knew no date at all, which made an
+        # otherwise valid album impossible to import.
+        if date_value:
+            payload["release_date"] = date_value
         created = await self.request(
             "POST",
             "/api/v1/albums",
-            json={
-                "name": name,
-                "release_date": date_value or None,
-                "image": image or None,
-                "artists": [artist_id],
-            },
+            json=payload,
         )
         value = recursive_find(created, {"id"})
         if value is None:
             raise TraxxError(f"Traxx created album {name!r} without returning an id")
         return int(value)
+
+    @staticmethod
+    def _normalise_release_date(value: str) -> str:
+        """Return the most precise valid date Traxx can store.
+
+        Spotify and file tags can legally contain only a year or year/month.
+        Traxx expects a complete calendar date, so missing components use the
+        first day rather than turning a useful import into a validation error.
+        """
+        candidate = str(value or "").strip()
+        for pattern, suffix, date_format in (
+            (r"\d{4}-\d{2}-\d{2}", "", "%Y-%m-%d"),
+            (r"\d{4}-\d{2}", "-01", "%Y-%m-%d"),
+            (r"\d{4}", "-01-01", "%Y-%m-%d"),
+        ):
+            if not re.fullmatch(pattern, candidate):
+                continue
+            complete = candidate + suffix
+            try:
+                datetime.strptime(complete, date_format)
+            except ValueError:
+                return ""
+            return complete
+        return ""
+
+    async def inspect_album_import(
+        self, album_id: int, *, expected_tracks: int = 1
+    ) -> dict[str, Any]:
+        """Check that an imported album still exists with all expected tracks."""
+        try:
+            response = await self.request("GET", f"/api/v1/albums/{int(album_id)}")
+        except TraxxError as exc:
+            if "returned 404" in str(exc):
+                return {
+                    "album_id": int(album_id),
+                    "exists": False,
+                    "tracks_count": 0,
+                    "expected_tracks": max(0, int(expected_tracks)),
+                    "complete": False,
+                }
+            raise
+        album = response.get("album", response) if isinstance(response, dict) else {}
+        if not isinstance(album, dict):
+            album = {}
+        tracks = album.get("tracks")
+        try:
+            tracks_count = int(album.get("tracks_count") or 0)
+        except (TypeError, ValueError):
+            tracks_count = 0
+        if not tracks_count and isinstance(tracks, list):
+            tracks_count = len(tracks)
+        expected = max(0, int(expected_tracks))
+        return {
+            "album_id": int(album_id),
+            "name": str(album.get("name") or ""),
+            "exists": bool(album),
+            "tracks_count": tracks_count,
+            "expected_tracks": expected,
+            "complete": bool(album) and tracks_count >= expected,
+        }
 
     async def _load_cover(
         self,
@@ -1180,7 +1244,14 @@ class TraxxClient:
             if isinstance(result, dict) and not self.folder_fails_verification(
                 folder, track_hints
             ):
-                return {**result, "idempotent": True}
+                album_id = int(result.get("album_id") or 0)
+                expected_tracks = int(result.get("imported_count") or 0)
+                if album_id and expected_tracks:
+                    current = await self.inspect_album_import(
+                        album_id, expected_tracks=expected_tracks
+                    )
+                    if current["complete"]:
+                        return {**result, "idempotent": True, "verification": current}
 
         ledger[key] = {
             "status": "processing",
@@ -1257,6 +1328,13 @@ class TraxxClient:
         first_local = inspect_audio_file(files[0])
         expected_artist = artist.strip() or first_local.artist
         expected_album = album.strip() or first_local.album or resolved.name
+        # Prefer the catalogue value, but keep a valid date already embedded
+        # in the files when the recommendation source did not provide one.
+        # Besides avoiding validation failures, this keeps the album eligible
+        # for Traxx's date-based "new releases" channels.
+        release_date = self._normalise_release_date(
+            release_date
+        ) or self._normalise_release_date(first_local.release_date)
         cover_data, cover_mime, cover_path = await self._load_cover(
             resolved, cover_url, persist=not dry_run
         )

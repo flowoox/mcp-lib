@@ -189,6 +189,15 @@ def create_server() -> FastMCP:
         )
 
     @mcp.tool()
+    async def inspect_album_import(
+        album_id: int, expected_tracks: int = 1
+    ) -> dict[str, Any]:
+        """Verify that one imported album still exists with its expected tracks."""
+        return await client().inspect_album_import(
+            album_id, expected_tracks=expected_tracks
+        )
+
+    @mcp.tool()
     async def list_artists(
         page: int = 1, per_page: int = 20, query: str = ""
     ) -> Any:
