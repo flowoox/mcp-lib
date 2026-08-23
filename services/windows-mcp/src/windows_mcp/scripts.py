@@ -41,7 +41,7 @@ $pending = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component
            (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations')
 $result = [ordered]@{
   items = @([ordered]@{
-    computerName = [string]$env:COMPUTERNAME
+    computerName = [string][Environment]::MachineName
     osCaption = [string]$os.Caption
     osVersion = [string]$os.Version
     buildNumber = [string]$os.BuildNumber
