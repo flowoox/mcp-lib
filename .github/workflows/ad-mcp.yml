@@ -1,0 +1,56 @@
+name: AD MCP
+
+on:
+  pull_request:
+    paths:
+      - "services/ad-mcp/**"
+      - "packages/mcp-common/**"
+      - ".github/workflows/ad-mcp.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/ad-mcp/**"
+      - "packages/mcp-common/**"
+      - ".github/workflows/ad-mcp.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ad-mcp-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            packages/mcp-common/pyproject.toml
+            services/ad-mcp/pyproject.toml
+
+      - name: Install packages
+        run: python -m pip install -e packages/mcp-common -e "services/ad-mcp[dev]"
+
+      - name: Verify dependency environment
+        run: python -m pip check
+
+      - name: Lint
+        run: python -m ruff check --ignore E501 services/ad-mcp
+
+      - name: Test
+        run: python -m pytest services/ad-mcp/tests
+
+      - name: Compile
+        run: python -m compileall -q services/ad-mcp/src packages/mcp-common/src
+
+      - name: Build container
+        run: docker build --file services/ad-mcp/Dockerfile --tag mcp-ad:test .
