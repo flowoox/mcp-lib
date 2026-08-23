@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
@@ -44,7 +44,7 @@ class Finding(StrictModel):
 
 class AuditReport(StrictModel):
     correlation_id: UUID = Field(default_factory=uuid4)
-    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     scope: str = Field(min_length=1, max_length=500)
     findings: list[Finding] = Field(default_factory=list)
     observations: dict[str, Any] = Field(default_factory=dict)
