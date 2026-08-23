@@ -50,14 +50,15 @@ def test_remote_runner_keeps_target_and_payload_out_of_powershell_source(monkeyp
     result, size = runner.run(
         ScriptId.SERVICES,
         target,
-        {"limit": 10, "offset": 0, "state": "running"},
+        {"limit": 10, "offset": 0, "state": "running", "probeNonce": "caller-marker-123"},
         timeout_seconds=5,
         max_response_bytes=4096,
     )
     source = base64.b64decode(observed["argv"][-1]).decode("utf-16le")
     assert "server01.example.test" not in source
-    assert "running" not in source
+    assert "caller-marker-123" not in source
     assert observed["env"]["FLOWOOX_MCP_TARGET"] == "server01.example.test"
+    assert "caller-marker-123" in observed["env"]["FLOWOOX_MCP_INPUT"]
     assert observed["shell"] is False
     assert result == {"items": [], "nextCursor": None}
     assert size > 0
