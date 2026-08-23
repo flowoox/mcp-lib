@@ -3,11 +3,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from types import SimpleNamespace
-from typing import Any, TypeVar
+from typing import Any
 from uuid import UUID, uuid4
 
 from mcp.server.fastmcp import FastMCP
-
 from mcp_common.mcp_security import build_mcp_server_security
 
 from .audit import run_security_audit
@@ -15,8 +14,6 @@ from .audit_log import emit_audit_event
 from .client import DirectoryConnectionError, DirectoryQueryError, LdapDirectoryClient
 from .contract import CAPABILITIES
 from .settings import Settings
-
-T = TypeVar("T")
 
 
 def _request_id(value: str | None) -> UUID:
@@ -41,7 +38,7 @@ def _request_metadata(actor: str, source: str, reason: str) -> tuple[str, str, s
     return normalized_actor, normalized_source, normalized_reason
 
 
-async def _observe(
+async def _observe[T](
     *,
     operation: str,
     actor: str,
