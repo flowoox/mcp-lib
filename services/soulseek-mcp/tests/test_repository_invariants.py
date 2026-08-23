@@ -12,6 +12,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
         "fortigate-mcp.yml",
         "publish-soulseek.yml",
         "publish-traxx.yml",
+        "security-audit-mcp.yml",
         "windows-mcp.yml",
     }
 
