@@ -8,6 +8,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
     assert workflows == {
         "ad-mcp.yml",
         "ci.yml",
+        "fortigate-mcp.yml",
         "publish-soulseek.yml",
         "publish-traxx.yml",
     }

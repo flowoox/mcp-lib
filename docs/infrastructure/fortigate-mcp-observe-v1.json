@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "work_package": "INFRA-004-OBSERVE",
+  "service": "services/fortigate-mcp",
+  "branch": "feat/fortigate-mcp-observe-v2",
+  "base_sha": "00ee774287ae0b72b9536220ed4ff5bf65239828",
+  "status": "implemented_pending_ci",
+  "contract": {
+    "family": "flowoox.fortigate-diagnostics",
+    "version": "1.0.0",
+    "mode": "read_only"
+  },
+  "synchronization": {
+    "main_checked_before_work": true,
+    "open_prs_at_start": 0,
+    "open_issues_at_start": 0,
+    "parallel_branch_preserved": "feat/fortigate-mcp-observe",
+    "parallel_branch_state_at_start": "6 commits ahead and 36 commits behind main; incomplete and left untouched",
+    "strategy": "fresh branch from exact current main; reuse concepts without rewriting stale parallel work"
+  },
+  "implemented": [
+    "fixed GET-only FortiOS REST endpoint allowlist",
+    "explicit read-only backend attestation and dedicated token requirement",
+    "bare HTTPS origin validation with TLS verification enabled by default",
+    "explicit VDOM allowlist and fail-closed VDOM authorization",
+    "bounded page size, deterministic sampling, response-byte limits, timeouts, rate limits and concurrency caps through mcp-common",
+    "per-tool request, item, byte, fan-out and total-time query budgets",
+    "fixed CMDB format projections to reduce upstream work and response size",
+    "second-stage response projection that omits non-allowlisted fields",
+    "nested secret-shaped field and FortiOS ENC value redaction",
+    "system status and HA observation",
+    "interface, static route, firewall policy, firewall address and IPsec phase1-interface inventory",
+    "aggregate diagnostics bundle sharing one query budget",
+    "actor, reason and correlation-aware OperationResult and AuditEvent envelopes",
+    "product-neutral environment example and least-privilege deployment guidance",
+    "non-root read-only container and hardened compose example",
+    "repository CI matrix coverage and path-scoped FortiGate CI with locked dependency validation and container build"
+  ],
+  "tests_added": [
+    "bare HTTPS origin and explicit insecure-TLS override",
+    "VDOM allowlist resolution and denial",
+    "read-only backend attestation",
+    "fixed GET endpoint, Bearer token, format projection and bounded pagination",
+    "disallowed VDOM rejection before network dispatch",
+    "allowlisted response projection and secret redaction",
+    "read-only contract invariants without topology exposure",
+    "audit reason, actor, correlation ID and query-budget envelope"
+  ],
+  "local_verification": {
+    "compileall": "passed for drafted source and tests",
+    "full_pytest": "not run locally because the automation runtime does not contain the mcp package or repository dependency environment; CI is authoritative",
+    "ruff": "not run locally because ruff is not installed in the automation runtime"
+  },
+  "deferred": [
+    "configuration writes",
+    "policy object mutation",
+    "VPN mutation",
+    "FortiManager orchestration",
+    "write identity and plan/change/verify flow with target-bound approval, idempotency, pre-state, rollback and independent verification",
+    "runtime integration test against a real FortiGate lab appliance"
+  ],
+  "next_action": "Open the PR, run all repository and FortiGate CI, repair failures, re-check main and parallel work, merge only if synchronized and green; then advance to entra-mcp according to the infrastructure priority order."
+}
