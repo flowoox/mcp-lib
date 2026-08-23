@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "flowoox-mcp-traxx"
-version = "0.3.6"
+version = "0.3.7"
 description = "Independent MCP connector for Traxx/BeMusic TUS uploads, metadata normalization, cover embedding, and media APIs."
 readme = "README.md"
 requires-python = ">=3.12"

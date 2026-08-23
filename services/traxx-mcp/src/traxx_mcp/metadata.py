@@ -57,7 +57,13 @@ DISC_DIR_RE = re.compile(r"^(?:cd|disc|disk|part)\s*[-_. ]*(\d{1,2})$", re.IGNOR
 # number sits in the middle, fenced by separators on both sides. Read only
 # when nothing leads the name, and the last group wins, because an album title
 # may carry a number of its own ("Grand 12 Inches 05 - … - 04 - Title").
-EMBEDDED_TRACK_RE = re.compile(r"[-_]\s*(\d{1,3})\s*[-_]")
+# Rips commonly use either "Artist - Album - 02 - Title" or the slightly
+# shorter "Artist - Album - 02 Title". Requiring the second dash made every
+# file in the latter form look like track one and therefore collapse onto the
+# same Traxx track.
+EMBEDDED_TRACK_RE = re.compile(
+    r"[-_]\s*(\d{1,3})(?=\s*(?:[-_]|[^\W\d_]))", re.UNICODE
+)
 
 
 @dataclass(slots=True)

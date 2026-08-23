@@ -154,6 +154,10 @@ def test_a_number_in_the_middle_of_the_name_is_read(tmp_path: Path):
     make_wav(other)
     assert infer_track_numbers(other, album) == (4, 1)
 
+    without_second_dash = album / "Jamie xx - In Colour - 02 Sleep Sound.flac"
+    make_wav(without_second_dash)
+    assert infer_track_numbers(without_second_dash, album) == (2, 1)
+
 
 def test_files_the_listing_cannot_place_keep_their_own_titles(tmp_path: Path):
     from traxx_mcp.metadata import assign_track_hints
