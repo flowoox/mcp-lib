@@ -75,9 +75,12 @@ class Settings(BaseSettings):
                 "Plain LDAP is disabled; enable AD_USE_SSL or AD_START_TLS. "
                 "AD_ALLOW_INSECURE is only for isolated development."
             )
-        if self.ad_validate_certificate and self.ad_ca_file is not None:
-            if not self.ad_ca_file.is_file():
-                raise ValueError("AD_CA_FILE does not exist or is not a file")
+        if (
+            self.ad_validate_certificate
+            and self.ad_ca_file is not None
+            and not self.ad_ca_file.is_file()
+        ):
+            raise ValueError("AD_CA_FILE does not exist or is not a file")
         if self.mcp_transport not in {"stdio", "streamable-http"}:
             raise ValueError("MCP_TRANSPORT must be stdio or streamable-http")
         return self
