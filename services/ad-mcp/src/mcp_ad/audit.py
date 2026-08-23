@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from .client import LdapDirectoryClient
@@ -14,8 +14,8 @@ DOMAIN_PASSWORD_COMPLEX = 0x0001
 def datetime_to_ad_filetime(value: datetime) -> int:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("value must be timezone-aware")
-    epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
-    return int((value.astimezone(timezone.utc) - epoch).total_seconds() * 10_000_000)
+    epoch = datetime(1601, 1, 1, tzinfo=UTC)
+    return int((value.astimezone(UTC) - epoch).total_seconds() * 10_000_000)
 
 
 def _attribute(attributes: dict[str, Any], name: str) -> Any:
@@ -183,7 +183,7 @@ def run_security_audit(
     now: datetime | None = None,
 ) -> AuditReport:
     settings = client.settings
-    observed_at = now or datetime.now(timezone.utc)
+    observed_at = now or datetime.now(UTC)
     if observed_at.tzinfo is None or observed_at.utcoffset() is None:
         raise ValueError("now must be timezone-aware")
 
