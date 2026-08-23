@@ -4,10 +4,9 @@ import json
 import re
 from typing import Literal
 
+from mcp_common.operations import StrictModel
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from mcp_common.operations import StrictModel
 
 _TARGET_ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{1,63}$")
 _COMPUTER_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
