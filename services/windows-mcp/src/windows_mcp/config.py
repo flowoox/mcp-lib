@@ -75,7 +75,7 @@ class Settings(BaseSettings):
 
     windows_max_page_size: int = Field(default=100, ge=1, le=500)
     windows_max_sample_size: int = Field(default=50, ge=1, le=500)
-    windows_request_timeout_seconds: float = Field(default=12.0, ge=0.5, le=120.0)
+    windows_request_timeout_seconds: float = Field(default=20.0, ge=0.5, le=120.0)
     windows_max_response_bytes: int = Field(default=2_097_152, ge=16_384, le=16_777_216)
     windows_max_concurrency: int = Field(default=2, ge=1, le=8)
     windows_rate_limit_per_second: float = Field(default=2.0, ge=0.1, le=20.0)
