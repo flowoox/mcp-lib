@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -70,7 +70,7 @@ def test_privileged_nonexpiring_and_disabled_accounts_are_reported() -> None:
 def test_ad_filetime_requires_timezone_aware_datetime() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         datetime_to_ad_filetime(datetime(2026, 1, 1))
-    assert datetime_to_ad_filetime(datetime(2026, 1, 1, tzinfo=timezone.utc)) > 0
+    assert datetime_to_ad_filetime(datetime(2026, 1, 1, tzinfo=UTC)) > 0
 
 
 class FakeClient:
@@ -107,7 +107,7 @@ class FakeClient:
 def test_full_audit_is_read_only_and_declares_scope_limitations() -> None:
     report = run_security_audit(
         FakeClient(),  # type: ignore[arg-type]
-        now=datetime(2026, 8, 22, tzinfo=timezone.utc),
+        now=datetime(2026, 8, 22, tzinfo=UTC),
     )
     assert report.scope == "DC=example,DC=internal"
     assert report.passed is True
