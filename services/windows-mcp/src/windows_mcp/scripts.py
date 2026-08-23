@@ -21,7 +21,7 @@ $ProgressPreference = 'SilentlyContinue'
 $OutputEncoding = [Console]::OutputEncoding
 $rawInput = [Environment]::GetEnvironmentVariable('FLOWOOX_MCP_INPUT')
 if ([string]::IsNullOrWhiteSpace($rawInput)) { $inputData = [pscustomobject]@{} }
-else { $inputData = $rawInput | ConvertFrom-Json -Depth 8 }
+else { $inputData = $rawInput | ConvertFrom-Json }
 """
 
 
