@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "work_package": "INFRA-005-OBSERVE",
+  "service": "services/entra-mcp",
+  "branch": "feat/entra-mcp-observe",
+  "base_sha": "73f9e87fde775fda123c5400e9077477aebf3ee1",
+  "status": "implemented_pending_ci",
+  "contract": {
+    "family": "flowoox.entra-diagnostics",
+    "version": "1.0.0",
+    "mode": "read_only"
+  },
+  "synchronization": {
+    "main_checked_before_work": true,
+    "open_prs_at_start": 0,
+    "open_issues_at_start": 0,
+    "parallel_entra_branches_at_start": 0,
+    "strategy": "fresh branch from exact current main after FortiGate completion"
+  },
+  "implemented": [
+    "fixed Microsoft cloud endpoint mapping for global, US Government, DOD and China",
+    "GUID-only tenant and client identifiers to avoid arbitrary authority routing",
+    "app-only OAuth client credentials with in-process access-token caching",
+    "explicit read-only backend attestation",
+    "fixed GET-only Microsoft Graph endpoint allowlist",
+    "fixed $select projections and bounded $top pagination",
+    "same-origin same-path nextLink validation with only $skiptoken, $select and $top accepted",
+    "resource-specific read permissions without Directory.Read.All in the designed permission set",
+    "tenant organization, user, group, device, application, service principal, activated directory role and Conditional Access policy observations",
+    "aggregate diagnostics bundle sharing one query budget",
+    "nested secret-shaped field redaction and fixed response projection",
+    "request, item, byte, fan-out, timeout, rate and concurrency budgets through mcp-common",
+    "actor, reason and correlation-aware OperationResult and AuditEvent envelopes",
+    "product-neutral environment template and least-privilege documentation",
+    "non-root read-only container and hardened compose example",
+    "repository CI matrix and dedicated Entra CI workflow"
+  ],
+  "permissions": {
+    "Organization.Read.All": "organization inventory",
+    "User.Read.All": "user inventory",
+    "Group.Read.All": "read-only group inventory",
+    "Device.Read.All": "device inventory",
+    "Application.Read.All": "applications and service principals",
+    "RoleManagement.Read.Directory": "activated directory roles",
+    "Policy.Read.All": "Conditional Access policies",
+    "Directory.Read.All": "not required by the designed fixed surface"
+  },
+  "tests_added": [
+    "GUID validation and fixed cloud endpoints",
+    "read-only backend attestation",
+    "client-credentials token request and token reuse",
+    "fixed Graph GET endpoint and $select/$top projection",
+    "nextLink binding prevents endpoint switching",
+    "response allowlisting and nested secret redaction",
+    "read-only contract and resource-specific permission invariants",
+    "audit reason, actor, correlation ID and query-budget envelope"
+  ],
+  "verification": {
+    "current": "CI pending",
+    "real_tenant_integration": "deferred because public CI must not contain organization credentials"
+  },
+  "deferred": [
+    "user/group/application writes",
+    "license mutation",
+    "Conditional Access mutation",
+    "role assignment mutation",
+    "PIM workflows",
+    "write identity and target-bound approval flow with idempotency, pre-state, rollback and independent verification"
+  ],
+  "next_action": "Open PR, run repository and Entra CI, repair all failures, re-sync main and merge only when green and conflict-free. Then begin windows-mcp observe diagnostics."
+}
