@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -12,7 +12,7 @@ def fact(**overrides):
         "source": "active_directory",
         "subject": "dc01.example.test",
         "source_operation": "ad.replication.observe",
-        "observed_at": datetime(2026, 8, 23, 8, 0, tzinfo=timezone.utc),
+        "observed_at": datetime(2026, 8, 23, 8, 0, tzinfo=UTC),
         "int_value": 0,
     }
     data.update(overrides)
@@ -30,7 +30,7 @@ def test_evidence_requires_matching_source_and_typed_value() -> None:
             source="windows",
             subject="srv01",
             source_operation="windows.host.observe",
-            observed_at=datetime.now(timezone.utc),
+            observed_at=datetime.now(UTC),
             int_value=0,
         )
 
