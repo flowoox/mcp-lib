@@ -4,7 +4,12 @@
   "service": "services/fortigate-mcp",
   "branch": "feat/fortigate-mcp-observe-v2",
   "base_sha": "00ee774287ae0b72b9536220ed4ff5bf65239828",
-  "status": "implemented_pending_ci",
+  "status": "complete",
+  "merged": {
+    "pull_request": 29,
+    "merge_sha": "5eb3690c9d1e78c4ae29beb5476ec1aaf6b793ce",
+    "head_sha": "61bfd924fa752c3166cc93f74752db64c43a8301"
+  },
   "contract": {
     "family": "flowoox.fortigate-diagnostics",
     "version": "1.0.0",
@@ -16,7 +21,9 @@
     "open_issues_at_start": 0,
     "parallel_branch_preserved": "feat/fortigate-mcp-observe",
     "parallel_branch_state_at_start": "6 commits ahead and 36 commits behind main; incomplete and left untouched",
-    "strategy": "fresh branch from exact current main; reuse concepts without rewriting stale parallel work"
+    "strategy": "fresh branch from exact current main; reuse concepts without rewriting stale parallel work",
+    "behind_main_before_merge": 0,
+    "only_open_pr_before_merge": 29
   },
   "implemented": [
     "fixed GET-only FortiOS REST endpoint allowlist",
@@ -34,7 +41,8 @@
     "actor, reason and correlation-aware OperationResult and AuditEvent envelopes",
     "product-neutral environment example and least-privilege deployment guidance",
     "non-root read-only container and hardened compose example",
-    "repository CI matrix coverage and path-scoped FortiGate CI with locked dependency validation and container build"
+    "repository CI matrix coverage and path-scoped FortiGate CI with locked dependency validation and container build",
+    "repository workflow invariant updated to recognize the permanent FortiGate workflow"
   ],
   "tests_added": [
     "bare HTTPS origin and explicit insecure-TLS override",
@@ -46,10 +54,20 @@
     "read-only contract invariants without topology exposure",
     "audit reason, actor, correlation ID and query-budget envelope"
   ],
-  "local_verification": {
-    "compileall": "passed for drafted source and tests",
-    "full_pytest": "not run locally because the automation runtime does not contain the mcp package or repository dependency environment; CI is authoritative",
-    "ruff": "not run locally because ruff is not installed in the automation runtime"
+  "verification": {
+    "local_compileall": "passed for source and tests",
+    "fortigate_workflow_run": 32627617798,
+    "fortigate_workflow_conclusion": "success",
+    "repository_ci_run": 32627617784,
+    "repository_ci_conclusion": "success",
+    "initial_repository_ci_failure": "soulseek repository invariant rejected the newly added permanent workflow",
+    "repair": "registered fortigate-mcp.yml in the existing permanent-workflow invariant and reran all CI successfully",
+    "fortigate_matrix_job": "success",
+    "mcp_common_matrix_job": "success",
+    "ad_matrix_job": "success",
+    "network_matrix_job": "success",
+    "docker_matrix_job": "success",
+    "soulseek_matrix_job_after_repair": "success"
   },
   "deferred": [
     "configuration writes",
@@ -59,5 +77,6 @@
     "write identity and plan/change/verify flow with target-bound approval, idempotency, pre-state, rollback and independent verification",
     "runtime integration test against a real FortiGate lab appliance"
   ],
-  "next_action": "Open the PR, run all repository and FortiGate CI, repair failures, re-check main and parallel work, merge only if synchronized and green; then advance to entra-mcp according to the infrastructure priority order."
+  "next_work_package": "entra-mcp",
+  "next_action": "Synchronize with current main and parallel branches, then implement the product-neutral Entra observe slice using least-privilege Microsoft Graph permissions, fixed typed queries, bounded pagination/query budgets, audit/correlation IDs and read-only backend support before considering approved writes."
 }
