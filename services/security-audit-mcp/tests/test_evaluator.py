@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from security_audit_mcp.evaluator import evaluate_evidence, rule_catalog
 from security_audit_mcp.models import EvidenceFact
 
-BASE = datetime(2026, 8, 23, 8, 0, tzinfo=timezone.utc)
+BASE = datetime(2026, 8, 23, 8, 0, tzinfo=UTC)
 
 
 def evidence(kind, source, value, *, subject="target", at=BASE, operation="source.observe"):
