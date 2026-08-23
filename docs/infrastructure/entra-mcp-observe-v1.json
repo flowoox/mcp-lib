@@ -4,7 +4,12 @@
   "service": "services/entra-mcp",
   "branch": "feat/entra-mcp-observe",
   "base_sha": "73f9e87fde775fda123c5400e9077477aebf3ee1",
-  "status": "implemented_pending_ci",
+  "status": "complete",
+  "merged": {
+    "pull_request": 31,
+    "merge_sha": "bd0f77a3a4d8134fcaded3be4b5a7e50fe4c7c9a",
+    "head_sha": "3a6c5293a15999b0be9b233e9fd1db88781c7cee"
+  },
   "contract": {
     "family": "flowoox.entra-diagnostics",
     "version": "1.0.0",
@@ -15,7 +20,9 @@
     "open_prs_at_start": 0,
     "open_issues_at_start": 0,
     "parallel_entra_branches_at_start": 0,
-    "strategy": "fresh branch from exact current main after FortiGate completion"
+    "strategy": "fresh branch from exact current main after FortiGate completion",
+    "behind_main_before_merge": 0,
+    "only_open_pr_before_merge": 31
   },
   "implemented": [
     "fixed Microsoft cloud endpoint mapping for global, US Government, DOD and China",
@@ -33,7 +40,8 @@
     "actor, reason and correlation-aware OperationResult and AuditEvent envelopes",
     "product-neutral environment template and least-privilege documentation",
     "non-root read-only container and hardened compose example",
-    "repository CI matrix and dedicated Entra CI workflow"
+    "repository CI matrix and dedicated Entra CI workflow",
+    "repository workflow invariant updated to recognize the permanent Entra workflow"
   ],
   "permissions": {
     "Organization.Read.All": "organization inventory",
@@ -56,7 +64,17 @@
     "audit reason, actor, correlation ID and query-budget envelope"
   ],
   "verification": {
-    "current": "CI pending",
+    "entra_workflow_run": 32628089191,
+    "entra_workflow_conclusion": "success",
+    "repository_ci_run": 32628089159,
+    "repository_ci_conclusion": "success",
+    "entra_matrix_job": "success",
+    "mcp_common_matrix_job": "success",
+    "ad_matrix_job": "success",
+    "network_matrix_job": "success",
+    "docker_matrix_job": "success",
+    "fortigate_matrix_job": "success",
+    "soulseek_tooling_and_image": "success",
     "real_tenant_integration": "deferred because public CI must not contain organization credentials"
   },
   "deferred": [
@@ -67,5 +85,6 @@
     "PIM workflows",
     "write identity and target-bound approval flow with idempotency, pre-state, rollback and independent verification"
   ],
-  "next_action": "Open PR, run repository and Entra CI, repair all failures, re-sync main and merge only when green and conflict-free. Then begin windows-mcp observe diagnostics."
+  "next_work_package": "windows-mcp",
+  "next_action": "Synchronize with current main and parallel branches, then implement a product-neutral Windows diagnostics observe slice with read-only WinRM/PowerShell execution restricted to an explicit cmdlet/query allowlist, bounded event-log and service/process queries, typed projections, query budgets, audit/correlation IDs and no arbitrary command execution."
 }
