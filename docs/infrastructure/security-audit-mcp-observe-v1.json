@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "work_item": "security-audit-mcp",
+  "service": "services/security-audit-mcp",
+  "branch": "feat/security-audit-mcp-observe",
+  "base_sha": "b161b7990ac9f9149b3ac8a07fa3de7b93fee188",
+  "status": "implemented_pending_ci",
+  "contract": {
+    "family": "flowoox.security-audit",
+    "version": "1.0.0",
+    "mode": "observe-read-only"
+  },
+  "synchronization": {
+    "open_prs_at_start": 0,
+    "open_issues_at_start": 0,
+    "parallel_security_audit_branches_at_start": 0,
+    "strategy": "fresh branch from exact current main after the merged and green Windows observe slice; no direct privileged infrastructure backend"
+  },
+  "implemented": [
+    "product-neutral cross-service security evidence schema",
+    "fixed source and evidence-kind allowlists for Active Directory, network, FortiGate, Entra and Windows",
+    "strict boolean or bounded non-negative integer evidence values only",
+    "timezone-aware source observation metadata and source operation identifiers",
+    "fixed repository-owned security control catalog with deterministic severity and remediation metadata",
+    "newest-evidence selection with stale evidence accounting and fail-closed equal-timestamp conflicts",
+    "bounded 200-fact evaluation surface with shared item, byte and total-time query budgets",
+    "actor, reason and correlation-aware OperationResult and AuditEvent envelopes without raw evidence in audit metadata",
+    "explicit read-only ToolPolicy with no arbitrary policy, query, shell, command or privileged backend surface",
+    "non-root read-only container and hardened compose example",
+    "product-neutral orchestration documentation keeping remediation in specialized plan/approval/change/verify MCPs",
+    "unit tests for evidence typing, source binding, bounds, deterministic evaluation, stale facts and capability invariants"
+  ],
+  "security_boundary": [
+    "specialized MCPs retain their own least-privilege backend identities and query budgets",
+    "security-audit-mcp has no backend credentials, URLs, LDAP, PowerShell, Graph, FortiOS or shell execution primitive",
+    "organization topology, OUs, tenant identifiers, hostnames, policy names and credentials remain external deployment data",
+    "raw logs, directory objects, firewall configuration and backend responses are not accepted as audit evidence",
+    "findings never execute remediation; state changes must return to the owning specialized MCP",
+    "any remediation write remains subject to separate identity, plan, target-bound approval, change, verify, idempotency, pre-state and rollback intent"
+  ],
+  "verification": {
+    "local_models_and_evaluator": "10 pure model/evaluator/config/contract tests passed in an isolated local harness",
+    "local_compileall": "passed for authored security_audit_mcp package in the isolated local harness",
+    "repository_ci": "pending",
+    "security_audit_workflow": "pending"
+  },
+  "deferred": [
+    "direct source-MCP fan-out because orchestration remains an explicit privilege and load boundary",
+    "state-changing remediation execution",
+    "organization-specific policy mappings",
+    "broader control catalog until source MCPs expose stable minimal typed observations"
+  ],
+  "next_work_package": "prtg-mcp",
+  "next_action": "Open the implementation PR, run repository and dedicated Security Audit CI, repair all failures, re-check current main and parallel work, merge only when green and conflict-free, record merge evidence, then begin the high-priority PRTG read-only observe slice using the shared connector and query-budget foundation."
+}
