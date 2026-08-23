@@ -4,7 +4,12 @@
   "service": "services/windows-mcp",
   "branch": "feat/windows-mcp-observe",
   "base_sha": "0170d1c4aac0adffa853aeb5773f2d65313c0e1e",
-  "status": "implemented_pending_ci",
+  "status": "complete",
+  "merged": {
+    "pull_request": 33,
+    "merge_sha": "b161b7990ac9f9149b3ac8a07fa3de7b93fee188",
+    "head_sha": "97a879bd34892565cef44dc40f7036a559e118eb"
+  },
   "contract": {
     "family": "flowoox.windows-diagnostics",
     "version": "1.0.0",
@@ -14,7 +19,9 @@
     "open_prs_at_start": 0,
     "open_issues_at_start": 0,
     "parallel_windows_branches_at_start": 0,
-    "strategy": "fresh branch from exact current main after Entra completion; preserve all existing feature branches"
+    "strategy": "fresh branch from exact current main after Entra completion; preserve all existing feature branches",
+    "behind_main_before_merge": 0,
+    "only_open_pr_before_merge": 33
   },
   "implemented": [
     "product-neutral logical Windows target allowlist",
@@ -46,15 +53,17 @@
   ],
   "verification": {
     "local_compileall": "passed for services/windows-mcp/src and tests before push",
-    "repository_ci": "pending",
-    "windows_smoke": "pending"
+    "repository_ci_run": 32629353050,
+    "repository_ci_conclusion": "success",
+    "windows_workflow_run": 32629353028,
+    "windows_workflow_conclusion": "success",
+    "windows_smoke": "success as part of the dedicated Windows MCP workflow"
   },
   "deferred": [
-    "security-audit-mcp cross-service findings and policy normalization",
     "file-share ACL and effective-permission diagnostics in a separate fileshare-mcp",
     "deeper Hyper-V VM storage network replication and checkpoint diagnostics in hyperv-mcp",
     "any state-changing Windows operation"
   ],
   "next_work_package": "security-audit-mcp",
-  "next_action": "Open PR, run repository and dedicated Windows CI including windows-latest smoke, repair all failures, re-check current main and parallel work, merge only when green and conflict-free, record merge/CI evidence, then begin security-audit-mcp observe aggregation on fresh main."
+  "next_action": "Windows observe is complete. Cross-service security audit v1 was subsequently implemented and merged in PR #34; continue from the current infrastructure machine-readable status rather than reopening this work package."
 }
