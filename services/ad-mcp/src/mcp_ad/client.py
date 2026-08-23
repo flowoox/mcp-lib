@@ -3,7 +3,7 @@ from __future__ import annotations
 import ssl
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from ldap3 import (
@@ -97,7 +97,7 @@ def _json_value(value: Any) -> Any:
         return value
     if isinstance(value, (datetime, date)):
         if isinstance(value, datetime) and value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
+            value = value.replace(tzinfo=UTC)
         return value.isoformat()
     if isinstance(value, bytes):
         return {"binary_value_omitted": True, "length": len(value)}
