@@ -91,6 +91,11 @@ jobs:
             flowoox-mcp-common \
             "${{ matrix.distribution }}" \
             pytest pytest-asyncio ruff
+      - name: Audit resolved test graph
+        if: matrix.service == 'archive-mcp'
+        run: |
+          python -m pip install 'pip-audit==2.10.1'
+          python -m pip_audit --local --skip-editable
       - name: Lint
         run: ruff check packages/mcp-common/src "services/${{ matrix.service }}/src" "services/${{ matrix.service }}/tests" scripts/check_python_lock.py
       - name: Test
