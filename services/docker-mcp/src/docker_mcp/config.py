@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     docker_max_concurrency: int = Field(default=2, ge=1, le=8)
     docker_rate_limit_per_second: float = Field(default=4.0, ge=0.1, le=100.0)
     docker_cache_max_age_seconds: int = Field(default=5, ge=0, le=300)
+    docker_max_log_window_seconds: int = Field(default=3_600, ge=1, le=86_400)
+    docker_max_log_line_chars: int = Field(default=2_000, ge=128, le=8_192)
+    docker_max_event_window_seconds: int = Field(default=300, ge=1, le=3_600)
 
     docker_budget_max_requests: int = Field(default=4, ge=1, le=20)
     docker_budget_max_items: int = Field(default=200, ge=1, le=1_000)
