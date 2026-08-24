@@ -78,6 +78,18 @@ def _preflight_detail_capacity(
     requested_candidates: int,
     operator_max_candidates: int,
 ) -> None:
+    if (
+        isinstance(requested_candidates, bool)
+        or not isinstance(requested_candidates, int)
+        or requested_candidates < 1
+    ):
+        raise ValueError("detail_limit must be a positive integer")
+    if (
+        isinstance(operator_max_candidates, bool)
+        or not isinstance(operator_max_candidates, int)
+        or operator_max_candidates < 1
+    ):
+        raise ValueError("operator diagnostic candidate cap must be a positive integer")
     if requested_candidates > operator_max_candidates:
         raise ValueError(
             "detail_limit exceeds DOCKER_DIAGNOSTIC_DETAIL_MAX_CANDIDATES"
