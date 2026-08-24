@@ -1,0 +1,41 @@
+[Unit]
+Description=Flowoox Docker read-only authorization proxy
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=flowoox-docker-proxy
+Group=flowoox-docker-proxy
+SupplementaryGroups=docker
+EnvironmentFile=/etc/flowoox/docker-readonly-proxy.env
+ExecStart=/opt/flowoox-mcp-docker/.venv/bin/docker-readonly-proxy
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/var/run/docker.sock /etc/flowoox /run/secrets/docker-readonly-proxy
+
+[Install]
+WantedBy=multi-user.target
