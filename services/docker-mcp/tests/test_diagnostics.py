@@ -113,7 +113,7 @@ def test_candidate_selection_is_deterministic_and_anomaly_only() -> None:
 
 
 @pytest.mark.asyncio
-async def test_detail_fan_out_only_targets_aggregate_selected_candidates() -> None:
+async def test_detail_fan_out_only_targets_active_aggregate_selected_candidates() -> None:
     transport = FakeDockerTransport()
     budget = QueryBudget(
         QueryBudgetLimits(
@@ -141,25 +141,28 @@ async def test_detail_fan_out_only_targets_aggregate_selected_candidates() -> No
         "selectedCount": 2,
         "detailLimit": 2,
         "operatorMaxCandidates": 3,
+        "statsSampleCount": 1,
     }
     assert [item["candidate"]["containerId"] for item in output["details"]] == [
         "dead-a",
         "restart-b",
     ]
+    assert output["details"][0]["stats"] is None
+    assert output["details"][0]["detailSkippedReason"].startswith("one-shot stats")
+    assert output["details"][1]["stats"]["containerId"] == "restart-b"
     assert output["automaticLogsFetched"] is False
     assert output["automaticEventsFetched"] is False
     assert [query.operation for query in transport.queries] == [
         "docker.containers.list",
-        "docker.containers.stats",
         "docker.containers.stats",
     ]
     assert [
         query.parameters["container_id"]
         for query in transport.queries
         if query.operation == "docker.containers.stats"
-    ] == ["dead-a", "restart-b"]
-    assert budget.snapshot().requests_used == 3
-    assert budget.snapshot().fan_out_used == 3
+    ] == ["restart-b"]
+    assert budget.snapshot().requests_used == 2
+    assert budget.snapshot().fan_out_used == 2
 
 
 @pytest.mark.asyncio
@@ -200,6 +203,24 @@ async def test_detail_limit_cannot_exceed_operator_cap() -> None:
             include_stopped=False,
             inventory_limit=50,
             detail_limit=4,
+            operator_max_candidates=3,
+        )
+
+    assert transport.queries == []
+
+
+@pytest.mark.asyncio
+async def test_zero_detail_limit_is_rejected_before_backend_work() -> None:
+    transport = FakeDockerTransport()
+    budget = QueryBudget(QueryBudgetLimits())
+
+    with pytest.raises(ValueError, match="positive integer"):
+        await collect_diagnostic_detail(
+            _connector(transport),
+            budget,
+            include_stopped=False,
+            inventory_limit=50,
+            detail_limit=0,
             operator_max_candidates=3,
         )
 
