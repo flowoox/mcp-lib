@@ -7,6 +7,7 @@ from mcp_common.query_budget import QueryBudget
 from mcp_common.read_only_connector import PageRequest, ReadOnlyConnector, ReadOnlyQuery
 
 _EXIT_STATUS_RE = re.compile(r"\bExited\s*\((\d+)\)", re.IGNORECASE)
+_STATS_CAPABLE_STATES = frozenset({"running", "restarting", "paused"})
 
 
 def _candidate_reasons(container: dict[str, Any]) -> tuple[int, list[str]] | None:
@@ -131,7 +132,19 @@ async def collect_diagnostic_detail(
     candidates = select_diagnostic_candidates(inventory.items, limit=detail_limit)
 
     details: list[dict[str, Any]] = []
+    stats_sample_count = 0
     for candidate in candidates:
+        state = str(candidate.get("state") or "").strip().casefold()
+        if state not in _STATS_CAPABLE_STATES:
+            details.append(
+                {
+                    "candidate": candidate,
+                    "stats": None,
+                    "detailSkippedReason": "one-shot stats are not requested for non-running containers",
+                }
+            )
+            continue
+
         container_id = candidate["containerId"]
         stats = await connector.execute(
             ReadOnlyQuery(
@@ -145,6 +158,7 @@ async def collect_diagnostic_detail(
         if len(stats.items) != 1 or not isinstance(stats.items[0], dict):
             raise RuntimeError("docker.containers.stats returned an invalid normalized result")
         details.append({"candidate": candidate, "stats": stats.items[0]})
+        stats_sample_count += 1
 
     return {
         "selection": {
@@ -154,6 +168,7 @@ async def collect_diagnostic_detail(
             "selectedCount": len(candidates),
             "detailLimit": detail_limit,
             "operatorMaxCandidates": operator_max_candidates,
+            "statsSampleCount": stats_sample_count,
         },
         "details": details,
         "automaticLogsFetched": False,
