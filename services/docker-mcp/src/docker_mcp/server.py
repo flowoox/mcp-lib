@@ -22,9 +22,9 @@ from mcp_common.read_only_connector import (
     SampleRequest,
 )
 
-from .client import DockerApiTransport
 from .config import Settings
 from .contract import capabilities
+from .resource_client import DockerResourceApiTransport
 
 _CONNECTOR_OPERATIONS = frozenset(
     {
@@ -32,6 +32,10 @@ _CONNECTOR_OPERATIONS = frozenset(
         "docker.system.info",
         "docker.containers.list",
         "docker.containers.logs",
+        "docker.containers.stats",
+        "docker.images.list",
+        "docker.volumes.list",
+        "docker.networks.list",
         "docker.events.list",
     }
 )
@@ -121,6 +125,16 @@ def _one(page_items: list[Any], operation: str) -> dict[str, Any]:
     return page_items[0]
 
 
+def _page_output(key: str, page: Any) -> dict[str, Any]:
+    return {
+        key: page.items,
+        "returned": len(page.items),
+        "truncated": page.truncated,
+        "sampled": page.sampled,
+        "cacheHint": page.cache_hint.model_dump(mode="json") if page.cache_hint else None,
+    }
+
+
 def create_server(
     settings: Settings | None = None,
     connector: ReadOnlyConnector | None = None,
@@ -130,16 +144,16 @@ def create_server(
     budget_limits = _budget_limits(settings)
     connector = connector or ReadOnlyConnector(
         connector_policy,
-        DockerApiTransport(settings),
+        DockerResourceApiTransport(settings),
     )
     security = build_mcp_server_security(settings, service_hosts=("mcp-docker",))
     mcp = FastMCP(
         "Flowoox Docker Diagnostics MCP",
         instructions=(
             "Bounded read-only Docker diagnostics. The service exposes fixed GET operations only, "
-            "requires an explicitly attested read-only backend, never follows live log or event "
-            "streams, and never exposes Docker exec, arbitrary API paths, environment variables, "
-            "labels, commands or raw inspect payloads."
+            "requires an explicitly attested read-only backend, never follows live log, event or "
+            "resource-stat streams, and never exposes Docker exec, arbitrary API paths, environment "
+            "variables, labels, commands, host volume mountpoints or raw inspect/cgroup payloads."
         ),
         host=settings.mcp_host,
         port=settings.mcp_port,
@@ -221,13 +235,7 @@ def create_server(
             actor=actor,
             reason=reason,
             correlation_id=correlation_id,
-            output={
-                "containers": page.items,
-                "returned": len(page.items),
-                "truncated": page.truncated,
-                "sampled": page.sampled,
-                "cacheHint": page.cache_hint.model_dump(mode="json") if page.cache_hint else None,
-            },
+            output=_page_output("containers", page),
             budget=budget,
         )
 
@@ -264,6 +272,158 @@ def create_server(
                 "returned": len(page.items),
                 "truncated": page.truncated,
                 "redaction": "best-effort credential-pattern redaction; treat remaining log content as sensitive",
+            },
+            budget=budget,
+        )
+
+    @mcp.tool()
+    async def docker_container_stats(
+        actor: str,
+        reason: str,
+        container_id: str,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Return one non-streaming resource sample for an exact container."""
+        budget = QueryBudget(budget_limits)
+        page = await connector.execute(
+            ReadOnlyQuery(
+                operation="docker.containers.stats",
+                parameters={"container_id": container_id},
+                page=PageRequest(limit=1),
+            ),
+            budget,
+        )
+        return _observe_response(
+            "docker.containers.stats",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            target=f"docker-container:{container_id[:128]}",
+            output={
+                "stats": _one(page.items, "docker.containers.stats"),
+                "cacheHint": page.cache_hint.model_dump(mode="json") if page.cache_hint else None,
+            },
+            budget=budget,
+        )
+
+    @mcp.tool()
+    async def docker_list_images(
+        actor: str,
+        reason: str,
+        limit: int = 50,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Return bounded normalized image metadata without labels or image configuration."""
+        budget = QueryBudget(budget_limits)
+        page = await connector.execute(
+            ReadOnlyQuery(operation="docker.images.list", page=PageRequest(limit=limit)),
+            budget,
+        )
+        return _observe_response(
+            "docker.images.list",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=_page_output("images", page),
+            budget=budget,
+        )
+
+    @mcp.tool()
+    async def docker_list_volumes(
+        actor: str,
+        reason: str,
+        limit: int = 50,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Return bounded volume metadata without host mountpoints, labels or driver options."""
+        budget = QueryBudget(budget_limits)
+        page = await connector.execute(
+            ReadOnlyQuery(operation="docker.volumes.list", page=PageRequest(limit=limit)),
+            budget,
+        )
+        return _observe_response(
+            "docker.volumes.list",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=_page_output("volumes", page),
+            budget=budget,
+        )
+
+    @mcp.tool()
+    async def docker_list_networks(
+        actor: str,
+        reason: str,
+        limit: int = 50,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Return bounded network metadata with counts rather than endpoint addresses."""
+        budget = QueryBudget(budget_limits)
+        page = await connector.execute(
+            ReadOnlyQuery(operation="docker.networks.list", page=PageRequest(limit=limit)),
+            budget,
+        )
+        return _observe_response(
+            "docker.networks.list",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=_page_output("networks", page),
+            budget=budget,
+        )
+
+    @mcp.tool()
+    async def docker_resource_inventory(
+        actor: str,
+        reason: str,
+        image_limit: int = 25,
+        volume_limit: int = 25,
+        network_limit: int = 25,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Aggregate bounded image, volume and network inventory under one query budget."""
+        budget = QueryBudget(budget_limits)
+        images = await connector.execute(
+            ReadOnlyQuery(
+                operation="docker.images.list",
+                page=PageRequest(limit=image_limit),
+                aggregated=True,
+            ),
+            budget,
+        )
+        volumes = await connector.execute(
+            ReadOnlyQuery(
+                operation="docker.volumes.list",
+                page=PageRequest(limit=volume_limit),
+                aggregated=True,
+            ),
+            budget,
+        )
+        networks = await connector.execute(
+            ReadOnlyQuery(
+                operation="docker.networks.list",
+                page=PageRequest(limit=network_limit),
+                aggregated=True,
+            ),
+            budget,
+        )
+        return _observe_response(
+            "docker.resources.inventory",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output={
+                "images": images.items,
+                "volumes": volumes.items,
+                "networks": networks.items,
+                "result": {
+                    "imagesReturned": len(images.items),
+                    "imagesTruncated": images.truncated,
+                    "volumesReturned": len(volumes.items),
+                    "volumesTruncated": volumes.truncated,
+                    "networksReturned": len(networks.items),
+                    "networksTruncated": networks.truncated,
+                },
             },
             budget=budget,
         )
