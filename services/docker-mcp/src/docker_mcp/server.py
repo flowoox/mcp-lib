@@ -24,6 +24,7 @@ from mcp_common.read_only_connector import (
 
 from .config import Settings
 from .contract import capabilities
+from .diagnostics import collect_diagnostic_detail
 from .resource_client import DockerResourceApiTransport
 
 _CONNECTOR_OPERATIONS = frozenset(
@@ -152,7 +153,8 @@ def create_server(
         instructions=(
             "Bounded read-only Docker diagnostics. The service exposes fixed GET operations only, "
             "requires an explicitly attested read-only backend, never follows live log, event or "
-            "resource-stat streams, and never exposes Docker exec, arbitrary API paths, environment "
+            "resource-stat streams, performs diagnostic detail only after bounded aggregate "
+            "candidate selection, and never exposes Docker exec, arbitrary API paths, environment "
             "variables, labels, commands, host volume mountpoints or raw inspect/cgroup payloads."
         ),
         host=settings.mcp_host,
@@ -173,6 +175,7 @@ def create_server(
             direct_socket_override_enabled=settings.docker_allow_direct_socket,
             max_log_window_seconds=settings.docker_max_log_window_seconds,
             max_event_window_seconds=settings.docker_max_event_window_seconds,
+            max_detail_candidates=settings.docker_diagnostic_detail_max_candidates,
         )
 
     @mcp.tool()
@@ -512,12 +515,36 @@ def create_server(
             budget=budget,
         )
 
+    @mcp.tool()
+    async def docker_diagnostic_detail(
+        actor: str,
+        reason: str,
+        include_stopped: bool = False,
+        inventory_limit: int = 50,
+        detail_limit: int = 2,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Aggregate containers first, then fetch one-shot stats only for selected anomalies."""
+        budget = QueryBudget(budget_limits)
+        output = await collect_diagnostic_detail(
+            connector,
+            budget,
+            include_stopped=include_stopped,
+            inventory_limit=inventory_limit,
+            detail_limit=detail_limit,
+            operator_max_candidates=settings.docker_diagnostic_detail_max_candidates,
+        )
+        return _observe_response(
+            "docker.diagnostics.detail",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=output,
+            budget=budget,
+        )
+
     return mcp
 
 
 def main() -> None:
     create_server().run(transport="streamable-http")
-
-
-if __name__ == "__main__":
-    main()

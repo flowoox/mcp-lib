@@ -1,7 +1,7 @@
 # Docker MCP
 
 Product-neutral, read-only and fail-closed Docker Engine diagnostics using
-`flowoox.docker-diagnostics` v1.2.
+`flowoox.docker-diagnostics` v1.3.
 
 The current observe slice exposes:
 
@@ -14,8 +14,9 @@ The current observe slice exposes:
 - bounded volume inventory without host mountpoints, labels or driver options;
 - bounded network inventory with aggregate attachment/IPAM counts rather than raw endpoint addresses;
 - an aggregate image/volume/network inventory sharing one query budget;
-- finite recent Docker event windows with explicit object-type filters and minimized actor attributes; and
-- one aggregate diagnostic bundle sharing a single query budget.
+- finite recent Docker event windows with explicit object-type filters and minimized actor attributes;
+- one aggregate diagnostic bundle sharing a single query budget; and
+- aggregate-first diagnostic detail that deterministically selects anomalous containers before fetching one-shot stats for at most three selected active candidates.
 
 It does not expose create, start, stop, restart, kill, delete, pull, push, build, exec, attach,
 arbitrary API paths, arbitrary HTTP methods or raw inspect/cgroup payloads. Container commands, labels,
@@ -28,6 +29,16 @@ Remaining log content must still be treated as potentially sensitive.
 Container resource statistics are single-target and non-streaming. The adapter always sends
 `stream=false` and `one-shot=true`, then projects Docker's raw cgroup payload into bounded counters
 and calculated CPU/memory percentages. It never exposes the original cgroup map.
+
+Diagnostic detail never accepts an arbitrary detail target from the caller. It first performs one
+bounded container inventory read, deterministically selects only anomaly candidates from that
+normalized inventory, and then fetches at most one one-shot stats sample for each selected active
+candidate. Dead, restarting, unhealthy, non-zero-exited and paused containers are selected in that
+priority order. Dead or exited containers stay visible in the selected evidence but do not trigger a
+stats request because Docker's stats endpoint is not a reliable read for stopped containers. Clean
+exit-code-0 and healthy running containers are not selected. Automatic log and event retrieval is
+deliberately disabled so a broad diagnostic call cannot silently expand into sensitive or expensive
+fan-out.
 
 ## Backend boundary
 
@@ -87,6 +98,7 @@ DOCKER_RATE_LIMIT_PER_SECOND=4
 DOCKER_MAX_LOG_WINDOW_SECONDS=3600
 DOCKER_MAX_LOG_LINE_CHARS=2000
 DOCKER_MAX_EVENT_WINDOW_SECONDS=300
+DOCKER_DIAGNOSTIC_DETAIL_MAX_CANDIDATES=3
 
 DOCKER_BUDGET_MAX_REQUESTS=4
 DOCKER_BUDGET_MAX_ITEMS=200
@@ -113,6 +125,14 @@ Per-container stats use the official non-streaming Engine parameters `stream=fal
 valid delta. Memory working set subtracts `inactive_file` on cgroup v2, falling back to `cache` for
 cgroup v1. Network and block-I/O counters are summed before return, so interface names and raw cgroup
 structures do not reach the agent.
+
+Aggregate-first diagnostic detail preflights both request and fan-out capacity before the first
+backend call. With the defaults, one inventory request plus at most three selected stats requests can
+consume no more than the four-request/four-fan-out budget; stopped selected candidates consume no
+stats request. If the configured budget cannot support the caller's requested worst-case detail
+limit, the operation fails before performing backend work. The selection set is derived only from
+the returned bounded aggregate inventory; caller-supplied container IDs are never accepted by this
+multi-object detail path.
 
 Sampling is applied only after raw returned items count against the shared connector budget where the
 upstream operation supports a bounded result. The current Engine container list endpoint does not

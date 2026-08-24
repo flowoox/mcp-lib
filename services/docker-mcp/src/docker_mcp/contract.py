@@ -10,7 +10,7 @@ from mcp_common.read_only_connector import (
 )
 
 CONTRACT = "flowoox.docker-diagnostics"
-CONTRACT_VERSION = "1.2.0"
+CONTRACT_VERSION = "1.3.0"
 
 TOOL_POLICIES = (
     ToolPolicy(name="docker.health.observe", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
@@ -23,6 +23,7 @@ TOOL_POLICIES = (
     ToolPolicy(name="docker.resources.inventory", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
     ToolPolicy(name="docker.events.list", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
     ToolPolicy(name="docker.diagnostics.bundle", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
+    ToolPolicy(name="docker.diagnostics.detail", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
 )
 
 _DESCRIPTIONS = {
@@ -35,7 +36,8 @@ _DESCRIPTIONS = {
     "docker.networks.list": "Return bounded network identity and aggregate attachment/IPAM counts without endpoint addresses, labels or options.",
     "docker.resources.inventory": "Aggregate bounded image, volume and network inventory under one shared query budget before detail fan-out.",
     "docker.events.list": "Return a bounded finite Docker event window with an explicit object-type allowlist and minimized actor attributes.",
-    "docker.diagnostics.bundle": "Aggregate daemon health and sampled container/network/storage relationships before any future detail fan-out.",
+    "docker.diagnostics.bundle": "Aggregate daemon health and sampled container/network/storage relationships under one shared query budget.",
+    "docker.diagnostics.detail": "Select anomalous containers from one bounded aggregate inventory, then fetch at most one one-shot stats sample only for selected active candidates under the same query budget.",
 }
 
 
@@ -46,6 +48,7 @@ def capabilities(
     direct_socket_override_enabled: bool,
     max_log_window_seconds: int,
     max_event_window_seconds: int,
+    max_detail_candidates: int,
 ) -> dict[str, Any]:
     return {
         "contract": CONTRACT,
@@ -64,6 +67,14 @@ def capabilities(
                 "live_event_stream": False,
                 "live_stats_stream": False,
                 "container_stats_one_shot": True,
+            },
+            "diagnostic_detail": {
+                "aggregate_candidate_selection_required": True,
+                "max_candidates": max_detail_candidates,
+                "automatic_log_fetch": False,
+                "automatic_event_fetch": False,
+                "max_stats_samples_per_candidate": 1,
+                "non_running_stats_skipped": True,
             },
             "resource_minimization": {
                 "image_labels_or_config": False,
