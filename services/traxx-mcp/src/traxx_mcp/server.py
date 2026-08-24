@@ -236,9 +236,12 @@ def create_server() -> FastMCP:
         page: int = 1,
         per_page: int = 50,
         actor_id: str = "",
+        user_id: str = "",
     ) -> Any:
-        """List liked artists, albums or tracks of the acting account."""
-        return await client(actor_id).list_liked(resource, page=page, per_page=per_page)
+        """List likes of the actor, or of a target member via the service token."""
+        return await client("" if user_id else actor_id).list_liked(
+            resource, page=page, per_page=per_page, user_id=user_id
+        )
 
     @mcp.tool()
     async def search_library(query: str, resource: str = "artists", limit: int = 20) -> Any:
@@ -337,10 +340,17 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     async def create_playlist(
-        name: str, description: str = "", public: bool = False, actor_id: str = ""
+        name: str,
+        description: str = "",
+        public: bool = False,
+        actor_id: str = "",
+        user_id: str = "",
     ) -> Any:
-        return await client(actor_id).create_playlist(
-            name=name, description=description, public=public
+        return await client("" if user_id else actor_id).create_playlist(
+            name=name,
+            description=description,
+            public=public,
+            user_id=user_id,
         )
 
     @mcp.tool()
@@ -370,10 +380,15 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     async def list_playlists(
-        page: int = 1, per_page: int = 20, actor_id: str = ""
+        page: int = 1,
+        per_page: int = 20,
+        actor_id: str = "",
+        user_id: str = "",
     ) -> Any:
-        """List the playlists of the acting account."""
-        return await client(actor_id).list_playlists(page=page, per_page=per_page)
+        """List playlists of the actor, or of a target member via the service token."""
+        return await client("" if user_id else actor_id).list_playlists(
+            page=page, per_page=per_page, user_id=user_id
+        )
 
     @mcp.tool()
     async def get_playlist(playlist_id: int, actor_id: str = "") -> Any:

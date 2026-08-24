@@ -5,7 +5,7 @@ def test_library_import_contract_is_versioned_and_normalizes_metadata() -> None:
     result = capabilities()
     assert result["contract"] == {
         "name": CONTRACT_NAME,
-        "version": "1.5",
+        "version": "1.6",
         "major": 1,
     }
     assert result["role"] == "library-target"
@@ -21,6 +21,7 @@ def test_contract_announces_playlist_management_and_actors() -> None:
     result = capabilities()
     assert result["features"]["playlist_management"] is True
     assert result["features"]["actor_scoped_requests"] is True
+    assert result["features"]["managed_user_playlists"] is True
     for tool in (
         "list_playlists",
         "get_playlist",

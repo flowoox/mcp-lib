@@ -181,6 +181,14 @@ def describe_cover(local_cover: Path | None, url: str) -> dict[str, Any]:
     }
 
 
+def target_user_id(value: str) -> str:
+    """Validate a Traxx user id before it becomes part of an API path."""
+    user_id = str(value).strip()
+    if user_id and (not user_id.isascii() or not user_id.isdigit()):
+        raise TraxxError(f"Not a Traxx user id: {value!r}")
+    return user_id
+
+
 class TraxxClient:
     def __init__(
         self,
@@ -463,9 +471,7 @@ class TraxxClient:
         allowed = {"artists", "albums", "tracks"}
         if resource not in allowed:
             raise TraxxError(f"list_liked supports {sorted(allowed)}, not {resource!r}")
-        who = str(user_id).strip() or "me"
-        if who != "me" and not who.isdigit():
-            raise TraxxError(f"Not a Traxx user id: {user_id!r}")
+        who = target_user_id(user_id) or "me"
         return await self.request(
             "GET",
             f"/api/v1/users/{who}/liked-{resource}",
@@ -1643,10 +1649,17 @@ class TraxxClient:
         name: str,
         description: str = "",
         public: bool = False,
+        user_id: str = "",
     ) -> Any:
+        target = target_user_id(user_id)
+        path = (
+            f"/api/v1/users/{target}/managed-playlists"
+            if target
+            else "/api/v1/playlists"
+        )
         return await self.request(
             "POST",
-            "/api/v1/playlists",
+            path,
             json={"name": name, "description": description, "public": public},
         )
 
@@ -1674,11 +1687,14 @@ class TraxxClient:
             json={"ids": track_ids},
         )
 
-    async def list_playlists(self, *, page: int = 1, per_page: int = 20) -> Any:
-        """List the playlists of the acting user (service account or actor)."""
+    async def list_playlists(
+        self, *, page: int = 1, per_page: int = 20, user_id: str = ""
+    ) -> Any:
+        """List service/actor playlists or a target member's playlists."""
+        who = target_user_id(user_id) or "me"
         return await self.request(
             "GET",
-            "/api/v1/users/me/playlists",
+            f"/api/v1/users/{who}/playlists",
             params={"page": page, "perPage": per_page},
         )
 

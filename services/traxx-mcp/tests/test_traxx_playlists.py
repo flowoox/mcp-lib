@@ -70,6 +70,44 @@ async def test_list_playlists_uses_the_users_me_route() -> None:
     assert call["params"] == {"page": 2, "perPage": 10}
 
 
+async def test_service_token_lists_a_target_members_private_playlists() -> None:
+    client = PlaylistRecordingClient(
+        {"GET /api/v1/users/17/playlists": {"data": [{"id": 8, "name": "Dein Geschmack"}]}}
+    )
+
+    await client.list_playlists(page=1, per_page=20, user_id="17")
+
+    assert client.calls[0]["path"] == "/api/v1/users/17/playlists"
+
+
+async def test_service_token_creates_a_member_owned_managed_playlist() -> None:
+    client = PlaylistRecordingClient(
+        {"POST /api/v1/users/17/managed-playlists": {"playlist": {"id": 8}}}
+    )
+
+    result = await client.create_playlist(
+        name="Dein Geschmack",
+        description="Automatisch gepflegt von Traxx ReleaseRadar.",
+        user_id="17",
+    )
+
+    assert result["playlist"]["id"] == 8
+    assert client.calls[0]["path"] == "/api/v1/users/17/managed-playlists"
+
+
+@pytest.mark.parametrize("operation", ["create", "list"])
+async def test_target_user_id_is_validated_before_building_a_path(operation: str) -> None:
+    client = PlaylistRecordingClient({})
+
+    with pytest.raises(TraxxError, match="user id"):
+        if operation == "create":
+            await client.create_playlist(name="Radar", user_id="17/../../admin")
+        else:
+            await client.list_playlists(user_id="17/../../admin")
+
+    assert client.calls == []
+
+
 async def test_get_playlist_returns_inline_tracks() -> None:
     client = PlaylistRecordingClient(
         {
