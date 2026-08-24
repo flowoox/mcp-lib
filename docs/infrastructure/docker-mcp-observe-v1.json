@@ -5,7 +5,7 @@
   "branch": "feat/docker-mcp-diagnostic-detail",
   "base_sha": "56effb363fa71ffa337022d8e589a682dc6a3bf0",
   "status": "implemented_awaiting_ci",
-  "active_pull_request": null,
+  "active_pull_request": 39,
   "merged_slices": [
     {
       "name": "bounded-logs-and-events-v1.1",
