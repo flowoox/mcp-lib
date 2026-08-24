@@ -16,7 +16,6 @@ from urllib.parse import parse_qsl, urlsplit
 import httpx
 
 _API_VERSION_RE = re.compile(r"^v1\.(\d{2})$")
-_CONTAINER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _EVENT_TYPES = frozenset({"container", "image", "volume", "network", "daemon"})
 _RESPONSE_HEADERS = frozenset({"content-type", "api-version", "docker-experimental", "ostype"})
 _MAX_REQUEST_TARGET_CHARS = 2_048
@@ -124,8 +123,9 @@ class DockerReadOnlyPolicy:
         max_log_window_seconds: int,
         max_event_window_seconds: int,
     ) -> None:
-        if _API_VERSION_RE.fullmatch(api_version) is None:
-            raise ValueError("api_version is invalid")
+        version_match = _API_VERSION_RE.fullmatch(api_version)
+        if version_match is None or not 24 <= int(version_match.group(1)) <= 99:
+            raise ValueError("api_version must be between v1.24 and v1.99")
         if not 1 <= max_page_size <= 500:
             raise ValueError("max_page_size must be between 1 and 500")
         if not 1 <= max_log_window_seconds <= 86_400:
@@ -228,9 +228,9 @@ class DockerReadOnlyPolicy:
         object_types = filters.get("type")
         if not isinstance(object_types, list) or not 1 <= len(object_types) <= 5:
             return False
-        if len(set(object_types)) != len(object_types):
+        if not all(isinstance(value, str) and value in _EVENT_TYPES for value in object_types):
             return False
-        return all(isinstance(value, str) and value in _EVENT_TYPES for value in object_types)
+        return len(set(object_types)) == len(object_types)
 
     def authorize(self, method: str, target: str) -> PolicyDecision:
         if method != "GET":
@@ -282,7 +282,13 @@ def _json_bytes(payload: dict[str, Any]) -> bytes:
 class BoundedThreadingHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, server_address: tuple[str, int], handler: type[BaseHTTPRequestHandler], *, max_concurrency: int) -> None:
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        handler: type[BaseHTTPRequestHandler],
+        *,
+        max_concurrency: int,
+    ) -> None:
         self._slots = threading.BoundedSemaphore(max_concurrency)
         super().__init__(server_address, handler)
 
@@ -336,12 +342,26 @@ class DockerReadOnlyProxyHandler(BaseHTTPRequestHandler):
         self._write(status, _json_bytes({"error": code}), content_type="application/json")
 
     def _authenticated(self) -> bool:
-        value = self.headers.get("Authorization", "")
+        values = self.headers.get_all("Authorization", [])
+        if len(values) != 1:
+            return False
+        value = values[0]
         prefix = "Bearer "
         if not value.startswith(prefix):
             return False
         supplied = value[len(prefix) :]
         return hmac.compare_digest(supplied, self.bearer_token)
+
+    def _request_has_body_or_ambiguous_framing(self) -> bool:
+        if self.headers.get("Transfer-Encoding") is not None:
+            return True
+        lengths = self.headers.get_all("Content-Length", [])
+        if len(lengths) > 1:
+            return True
+        if not lengths:
+            return False
+        value = lengths[0].strip()
+        return not value.isdigit() or int(value, 10) != 0
 
     def _forward(self) -> None:
         transport = httpx.HTTPTransport(uds=self.config.docker_socket_path)
@@ -401,7 +421,14 @@ class DockerReadOnlyProxyHandler(BaseHTTPRequestHandler):
         except (httpx.HTTPError, OSError):
             self._reject(HTTPStatus.BAD_GATEWAY, "docker_upstream_unavailable")
 
+    def handle_expect_100(self) -> bool:
+        self._reject(HTTPStatus.EXPECTATION_FAILED, "expectation_not_supported")
+        return False
+
     def do_GET(self) -> None:
+        if self._request_has_body_or_ambiguous_framing():
+            self._reject(HTTPStatus.BAD_REQUEST, "request_body_not_allowed")
+            return
         if not self._authenticated():
             self.send_response(HTTPStatus.UNAUTHORIZED)
             self.send_header("WWW-Authenticate", 'Bearer realm="docker-readonly-proxy"')
@@ -428,7 +455,11 @@ class DockerReadOnlyProxyHandler(BaseHTTPRequestHandler):
     do_HEAD = _deny_method
 
 
-def _handler(config: ProxyConfig, policy: DockerReadOnlyPolicy, token: str) -> type[DockerReadOnlyProxyHandler]:
+def _handler(
+    config: ProxyConfig,
+    policy: DockerReadOnlyPolicy,
+    token: str,
+) -> type[DockerReadOnlyProxyHandler]:
     class ConfiguredHandler(DockerReadOnlyProxyHandler):
         pass
 
