@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from mcp_common.operations import StrictModel
 from pydantic import Field
 
@@ -57,3 +59,19 @@ class DockerContainerSummary(StrictModel):
     mounts: list[DockerMountSummary] = Field(max_length=16)
     ports: list[DockerPortSummary] = Field(max_length=32)
     nested_truncated: DockerNestedTruncation = Field(alias="nestedTruncated")
+
+
+class DockerLogLine(StrictModel):
+    timestamp: str | None = Field(default=None, max_length=64)
+    stream: Literal["stdout", "stderr", "unknown"] = "unknown"
+    message: str = Field(max_length=8_192)
+
+
+class DockerEventSummary(StrictModel):
+    type: str = Field(max_length=40)
+    action: str = Field(max_length=80)
+    actor_id: str = Field(alias="actorId", max_length=128)
+    scope: str = Field(max_length=40)
+    time: int | None = Field(default=None, ge=0)
+    time_nano: int | None = Field(default=None, alias="timeNano", ge=0)
+    attributes: dict[str, str] = Field(default_factory=dict, max_length=8)
