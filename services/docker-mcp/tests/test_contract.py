@@ -13,10 +13,11 @@ def test_contract_is_versioned_explicit_and_read_only() -> None:
         direct_socket_override_enabled=False,
         max_log_window_seconds=settings.docker_max_log_window_seconds,
         max_event_window_seconds=settings.docker_max_event_window_seconds,
+        max_detail_candidates=settings.docker_diagnostic_detail_max_candidates,
     )
 
     assert CONTRACT == "flowoox.docker-diagnostics"
-    assert CONTRACT_VERSION == "1.2.0"
+    assert CONTRACT_VERSION == "1.3.0"
     assert document["contract"] == CONTRACT
     assert {item["id"] for item in document["capabilities"]} == {
         "docker.health.observe",
@@ -29,6 +30,7 @@ def test_contract_is_versioned_explicit_and_read_only() -> None:
         "docker.resources.inventory",
         "docker.events.list",
         "docker.diagnostics.bundle",
+        "docker.diagnostics.detail",
     }
     assert all(policy.phase == OperationPhase.OBSERVE for policy in TOOL_POLICIES)
     assert all(policy.risk == RiskLevel.READ_ONLY for policy in TOOL_POLICIES)
@@ -39,6 +41,13 @@ def test_contract_is_versioned_explicit_and_read_only() -> None:
     assert document["runtime"]["diagnostic_windows"]["live_event_stream"] is False
     assert document["runtime"]["diagnostic_windows"]["live_stats_stream"] is False
     assert document["runtime"]["diagnostic_windows"]["container_stats_one_shot"] is True
+    assert document["runtime"]["diagnostic_detail"] == {
+        "aggregate_candidate_selection_required": True,
+        "max_candidates": 3,
+        "automatic_log_fetch": False,
+        "automatic_event_fetch": False,
+        "per_candidate_stats_samples": 1,
+    }
     assert document["runtime"]["resource_minimization"] == {
         "image_labels_or_config": False,
         "volume_mountpoints_labels_or_options": False,
@@ -58,6 +67,7 @@ def test_capabilities_do_not_expose_backend_or_credentials() -> None:
         direct_socket_override_enabled=False,
         max_log_window_seconds=settings.docker_max_log_window_seconds,
         max_event_window_seconds=settings.docker_max_event_window_seconds,
+        max_detail_candidates=settings.docker_diagnostic_detail_max_candidates,
     )
     rendered = str(document)
     assert "private-topology" not in rendered
