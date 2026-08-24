@@ -2,20 +2,31 @@
   "schema_version": 1,
   "work_item": "docker-mcp",
   "service": "services/docker-mcp",
-  "branch": "feat/docker-mcp-events-logs",
-  "base_sha": "36d0310896d5b0d050bafe721a96fcde567a9ec7",
+  "branch": "feat/docker-mcp-resource-inventory",
+  "base_sha": "95856304c078d223f51201552e919ff7375dd46e",
   "status": "in_progress",
-  "active_pull_request": 37,
+  "merged_slices": [
+    {
+      "name": "bounded-logs-and-events-v1.1",
+      "pull_request": 37,
+      "head_sha": "8b55a44879d85000a7ba1a86c46404bf3648204a",
+      "merge_sha": "95856304c078d223f51201552e919ff7375dd46e",
+      "repository_ci_run": 32705974305,
+      "repository_ci_run_number": 199,
+      "repository_ci_conclusion": "success"
+    }
+  ],
   "contract": {
     "family": "flowoox.docker-diagnostics",
     "version": "1.1.0",
     "mode": "observe-read-only"
   },
   "synchronization": {
-    "open_prs_at_start": 0,
-    "open_issues_at_start": 0,
-    "strategy": "fresh branch from exact current main after SEC-031 merged; preserve other work and remain zero commits behind main before PR creation",
-    "mergeable_after_pr_creation": true
+    "open_prs_before_pr37": 0,
+    "open_issues_before_pr37": 0,
+    "pr37_mergeable_before_merge": true,
+    "resource_inventory_branch_created_from_exact_merge_sha": true,
+    "strategy": "continue each Docker slice from exact current main and never mix unverified resource work into the merged observe contract"
   },
   "implemented": [
     "explicit read-only Docker Engine backend attestation and fail-closed direct-socket override",
@@ -35,32 +46,47 @@
     "contract capabilities explicitly declare no live log follow no live event stream and no writes",
     "documentation and deployment configuration for log/event load guards and read-only authorization proxy endpoint allowlisting"
   ],
+  "current_slice": {
+    "name": "docker-mcp-resource-inventory",
+    "branch": "feat/docker-mcp-resource-inventory",
+    "status": "implementation_started",
+    "completed_on_branch": [
+      "typed image summary with bounded repository tags and digests and explicit nested truncation",
+      "typed volume summary excluding mountpoint labels and driver options",
+      "typed network summary designed to expose aggregate attachment and IPAM counts rather than raw endpoint addresses",
+      "typed single-container resource-stat summary for CPU memory network block-IO and PID counters"
+    ],
+    "not_yet_verified_or_merged": true
+  },
   "security_boundary": [
     "production should use a least-privilege HTTPS authorization proxy because a read-only filesystem mount of the Docker socket is still protocol-privileged",
     "no exec attach create start stop restart kill delete pull push build or arbitrary Engine API operation",
     "log and event calls always use a finite time window and shared response-byte budget; no live streaming mode is exposed",
     "container log content remains potentially sensitive after best-effort credential redaction and is deliberately bounded",
     "event labels and arbitrary actor attributes are never returned",
+    "resource inventory must omit volume mountpoints labels driver options and unbounded raw image or network metadata",
+    "container stats must use stream=false and one-shot=true with an exact validated container target",
     "caller input cannot select an arbitrary Docker API path query key HTTP method host or credential",
     "writes remain absent; any future write layer requires a separate backend identity and plan approval change verify idempotency pre-state rollback intent and independent readback"
   ],
   "verification": {
-    "unit_tests_added": "Docker multiplexed logs, secret redaction, finite log windows, finite event windows, fixed event filters, attribute minimization, target validation, contract surface",
-    "repository_ci_run": 32705867229,
-    "repository_ci_run_number": 198,
-    "repository_ci_conclusion": "success",
-    "docker_mcp_job": "success including locked install, Ruff, pytest and compile",
-    "actions_pin_policy": "success",
-    "representative_container_builds": "success for soulseek-mcp, traxx-mcp and archive-mcp",
-    "dependency_audit": "success on the lock-constrained archive-mcp representative graph"
+    "pr37_final_repository_ci_run": 32705974305,
+    "pr37_final_repository_ci_conclusion": "success",
+    "pr37_docker_mcp_job": "success including locked install Ruff pytest and compile",
+    "pr37_actions_pin_policy": "success",
+    "pr37_representative_container_builds": "success for soulseek-mcp traxx-mcp and archive-mcp",
+    "resource_inventory_branch": "not yet tested; do not merge until implementation tests documentation and full repository CI are green"
   },
   "remaining": [
-    "top-level image volume and network inventory",
-    "bounded per-container resource statistics",
+    "implement fixed GET adapters for top-level image volume and network inventory with hard response-byte and returned-item caps",
+    "implement exact-container stats using stream=false and one-shot=true with normalized counters and no raw cgroup payload",
+    "add explicit resource and stats tools to the contract and server allowlist",
+    "add deterministic tests covering secret/topology minimization path validation finite stats behavior and oversized inventories",
+    "update README endpoint allowlist and load-protection documentation",
     "diagnostic bundle detail fan-out only after aggregate candidate selection",
     "production authorization-proxy integration example",
     "optional separately designed write layer only after observe contract stabilizes"
   ],
   "next_work_package": "docker-mcp-resource-inventory",
-  "next_action": "After PR #37 is merged with final green CI, continue Docker observe with top-level image volume and network inventory plus bounded resource statistics before moving to the next queued infrastructure MCP."
+  "next_action": "Continue feat/docker-mcp-resource-inventory from merge base 95856304c078d223f51201552e919ff7375dd46e. Finish fixed image volume network and one-shot stats adapters, tools, tests and docs; run full CI and merge only if conflict-free and green."
 }
