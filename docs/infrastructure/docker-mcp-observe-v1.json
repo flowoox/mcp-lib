@@ -5,6 +5,7 @@
   "branch": "feat/docker-mcp-events-logs",
   "base_sha": "36d0310896d5b0d050bafe721a96fcde567a9ec7",
   "status": "in_progress",
+  "active_pull_request": 37,
   "contract": {
     "family": "flowoox.docker-diagnostics",
     "version": "1.1.0",
@@ -13,7 +14,8 @@
   "synchronization": {
     "open_prs_at_start": 0,
     "open_issues_at_start": 0,
-    "strategy": "fresh branch from exact current main after SEC-031 merged; preserve other work and remain zero commits behind main before PR creation"
+    "strategy": "fresh branch from exact current main after SEC-031 merged; preserve other work and remain zero commits behind main before PR creation",
+    "mergeable_after_pr_creation": true
   },
   "implemented": [
     "explicit read-only Docker Engine backend attestation and fail-closed direct-socket override",
@@ -43,9 +45,14 @@
     "writes remain absent; any future write layer requires a separate backend identity and plan approval change verify idempotency pre-state rollback intent and independent readback"
   ],
   "verification": {
-    "branch_diff": "branch is 9 implementation commits ahead and 0 behind main before status commit",
     "unit_tests_added": "Docker multiplexed logs, secret redaction, finite log windows, finite event windows, fixed event filters, attribute minimization, target validation, contract surface",
-    "ci": "pending pull-request CI"
+    "repository_ci_run": 32705867229,
+    "repository_ci_run_number": 198,
+    "repository_ci_conclusion": "success",
+    "docker_mcp_job": "success including locked install, Ruff, pytest and compile",
+    "actions_pin_policy": "success",
+    "representative_container_builds": "success for soulseek-mcp, traxx-mcp and archive-mcp",
+    "dependency_audit": "success on the lock-constrained archive-mcp representative graph"
   },
   "remaining": [
     "top-level image volume and network inventory",
@@ -55,5 +62,5 @@
     "optional separately designed write layer only after observe contract stabilizes"
   ],
   "next_work_package": "docker-mcp-resource-inventory",
-  "next_action": "Run full repository CI for Docker diagnostics v1.1, fix any failures, merge only when green, then add top-level image volume and network inventory plus bounded resource statistics before moving to the next queued infrastructure MCP."
+  "next_action": "After PR #37 is merged with final green CI, continue Docker observe with top-level image volume and network inventory plus bounded resource statistics before moving to the next queued infrastructure MCP."
 }
