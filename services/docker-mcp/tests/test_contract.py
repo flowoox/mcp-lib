@@ -46,7 +46,8 @@ def test_contract_is_versioned_explicit_and_read_only() -> None:
         "max_candidates": 3,
         "automatic_log_fetch": False,
         "automatic_event_fetch": False,
-        "per_candidate_stats_samples": 1,
+        "max_stats_samples_per_candidate": 1,
+        "non_running_stats_skipped": True,
     }
     assert document["runtime"]["resource_minimization"] == {
         "image_labels_or_config": False,
