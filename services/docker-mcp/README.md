@@ -1,7 +1,7 @@
 # Docker MCP
 
 Product-neutral, read-only and fail-closed Docker Engine diagnostics using
-`flowoox.docker-diagnostics` v1.1.
+`flowoox.docker-diagnostics` v1.2.
 
 The current observe slice exposes:
 
@@ -9,15 +9,25 @@ The current observe slice exposes:
 - bounded running or stopped container inventory;
 - sampled container-to-image, network, volume and published-port relationships;
 - finite historical container log tails with line, byte and time-window bounds;
+- one-shot per-container CPU, memory, PID, network-I/O and block-I/O statistics;
+- bounded image inventory with repository references and size metadata;
+- bounded volume inventory without host mountpoints, labels or driver options;
+- bounded network inventory with aggregate attachment/IPAM counts rather than raw endpoint addresses;
+- an aggregate image/volume/network inventory sharing one query budget;
 - finite recent Docker event windows with explicit object-type filters and minimized actor attributes; and
 - one aggregate diagnostic bundle sharing a single query budget.
 
 It does not expose create, start, stop, restart, kill, delete, pull, push, build, exec, attach,
-arbitrary API paths, arbitrary HTTP methods or raw inspect payloads. Container commands, labels,
-environment variables and host-side mount source paths are deliberately not returned. Log access is
+arbitrary API paths, arbitrary HTTP methods or raw inspect/cgroup payloads. Container commands, labels,
+environment variables and host-side mount source paths are deliberately not returned. Volume
+mountpoints/options and Docker network endpoint IP/MAC details are also omitted. Log access is
 historical-only: the adapter never sets `follow=true`, always supplies a finite `since`/`until`
 window, caps returned lines and response bytes, and applies best-effort credential-pattern redaction.
 Remaining log content must still be treated as potentially sensitive.
+
+Container resource statistics are single-target and non-streaming. The adapter always sends
+`stream=false` and `one-shot=true`, then projects Docker's raw cgroup payload into bounded counters
+and calculated CPU/memory percentages. It never exposes the original cgroup map.
 
 ## Backend boundary
 
@@ -29,11 +39,15 @@ GET /_ping
 GET /v1.47/info
 GET /v1.47/containers/json
 GET /v1.47/containers/{approved-container}/logs
+GET /v1.47/containers/{approved-container}/stats
+GET /v1.47/images/json
+GET /v1.47/volumes
+GET /v1.47/networks
 GET /v1.47/events
 ```
 
 The proxy should independently restrict container identifiers and query parameters where possible;
-the MCP adapter also validates simple Docker IDs/names and emits only fixed query keys. Required
+the MCP adapters also validate simple Docker IDs/names and emit only fixed query keys. Required
 runtime configuration:
 
 ```text
@@ -88,9 +102,22 @@ type, and accept only the fixed `container`, `image`, `volume`, `network` or `da
 attributes are reduced to a small safe allowlist (`name`, `image`, `container`, `exitCode`, `signal`);
 labels are not returned.
 
-Sampling is applied only after raw returned items count against the budget. The current Engine list
-endpoint does not provide a stable opaque cursor, so the service refuses caller cursors rather than
-pretending pagination is stable. A page that exactly reaches its limit is conservatively marked
+Docker's top-level image, volume and network list endpoints do not provide stable cursor pagination.
+The service therefore refuses caller cursors, hard-caps the raw response body by bytes, returns only
+the requested bounded head of each list and marks the result `truncated` when more objects were
+present. The aggregate resource inventory makes exactly three bounded backend reads under one shared
+budget. It does not fan out to inspect each image, volume or network.
+
+Per-container stats use the official non-streaming Engine parameters `stream=false` and
+`one-shot=true`. CPU percentage is derived from current/previous CPU counters when Docker supplies a
+valid delta. Memory working set subtracts `inactive_file` on cgroup v2, falling back to `cache` for
+cgroup v1. Network and block-I/O counters are summed before return, so interface names and raw cgroup
+structures do not reach the agent.
+
+Sampling is applied only after raw returned items count against the shared connector budget where the
+upstream operation supports a bounded result. The current Engine container list endpoint does not
+provide a stable opaque cursor, so the service refuses caller cursors rather than pretending
+pagination is stable. A container page that exactly reaches its limit is conservatively marked
 `truncated`.
 
 Every diagnostic requires `actor` and `reason`; callers may propagate a UUID `correlation_id`.

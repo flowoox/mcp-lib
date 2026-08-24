@@ -10,12 +10,17 @@ from mcp_common.read_only_connector import (
 )
 
 CONTRACT = "flowoox.docker-diagnostics"
-CONTRACT_VERSION = "1.1.0"
+CONTRACT_VERSION = "1.2.0"
 
 TOOL_POLICIES = (
     ToolPolicy(name="docker.health.observe", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
     ToolPolicy(name="docker.containers.list", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
     ToolPolicy(name="docker.containers.logs", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
+    ToolPolicy(name="docker.containers.stats", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
+    ToolPolicy(name="docker.images.list", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
+    ToolPolicy(name="docker.volumes.list", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
+    ToolPolicy(name="docker.networks.list", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
+    ToolPolicy(name="docker.resources.inventory", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
     ToolPolicy(name="docker.events.list", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
     ToolPolicy(name="docker.diagnostics.bundle", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
 )
@@ -24,6 +29,11 @@ _DESCRIPTIONS = {
     "docker.health.observe": "Return bounded daemon reachability, host resource and engine health metadata.",
     "docker.containers.list": "Return a bounded normalized container page without environment, labels, commands or host mount sources.",
     "docker.containers.logs": "Return a bounded finite historical container log tail with timestamps and best-effort secret redaction; never follow a live stream.",
+    "docker.containers.stats": "Return one bounded non-streaming resource-stat sample for an exact validated container target.",
+    "docker.images.list": "Return bounded image identity, repository references, creation time and size without image labels or configuration.",
+    "docker.volumes.list": "Return bounded volume identity, driver, scope and usage metadata without mountpoints, labels or driver options.",
+    "docker.networks.list": "Return bounded network identity and aggregate attachment/IPAM counts without endpoint addresses, labels or options.",
+    "docker.resources.inventory": "Aggregate bounded image, volume and network inventory under one shared query budget before detail fan-out.",
     "docker.events.list": "Return a bounded finite Docker event window with an explicit object-type allowlist and minimized actor attributes.",
     "docker.diagnostics.bundle": "Aggregate daemon health and sampled container/network/storage relationships before any future detail fan-out.",
 }
@@ -52,6 +62,14 @@ def capabilities(
                 "max_event_window_seconds": max_event_window_seconds,
                 "live_log_follow": False,
                 "live_event_stream": False,
+                "live_stats_stream": False,
+                "container_stats_one_shot": True,
+            },
+            "resource_minimization": {
+                "image_labels_or_config": False,
+                "volume_mountpoints_labels_or_options": False,
+                "network_endpoint_addresses_labels_or_options": False,
+                "raw_cgroup_stats": False,
             },
             "writes_enabled": False,
             "arbitrary_api_path": False,
