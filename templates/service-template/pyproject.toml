@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3,<9", "ruff>=0.9,<1"]
+dev = ["pytest>=9.1,<10", "ruff>=0.9,<1"]
 
 [project.scripts]
 mcp-example = "example_mcp.server:main"
