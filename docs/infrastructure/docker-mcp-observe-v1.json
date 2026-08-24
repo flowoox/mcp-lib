@@ -4,12 +4,12 @@
   "service": "services/docker-mcp",
   "branch": "feat/docker-mcp-resource-inventory",
   "base_sha": "95856304c078d223f51201552e919ff7375dd46e",
-  "status": "in_progress",
+  "status": "ready_to_merge_after_final_ci",
+  "active_pull_request": 38,
   "merged_slices": [
     {
       "name": "bounded-logs-and-events-v1.1",
       "pull_request": 37,
-      "head_sha": "8b55a44879d85000a7ba1a86c46404bf3648204a",
       "merge_sha": "95856304c078d223f51201552e919ff7375dd46e",
       "repository_ci_run": 32705974305,
       "repository_ci_run_number": 199,
@@ -18,75 +18,54 @@
   ],
   "contract": {
     "family": "flowoox.docker-diagnostics",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "mode": "observe-read-only"
   },
   "synchronization": {
-    "open_prs_before_pr37": 0,
-    "open_issues_before_pr37": 0,
-    "pr37_mergeable_before_merge": true,
     "resource_inventory_branch_created_from_exact_merge_sha": true,
-    "strategy": "continue each Docker slice from exact current main and never mix unverified resource work into the merged observe contract"
+    "pr38_initial_base_sha": "95856304c078d223f51201552e919ff7375dd46e",
+    "strategy": "merge only after final CI success, mergeable=true and behind_by=0; preserve unrelated concurrent work"
   },
   "implemented": [
-    "explicit read-only Docker Engine backend attestation and fail-closed direct-socket override",
-    "fixed GET-only Docker Engine operation allowlist with no arbitrary API path or HTTP method",
-    "daemon ping and normalized host/engine health observation",
-    "bounded normalized container inventory without commands labels environment or host mount sources",
-    "shared request item byte fan-out and total-time query budgets with rate and concurrency limits",
-    "finite historical container log tails with upstream tail since until timestamps stdout and stderr",
-    "Docker multiplexed log stream normalization without exposing raw framing",
-    "bounded log line count response bytes time window and per-line characters",
-    "best-effort password token API-key authorization and bearer credential-pattern redaction in returned log messages",
-    "strict Docker container ID or simple-name validation preventing caller-controlled API path traversal",
-    "finite recent Docker event windows with server-calculated since and until values",
-    "fixed event object-type allowlist for container image volume network and daemon",
-    "event actor attribute minimization to name image container exitCode and signal with labels excluded",
-    "typed operation results with actor reason correlation ID audit events and no result payload duplication in audit metadata",
-    "contract capabilities explicitly declare no live log follow no live event stream and no writes",
-    "documentation and deployment configuration for log/event load guards and read-only authorization proxy endpoint allowlisting"
+    "explicit read-only Docker Engine backend attestation with fail-closed direct-socket override",
+    "fixed GET-only operation allowlist with no arbitrary API path method query or command",
+    "bounded daemon health and normalized container inventory",
+    "finite historical logs with tail since until byte item line and time bounds plus best-effort credential redaction",
+    "finite recent events with fixed object-type allowlist and minimized actor attributes",
+    "bounded image inventory with repository-reference caps and no labels or raw image configuration",
+    "bounded volume inventory without mountpoints labels driver options or warning payloads",
+    "bounded network inventory exposing aggregate attachment and IPAM counts rather than endpoint addresses MACs labels or options",
+    "single-container one-shot statistics using stream=false and one-shot=true with normalized CPU memory PID network and block-IO counters",
+    "aggregate resource inventory using exactly three bounded reads under one shared query budget without per-object inspect fan-out",
+    "typed operation results with actor reason correlation ID and audit envelopes",
+    "documentation and deterministic tests for topology/secret minimization path validation finite diagnostics and load guards"
   ],
-  "current_slice": {
-    "name": "docker-mcp-resource-inventory",
-    "branch": "feat/docker-mcp-resource-inventory",
-    "status": "implementation_started",
-    "completed_on_branch": [
-      "typed image summary with bounded repository tags and digests and explicit nested truncation",
-      "typed volume summary excluding mountpoint labels and driver options",
-      "typed network summary designed to expose aggregate attachment and IPAM counts rather than raw endpoint addresses",
-      "typed single-container resource-stat summary for CPU memory network block-IO and PID counters"
-    ],
-    "not_yet_verified_or_merged": true
-  },
   "security_boundary": [
-    "production should use a least-privilege HTTPS authorization proxy because a read-only filesystem mount of the Docker socket is still protocol-privileged",
-    "no exec attach create start stop restart kill delete pull push build or arbitrary Engine API operation",
-    "log and event calls always use a finite time window and shared response-byte budget; no live streaming mode is exposed",
-    "container log content remains potentially sensitive after best-effort credential redaction and is deliberately bounded",
-    "event labels and arbitrary actor attributes are never returned",
-    "resource inventory must omit volume mountpoints labels driver options and unbounded raw image or network metadata",
-    "container stats must use stream=false and one-shot=true with an exact validated container target",
-    "caller input cannot select an arbitrary Docker API path query key HTTP method host or credential",
-    "writes remain absent; any future write layer requires a separate backend identity and plan approval change verify idempotency pre-state rollback intent and independent readback"
+    "production should use a least-privilege HTTPS authorization proxy because a read-only filesystem mount of the Docker socket remains protocol-privileged",
+    "no exec attach create start stop restart kill delete pull push build inspect fan-out or arbitrary Engine API operation",
+    "logs events and resource statistics never expose live streams",
+    "container log content remains potentially sensitive after best-effort redaction and is deliberately bounded",
+    "resource inventory omits volume mountpoints labels driver options network endpoint addressing and unbounded raw metadata",
+    "container stats require an exact validated container target and never return raw cgroup structures",
+    "writes remain absent; any future write layer requires a separate identity plus plan approval change verify idempotency pre-state rollback intent and independent readback"
   ],
   "verification": {
     "pr37_final_repository_ci_run": 32705974305,
     "pr37_final_repository_ci_conclusion": "success",
-    "pr37_docker_mcp_job": "success including locked install Ruff pytest and compile",
-    "pr37_actions_pin_policy": "success",
-    "pr37_representative_container_builds": "success for soulseek-mcp traxx-mcp and archive-mcp",
-    "resource_inventory_branch": "not yet tested; do not merge until implementation tests documentation and full repository CI are green"
+    "pr38_implementation_ci_run": 32706690657,
+    "pr38_implementation_ci_run_number": 201,
+    "pr38_implementation_ci_conclusion": "success",
+    "pr38_docker_mcp_job": "success including deterministic locked install, Ruff, pytest and compile",
+    "pr38_actions_pin_policy": "success",
+    "pr38_representative_container_builds": "success for soulseek-mcp traxx-mcp and archive-mcp",
+    "pr38_dependency_audit": "success on the lock-constrained archive-mcp representative graph",
+    "final_status_commit_ci": "pending"
   },
   "remaining": [
-    "implement fixed GET adapters for top-level image volume and network inventory with hard response-byte and returned-item caps",
-    "implement exact-container stats using stream=false and one-shot=true with normalized counters and no raw cgroup payload",
-    "add explicit resource and stats tools to the contract and server allowlist",
-    "add deterministic tests covering secret/topology minimization path validation finite stats behavior and oversized inventories",
-    "update README endpoint allowlist and load-protection documentation",
     "diagnostic bundle detail fan-out only after aggregate candidate selection",
-    "production authorization-proxy integration example",
-    "optional separately designed write layer only after observe contract stabilizes"
+    "production authorization-proxy integration example with least-privilege endpoint policy",
+    "optional separately designed write layer only after the observe contract stabilizes"
   ],
-  "next_work_package": "docker-mcp-resource-inventory",
-  "next_action": "Continue feat/docker-mcp-resource-inventory from merge base 95856304c078d223f51201552e919ff7375dd46e. Finish fixed image volume network and one-shot stats adapters, tools, tests and docs; run full CI and merge only if conflict-free and green."
+  "next_work_package": "docker-mcp-diagnostic-detail",
+  "next_action": "After PR #38 final CI is green and the branch remains mergeable and zero commits behind main, merge it. Then implement bounded diagnostic detail fan-out only for aggregate-selected container candidates; do not add arbitrary inspect or exec."
 }
