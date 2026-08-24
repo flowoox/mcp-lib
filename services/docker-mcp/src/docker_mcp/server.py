@@ -27,7 +27,13 @@ from .config import Settings
 from .contract import capabilities
 
 _CONNECTOR_OPERATIONS = frozenset(
-    {"docker.system.ping", "docker.system.info", "docker.containers.list"}
+    {
+        "docker.system.ping",
+        "docker.system.info",
+        "docker.containers.list",
+        "docker.containers.logs",
+        "docker.events.list",
+    }
 )
 
 
@@ -131,8 +137,9 @@ def create_server(
         "Flowoox Docker Diagnostics MCP",
         instructions=(
             "Bounded read-only Docker diagnostics. The service exposes fixed GET operations only, "
-            "requires an explicitly attested read-only backend, and never exposes Docker exec, "
-            "arbitrary API paths, environment variables, labels, commands or raw inspect payloads."
+            "requires an explicitly attested read-only backend, never follows live log or event "
+            "streams, and never exposes Docker exec, arbitrary API paths, environment variables, "
+            "labels, commands or raw inspect payloads."
         ),
         host=settings.mcp_host,
         port=settings.mcp_port,
@@ -150,6 +157,8 @@ def create_server(
             connector.policy,
             budget_limits,
             direct_socket_override_enabled=settings.docker_allow_direct_socket,
+            max_log_window_seconds=settings.docker_max_log_window_seconds,
+            max_event_window_seconds=settings.docker_max_event_window_seconds,
         )
 
     @mcp.tool()
@@ -218,6 +227,79 @@ def create_server(
                 "truncated": page.truncated,
                 "sampled": page.sampled,
                 "cacheHint": page.cache_hint.model_dump(mode="json") if page.cache_hint else None,
+            },
+            budget=budget,
+        )
+
+    @mcp.tool()
+    async def docker_container_logs(
+        actor: str,
+        reason: str,
+        container_id: str,
+        tail: int = 50,
+        since_seconds_ago: int = 300,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Return a finite bounded historical log tail; live follow is never enabled."""
+        budget = QueryBudget(budget_limits)
+        page = await connector.execute(
+            ReadOnlyQuery(
+                operation="docker.containers.logs",
+                parameters={
+                    "container_id": container_id,
+                    "since_seconds_ago": since_seconds_ago,
+                },
+                page=PageRequest(limit=tail),
+            ),
+            budget,
+        )
+        return _observe_response(
+            "docker.containers.logs",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            target=f"docker-container:{container_id[:128]}",
+            output={
+                "lines": page.items,
+                "returned": len(page.items),
+                "truncated": page.truncated,
+                "redaction": "best-effort credential-pattern redaction; treat remaining log content as sensitive",
+            },
+            budget=budget,
+        )
+
+    @mcp.tool()
+    async def docker_recent_events(
+        actor: str,
+        reason: str,
+        object_type: Literal["container", "image", "volume", "network", "daemon"] = "container",
+        since_seconds_ago: int = 60,
+        limit: int = 50,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
+        """Return a finite recent Docker event window with minimized actor attributes."""
+        budget = QueryBudget(budget_limits)
+        page = await connector.execute(
+            ReadOnlyQuery(
+                operation="docker.events.list",
+                parameters={
+                    "since_seconds_ago": since_seconds_ago,
+                    "object_types": [object_type],
+                },
+                page=PageRequest(limit=limit),
+            ),
+            budget,
+        )
+        return _observe_response(
+            "docker.events.list",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output={
+                "objectType": object_type,
+                "events": page.items,
+                "returned": len(page.items),
+                "truncated": page.truncated,
             },
             budget=budget,
         )

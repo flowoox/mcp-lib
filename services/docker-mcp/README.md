@@ -1,18 +1,23 @@
 # Docker MCP
 
 Product-neutral, read-only and fail-closed Docker Engine diagnostics using
-`flowoox.docker-diagnostics` v1.
+`flowoox.docker-diagnostics` v1.1.
 
-The first slice exposes:
+The current observe slice exposes:
 
 - daemon reachability plus normalized system/resource health;
 - bounded running or stopped container inventory;
-- sampled container-to-image, network, volume and published-port relationships; and
+- sampled container-to-image, network, volume and published-port relationships;
+- finite historical container log tails with line, byte and time-window bounds;
+- finite recent Docker event windows with explicit object-type filters and minimized actor attributes; and
 - one aggregate diagnostic bundle sharing a single query budget.
 
 It does not expose create, start, stop, restart, kill, delete, pull, push, build, exec, attach,
 arbitrary API paths, arbitrary HTTP methods or raw inspect payloads. Container commands, labels,
-environment variables and host-side mount source paths are deliberately not returned.
+environment variables and host-side mount source paths are deliberately not returned. Log access is
+historical-only: the adapter never sets `follow=true`, always supplies a finite `since`/`until`
+window, caps returned lines and response bytes, and applies best-effort credential-pattern redaction.
+Remaining log content must still be treated as potentially sensitive.
 
 ## Backend boundary
 
@@ -23,9 +28,13 @@ the GET endpoints required by this service:
 GET /_ping
 GET /v1.47/info
 GET /v1.47/containers/json
+GET /v1.47/containers/{approved-container}/logs
+GET /v1.47/events
 ```
 
-Required runtime configuration:
+The proxy should independently restrict container identifiers and query parameters where possible;
+the MCP adapter also validates simple Docker IDs/names and emits only fixed query keys. Required
+runtime configuration:
 
 ```text
 DOCKER_HOST=https://docker-readonly.example.invalid
@@ -61,6 +70,9 @@ DOCKER_REQUEST_TIMEOUT_SECONDS=5
 DOCKER_MAX_RESPONSE_BYTES=1048576
 DOCKER_MAX_CONCURRENCY=2
 DOCKER_RATE_LIMIT_PER_SECOND=4
+DOCKER_MAX_LOG_WINDOW_SECONDS=3600
+DOCKER_MAX_LOG_LINE_CHARS=2000
+DOCKER_MAX_EVENT_WINDOW_SECONDS=300
 
 DOCKER_BUDGET_MAX_REQUESTS=4
 DOCKER_BUDGET_MAX_ITEMS=200
@@ -69,9 +81,17 @@ DOCKER_BUDGET_MAX_FAN_OUT=4
 DOCKER_BUDGET_TIMEOUT_SECONDS=15
 ```
 
+Container logs use Docker's upstream `tail`, `since` and `until` parameters, with both stdout and
+stderr requested and timestamps enabled. Multiplexed Docker streams are normalized without exposing
+raw framing. Event queries always include both `since` and `until`, default to the `container` event
+type, and accept only the fixed `container`, `image`, `volume`, `network` or `daemon` type set. Actor
+attributes are reduced to a small safe allowlist (`name`, `image`, `container`, `exitCode`, `signal`);
+labels are not returned.
+
 Sampling is applied only after raw returned items count against the budget. The current Engine list
 endpoint does not provide a stable opaque cursor, so the service refuses caller cursors rather than
-pretending pagination is stable. A page that exactly reaches its limit is marked `truncated`.
+pretending pagination is stable. A page that exactly reaches its limit is conservatively marked
+`truncated`.
 
 Every diagnostic requires `actor` and `reason`; callers may propagate a UUID `correlation_id`.
 Audit events carry those fields without duplicating Docker result data.

@@ -11,14 +11,18 @@ def test_contract_is_versioned_explicit_and_read_only() -> None:
         _connector_policy(settings),
         _budget_limits(settings),
         direct_socket_override_enabled=False,
+        max_log_window_seconds=settings.docker_max_log_window_seconds,
+        max_event_window_seconds=settings.docker_max_event_window_seconds,
     )
 
     assert CONTRACT == "flowoox.docker-diagnostics"
-    assert CONTRACT_VERSION == "1.0.0"
+    assert CONTRACT_VERSION == "1.1.0"
     assert document["contract"] == CONTRACT
     assert {item["id"] for item in document["capabilities"]} == {
         "docker.health.observe",
         "docker.containers.list",
+        "docker.containers.logs",
+        "docker.events.list",
         "docker.diagnostics.bundle",
     }
     assert all(policy.phase == OperationPhase.OBSERVE for policy in TOOL_POLICIES)
@@ -26,6 +30,8 @@ def test_contract_is_versioned_explicit_and_read_only() -> None:
     assert document["runtime"]["writes_enabled"] is False
     assert document["runtime"]["arbitrary_api_path"] is False
     assert document["runtime"]["connector"]["backend_mode"] == "read_only"
+    assert document["runtime"]["diagnostic_windows"]["live_log_follow"] is False
+    assert document["runtime"]["diagnostic_windows"]["live_event_stream"] is False
 
 
 def test_capabilities_do_not_expose_backend_or_credentials() -> None:
@@ -37,6 +43,8 @@ def test_capabilities_do_not_expose_backend_or_credentials() -> None:
         _connector_policy(settings),
         _budget_limits(settings),
         direct_socket_override_enabled=False,
+        max_log_window_seconds=settings.docker_max_log_window_seconds,
+        max_event_window_seconds=settings.docker_max_event_window_seconds,
     )
     rendered = str(document)
     assert "private-topology" not in rendered
