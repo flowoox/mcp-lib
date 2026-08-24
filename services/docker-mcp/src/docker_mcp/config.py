@@ -67,9 +67,6 @@ class Settings(BaseSettings):
     docker_auth_token: SecretStr = SecretStr("")
     docker_tls_verify: bool = True
     docker_allow_insecure_tls: bool = False
-    docker_tls_ca_file: str = ""
-    docker_tls_client_cert_file: str = ""
-    docker_tls_client_key_file: str = ""
     docker_api_version: str = "v1.47"
 
     docker_max_page_size: int = Field(default=100, ge=1, le=500)
