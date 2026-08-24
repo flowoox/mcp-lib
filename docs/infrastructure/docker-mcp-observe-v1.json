@@ -2,10 +2,10 @@
   "schema_version": 1,
   "work_item": "docker-mcp",
   "service": "services/docker-mcp",
-  "branch": "feat/docker-mcp-diagnostic-detail",
-  "base_sha": "56effb363fa71ffa337022d8e589a682dc6a3bf0",
+  "branch": "feat/docker-mcp-readonly-proxy",
+  "base_sha": "b98cfb215664d1fbc77e056df379b20c4b726134",
   "status": "implemented_awaiting_ci",
-  "active_pull_request": 39,
+  "active_pull_request": null,
   "merged_slices": [
     {
       "name": "bounded-logs-and-events-v1.1",
@@ -22,6 +22,14 @@
       "repository_ci_run": 32706871200,
       "repository_ci_run_number": 202,
       "repository_ci_conclusion": "success"
+    },
+    {
+      "name": "aggregate-first-diagnostic-detail-v1.3",
+      "pull_request": 39,
+      "merge_sha": "b98cfb215664d1fbc77e056df379b20c4b726134",
+      "repository_ci_run": 32708799850,
+      "repository_ci_run_number": 205,
+      "repository_ci_conclusion": "success"
     }
   ],
   "contract": {
@@ -30,54 +38,45 @@
     "mode": "observe-read-only"
   },
   "synchronization": {
-    "diagnostic_detail_branch_created_from_exact_main_sha": true,
-    "diagnostic_detail_initial_base_sha": "56effb363fa71ffa337022d8e589a682dc6a3bf0",
+    "readonly_proxy_branch_created_from_exact_main_sha": true,
+    "readonly_proxy_initial_base_sha": "b98cfb215664d1fbc77e056df379b20c4b726134",
     "open_pull_requests_at_start": 0,
-    "open_issues_at_start": 0,
     "strategy": "merge only after final CI success, mergeable=true and behind_by=0; preserve unrelated concurrent work"
   },
   "implemented": [
     "explicit read-only Docker Engine backend attestation with fail-closed direct-socket override",
     "fixed GET-only operation allowlist with no arbitrary API path method query or command",
-    "bounded daemon health and normalized container inventory",
-    "finite historical logs with tail since until byte item line and time bounds plus best-effort credential redaction",
-    "finite recent events with fixed object-type allowlist and minimized actor attributes",
-    "bounded image inventory with repository-reference caps and no labels or raw image configuration",
-    "bounded volume inventory without mountpoints labels driver options or warning payloads",
-    "bounded network inventory exposing aggregate attachment and IPAM counts rather than endpoint addresses MACs labels or options",
-    "single-container one-shot statistics using stream=false and one-shot=true with normalized CPU memory PID network and block-IO counters",
-    "aggregate resource inventory using exactly three bounded reads under one shared query budget without per-object inspect fan-out",
-    "aggregate-first diagnostic detail with deterministic anomaly selection before any detail request",
-    "diagnostic detail hard-capped to three candidates with request and fan-out budget preflight before backend work",
-    "multi-object diagnostic detail accepts no caller-selected container IDs and derives every detail target from the bounded aggregate inventory",
-    "dead and exited anomaly candidates remain visible as evidence but never trigger unreliable stopped-container stats calls",
-    "active selected candidates receive at most one non-streaming stats sample; automatic logs and events remain disabled",
+    "bounded daemon health container image volume network log event and one-shot statistics observation",
+    "aggregate resource inventory and aggregate-first diagnostic detail under shared query budgets",
+    "diagnostic detail derives targets from bounded normalized inventory and skips stats for stopped candidates",
     "typed operation results with actor reason correlation ID and audit envelopes",
-    "documentation and deterministic tests for topology/secret minimization path validation finite diagnostics and load guards"
+    "separate TLS read-only authorization proxy process as the only reference component requiring Docker Unix-socket access",
+    "proxy bearer credential loaded from a runtime file and stripped before Docker forwarding",
+    "proxy exact API-version method path and query allowlist matching only the docker-mcp GET surface",
+    "proxy duplicate and unknown query rejection plus page log event time-window and event-type validation",
+    "proxy request-body and ambiguous framing rejection bounded upstream timeout response bytes and concurrency",
+    "proxy rejects upstream redirects suppresses raw upstream error bodies and disables request-target access logging",
+    "product-neutral proxy environment and hardened systemd deployment examples without committed topology credentials certificates keys or tokens",
+    "deterministic policy adversarial and loopback-to-Unix-socket forwarding tests"
   ],
   "security_boundary": [
-    "production should use a least-privilege HTTPS authorization proxy because a read-only filesystem mount of the Docker socket remains protocol-privileged",
-    "no exec attach create start stop restart kill delete pull push build inspect fan-out or arbitrary Engine API operation",
-    "logs events and resource statistics never expose live streams",
-    "container log content remains potentially sensitive after best-effort redaction and is deliberately bounded",
-    "resource inventory omits volume mountpoints labels driver options network endpoint addressing and unbounded raw metadata",
-    "container stats require an exact validated container target and never return raw cgroup structures",
-    "aggregate-first detail derives exact stats targets only from normalized bounded inventory and skips stats for stopped candidates",
+    "the Docker socket remains protocol-privileged for the proxy process; the MCP service itself should not receive Docker socket access",
+    "proxy ingress must use TLS plus bearer authentication and should bind only loopback or a dedicated management address protected by firewall policy",
+    "no generic pass-through route exists and incoming bearer credentials are never forwarded to Docker",
+    "no exec attach create start stop restart kill delete pull push build generic inspect or arbitrary Engine API operation",
+    "logs events and resource statistics never expose live streams and remain independently bounded by MCP and proxy limits",
     "writes remain absent; any future write layer requires a separate identity plus plan approval change verify idempotency pre-state rollback intent and independent readback"
   ],
   "verification": {
-    "pr37_final_repository_ci_run": 32705974305,
-    "pr37_final_repository_ci_conclusion": "success",
-    "pr38_final_repository_ci_run": 32706871200,
-    "pr38_final_repository_ci_run_number": 202,
-    "pr38_final_repository_ci_conclusion": "success",
-    "diagnostic_detail_repository_ci": "pending",
-    "diagnostic_detail_merge": "pending"
+    "pr39_final_repository_ci_run": 32708799850,
+    "pr39_final_repository_ci_run_number": 205,
+    "pr39_final_repository_ci_conclusion": "success",
+    "readonly_proxy_repository_ci": "pending",
+    "readonly_proxy_merge": "pending"
   },
   "remaining": [
-    "production authorization-proxy integration example with least-privilege endpoint policy",
-    "optional separately designed write layer only after the observe contract stabilizes"
+    "optional separately designed Docker write layer only if a concrete approved operational use case requires it"
   ],
-  "next_work_package": "docker-mcp-authorization-proxy-example",
-  "next_action": "Run full repository CI for the aggregate-first diagnostic-detail slice. Merge only if green and still zero commits behind current main. Then add a product-neutral production authorization-proxy example that independently enforces the fixed Docker GET endpoint and query policy without embedding private topology or credentials."
+  "next_work_package": "fileshare-mcp-readonly-foundation",
+  "next_action": "Run full repository CI for the product-neutral Docker read-only proxy slice and merge only if green and zero commits behind current main. Then move to fileshare-mcp read-only foundations: bounded metadata/content sampling, SMB and NTFS ACL evidence, inheritance owner ACE diagnostics, effective-rights evidence where safely determinable, no unbounded file streaming, and the shared query-budget connector model."
 }
