@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 from mcp_common.query_budget import QueryBudget, QueryBudgetLimits
 from mcp_common.read_only_connector import (
@@ -190,22 +188,19 @@ async def test_detail_budget_preflight_rejects_before_backend_work() -> None:
     assert transport.queries == []
 
 
-def test_detail_limit_cannot_exceed_operator_cap() -> None:
+@pytest.mark.asyncio
+async def test_detail_limit_cannot_exceed_operator_cap() -> None:
     transport = FakeDockerTransport()
     budget = QueryBudget(QueryBudgetLimits())
 
     with pytest.raises(ValueError, match="DOCKER_DIAGNOSTIC_DETAIL_MAX_CANDIDATES"):
-        import asyncio
-
-        asyncio.run(
-            collect_diagnostic_detail(
-                _connector(transport),
-                budget,
-                include_stopped=False,
-                inventory_limit=50,
-                detail_limit=4,
-                operator_max_candidates=3,
-            )
+        await collect_diagnostic_detail(
+            _connector(transport),
+            budget,
+            include_stopped=False,
+            inventory_limit=50,
+            detail_limit=4,
+            operator_max_candidates=3,
         )
 
     assert transport.queries == []
