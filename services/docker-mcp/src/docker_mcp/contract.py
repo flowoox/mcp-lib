@@ -37,7 +37,7 @@ _DESCRIPTIONS = {
     "docker.resources.inventory": "Aggregate bounded image, volume and network inventory under one shared query budget before detail fan-out.",
     "docker.events.list": "Return a bounded finite Docker event window with an explicit object-type allowlist and minimized actor attributes.",
     "docker.diagnostics.bundle": "Aggregate daemon health and sampled container/network/storage relationships under one shared query budget.",
-    "docker.diagnostics.detail": "Select anomalous containers from one bounded aggregate inventory, then fetch one-shot stats only for the selected candidates under the same query budget.",
+    "docker.diagnostics.detail": "Select anomalous containers from one bounded aggregate inventory, then fetch at most one one-shot stats sample only for selected active candidates under the same query budget.",
 }
 
 
@@ -73,7 +73,8 @@ def capabilities(
                 "max_candidates": max_detail_candidates,
                 "automatic_log_fetch": False,
                 "automatic_event_fetch": False,
-                "per_candidate_stats_samples": 1,
+                "max_stats_samples_per_candidate": 1,
+                "non_running_stats_skipped": True,
             },
             "resource_minimization": {
                 "image_labels_or_config": False,
