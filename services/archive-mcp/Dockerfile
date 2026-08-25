@@ -1,6 +1,6 @@
 FROM python:3.12-slim AS runtime
 
-ARG VERSION=0.1.0
+ARG VERSION=0.1.1
 LABEL org.opencontainers.image.title="flowoox Internet Archive MCP" \
       org.opencontainers.image.description="MCP service for openly licensed albums from archive.org" \
       org.opencontainers.image.source="https://github.com/flowoox/mcp-lib" \

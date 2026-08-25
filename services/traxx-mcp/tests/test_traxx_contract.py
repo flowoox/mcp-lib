@@ -5,7 +5,7 @@ def test_library_import_contract_is_versioned_and_normalizes_metadata() -> None:
     result = capabilities()
     assert result["contract"] == {
         "name": CONTRACT_NAME,
-        "version": "1.6",
+        "version": "1.7",
         "major": 1,
     }
     assert result["role"] == "library-target"
@@ -13,6 +13,9 @@ def test_library_import_contract_is_versioned_and_normalizes_metadata() -> None:
     assert result["features"]["metadata_normalization"] is True
     assert result["features"]["cover_embedding"] is True
     assert result["features"]["idempotent_import"] is True
+    assert result["features"]["fail_closed_malware_scan"] is True
+    assert result["features"]["malware_quarantine"] is True
+    assert "scan_album_folder" in result["tools"]
     assert result["features"]["retryable_partial_import"] is True
     assert "get_capabilities" in result["tools"]
 

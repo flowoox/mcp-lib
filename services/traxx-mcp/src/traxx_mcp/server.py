@@ -12,6 +12,7 @@ from mcp_common.url_security import origin_for_url
 from .client import TraxxClient
 from .config import ActorRegistry, RuntimeConfig, RuntimeConfigStore, get_settings
 from .contract import capabilities
+from .malware import ClamAvScanner, MalwareScanError
 from .metadata import inspect_audio_file
 
 
@@ -20,6 +21,18 @@ def create_server() -> FastMCP:
     configs = RuntimeConfigStore(settings)
     import_ledger = AtomicJsonStore(settings.traxx_import_ledger_file, default={})
     actors = ActorRegistry(settings.traxx_actors_file)
+    malware_scanner: ClamAvScanner | None = None
+    if settings.malware_scan_required or settings.clamav_host.strip():
+        malware_scanner = ClamAvScanner(
+            host=settings.clamav_host,
+            port=settings.clamav_port,
+            timeout_seconds=settings.clamav_timeout_seconds,
+            downloads_dir=settings.downloads_dir,
+            quarantine_dir=settings.malware_quarantine_dir,
+            max_file_bytes=settings.clamav_max_file_bytes,
+            max_files=settings.clamav_max_files,
+            max_total_bytes=settings.clamav_max_total_bytes,
+        )
     import_locks: dict[str, asyncio.Lock] = {}
     security = build_mcp_server_security(settings, service_hosts=("mcp-traxx",))
     mcp = FastMCP(
@@ -90,6 +103,7 @@ def create_server() -> FastMCP:
             downloads_dir=settings.downloads_dir,
             import_ledger=import_ledger,
             actor_token=actor_token,
+            malware_scanner=malware_scanner,
         )
 
     @mcp.tool()
@@ -170,7 +184,23 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     async def health() -> dict[str, Any]:
-        return await client().health()
+        result = await client().health()
+        if malware_scanner is None:
+            result["malware_scan"] = {
+                "enabled": False,
+                "required": settings.malware_scan_required,
+            }
+            if settings.malware_scan_required:
+                raise MalwareScanError(
+                    "[MALWARE_SCAN_UNAVAILABLE] Required malware scanner is not configured"
+                )
+        else:
+            result["malware_scan"] = {
+                "enabled": True,
+                "required": settings.malware_scan_required,
+                **(await malware_scanner.health()),
+            }
+        return result
 
     @mcp.tool()
     async def list_tracks(
@@ -265,6 +295,25 @@ def create_server() -> FastMCP:
         if not resolved.is_file():
             raise FileNotFoundError(resolved)
         return await client().diagnose_upload(resolved)
+
+    @mcp.tool()
+    async def scan_album_folder(path: str) -> dict[str, Any]:
+        """Scan a completed download and quarantine the full folder on detection."""
+        resolved = resolve_contained_path(settings.downloads_dir, path)
+        if malware_scanner is None:
+            if settings.malware_scan_required:
+                raise MalwareScanError(
+                    "[MALWARE_SCAN_UNAVAILABLE] Required malware scanner is not configured"
+                )
+            return {
+                "enabled": False,
+                "required": False,
+                "clean": None,
+                "quarantined": False,
+            }
+        return await malware_scanner.scan_folder(
+            resolved, quarantine_on_detection=True
+        )
 
     @mcp.tool()
     async def import_album_folder(

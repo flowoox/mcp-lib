@@ -55,6 +55,17 @@ class Settings(BaseSettings):
     traxx_actors_file: Path = Path("/data/actors.json")
     downloads_dir: Path = Path("/downloads")
 
+    # Deployment-owned malware gate. It is deliberately not persisted through
+    # configure_traxx, so a web/API caller cannot turn it off at runtime.
+    malware_scan_required: bool = False
+    clamav_host: str = ""
+    clamav_port: int = 3310
+    clamav_timeout_seconds: int = 180
+    clamav_max_file_bytes: int = 1024 * 1024 * 1024
+    clamav_max_files: int = 1000
+    clamav_max_total_bytes: int = 8 * 1024 * 1024 * 1024
+    malware_quarantine_dir: Path = Path("/downloads/.quarantine")
+
     traxx_url: str = ""
     traxx_token: str = ""
     traxx_extra_headers: dict[str, str] = {}

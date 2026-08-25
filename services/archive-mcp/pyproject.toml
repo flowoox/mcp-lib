@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "flowoox-mcp-archive"
-version = "0.1.0"
+version = "0.1.1"
 description = "Independent MCP service for openly licensed albums from the Internet Archive."
 readme = "README.md"
 requires-python = ">=3.12"

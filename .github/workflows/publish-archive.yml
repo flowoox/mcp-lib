@@ -1,12 +1,12 @@
-name: Publish Traxx MCP
+name: Publish Archive MCP
 
 on:
   push:
     branches: [main]
     paths:
-      - services/traxx-mcp/**
+      - services/archive-mcp/**
       - packages/mcp-common/**
-      - .github/workflows/publish-traxx.yml
+      - .github/workflows/publish-archive.yml
   workflow_dispatch:
 
 permissions:
@@ -14,11 +14,11 @@ permissions:
   packages: write
 
 concurrency:
-  group: publish-traxx-mcp
+  group: publish-archive-mcp
   cancel-in-progress: false
 
 env:
-  VERSION: 0.3.9
+  VERSION: 0.1.1
 
 jobs:
   publish:
@@ -35,18 +35,18 @@ jobs:
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
-          file: services/traxx-mcp/Dockerfile
+          file: services/archive-mcp/Dockerfile
           push: true
           provenance: mode=max
           sbom: true
           build-args: VERSION=${{ env.VERSION }}
           tags: |
-            ghcr.io/flowoox/mcp-traxx:${{ env.VERSION }}
-            ghcr.io/flowoox/mcp-traxx:latest
-            ghcr.io/flowoox/mcp-traxx:sha-${{ github.sha }}
+            ghcr.io/flowoox/mcp-archive:${{ env.VERSION }}
+            ghcr.io/flowoox/mcp-archive:latest
+            ghcr.io/flowoox/mcp-archive:sha-${{ github.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ env.VERSION }}
-          cache-from: type=gha,scope=traxx-mcp
-          cache-to: type=gha,mode=max,scope=traxx-mcp
+          cache-from: type=gha,scope=archive-mcp
+          cache-to: type=gha,mode=max,scope=archive-mcp

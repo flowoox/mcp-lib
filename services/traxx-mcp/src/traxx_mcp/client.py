@@ -18,6 +18,7 @@ from mcp_common.rights import validate_rights
 from mcp_common.store import AtomicJsonStore
 
 from .config import RuntimeConfig
+from .malware import ClamAvScanner, MalwareDetectedError
 from .metadata import (
     AUDIO_EXTENSIONS,
     TrackHint,
@@ -197,6 +198,7 @@ class TraxxClient:
         downloads_dir: Path,
         import_ledger: AtomicJsonStore | None = None,
         actor_token: str = "",
+        malware_scanner: ClamAvScanner | None = None,
     ):
         self.config = config
         self.downloads_dir = downloads_dir
@@ -205,6 +207,7 @@ class TraxxClient:
         # run as a specific Traxx user while base_url, TLS verification,
         # proxy headers and timeouts stay those of the shared configuration.
         self.actor_token = actor_token
+        self.malware_scanner = malware_scanner
         # Probed once per client, then reused for every file of an album.
         self._tus_endpoint = ""
         self._upload_limits: dict[str, int] | None = None
@@ -1326,6 +1329,23 @@ class TraxxClient:
         resolved = resolve_contained_path(self.downloads_dir, folder)
         if not resolved.is_dir():
             raise FileNotFoundError(resolved)
+        malware_scan: dict[str, Any] = {
+            "enabled": False,
+            "clean": None,
+            "scanned_files": 0,
+            "findings": [],
+            "quarantined": False,
+        }
+        if self.malware_scanner is not None:
+            malware_scan = await self.malware_scanner.scan_folder(
+                resolved, quarantine_on_detection=True
+            )
+            if not malware_scan.get("clean"):
+                finding = (malware_scan.get("findings") or [{}])[0]
+                raise MalwareDetectedError(
+                    "[MALWARE_DETECTED] Import blocked; artifact quarantined. "
+                    f"Signature: {finding.get('signature') or 'unknown'}"
+                )
         files = sorted(
             path
             for path in resolved.rglob("*")
@@ -1357,6 +1377,7 @@ class TraxxClient:
                 "folder": str(resolved),
                 "track_count": len(files),
                 "rights": rights.as_dict(),
+                "malware_scan": malware_scan,
                 "expected": {
                     "artist": expected_artist,
                     "album": expected_album,
@@ -1610,6 +1631,7 @@ class TraxxClient:
             "imported_count": len(imported),
             "unresolved_count": len(unresolved),
             "rights": rights.as_dict(),
+            "malware_scan": malware_scan,
             "artist_id": artist_id,
             "album_id": album_id,
             "cover_url": traxx_cover_url,
