@@ -4,7 +4,7 @@
   "contract": "flowoox.prtg-diagnostics",
   "contract_version": "1.0",
   "mode": "read_only",
-  "status": "implementation_candidate",
+  "status": "observe_complete",
   "backend": {
     "api": "PRTG documented HTTP API (v1)",
     "authentication": "Authorization Bearer API key",
@@ -51,10 +51,13 @@
     "deployment_owned_configuration": true
   },
   "verification": {
-    "unit_tests": "pending CI",
-    "repository_ci": "pending CI",
-    "dedicated_ci": "pending CI",
-    "container_build": "pending CI"
+    "dedicated_ci_prior_green_run_id": 32825546652,
+    "dedicated_ci_prior_green": true,
+    "root_matrix_prtg_job_prior_green": true,
+    "first_root_ci_failure": "only Soulseek permanent-workflow invariant omitted prtg-mcp.yml; invariant repaired in PR #40",
+    "final_merge_gate": "latest PR #40 head must pass dedicated PRTG workflow and full repository CI before merge",
+    "container_build": "covered by dedicated PRTG workflow"
   },
-  "next_after_green_merge": "n8n-mcp or next highest-priority non-blocked infrastructure package from docs/infrastructure-mcp-project.json"
+  "next_after_green_merge": "fileshare-mcp",
+  "next_branch": "feat/fileshare-mcp-observe-v1"
 }
