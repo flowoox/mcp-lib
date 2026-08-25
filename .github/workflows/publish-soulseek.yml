@@ -19,7 +19,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  VERSION: 0.3.1
+  VERSION: 0.3.3
 
 jobs:
   publish:
@@ -39,6 +39,8 @@ jobs:
           context: .
           file: services/soulseek-mcp/Dockerfile
           push: true
+          provenance: mode=max
+          sbom: true
           build-args: VERSION=${{ env.VERSION }}
           tags: |
             ghcr.io/flowoox/mcp-soulseek:${{ env.VERSION }}
