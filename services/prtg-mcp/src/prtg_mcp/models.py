@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from typing import TypeAlias
-
+from mcp_common.operations import StrictModel
 from pydantic import Field
 
-from mcp_common.operations import StrictModel
-
-Scalar: TypeAlias = str | int | float | bool | None
+type Scalar = str | int | float | bool | None
 
 
 class HealthStatusObservation(StrictModel):
