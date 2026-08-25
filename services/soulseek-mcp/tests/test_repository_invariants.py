@@ -10,6 +10,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
         "ci.yml",
         "entra-mcp.yml",
         "fortigate-mcp.yml",
+        "publish-archive.yml",
         "publish-soulseek.yml",
         "publish-traxx.yml",
         "security-audit-mcp.yml",
@@ -20,7 +21,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
 def test_both_service_images_are_versioned_and_health_checked() -> None:
     for service, port, version in (
         ("soulseek-mcp", "8081", "0.3.3"),
-        ("traxx-mcp", "8082", "0.3.7"),
+        ("traxx-mcp", "8082", "0.3.9"),
     ):
         dockerfile = (ROOT / "services" / service / "Dockerfile").read_text(
             encoding="utf-8"

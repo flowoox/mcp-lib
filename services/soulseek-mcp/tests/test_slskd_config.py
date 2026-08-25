@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -27,7 +28,8 @@ def test_writes_watched_slskd_yaml_with_secure_mode(tmp_path: Path) -> None:
         "cidr": "0.0.0.0/0,::/0",
     }
     assert config["remote_configuration"] is True
-    assert path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o777 == 0o600
 
 
 def test_rejects_short_api_key(tmp_path: Path) -> None:
