@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "service": "prtg-mcp",
+  "contract": "flowoox.prtg-diagnostics",
+  "contract_version": "1.0",
+  "mode": "read_only",
+  "status": "implementation_candidate",
+  "backend": {
+    "api": "PRTG documented HTTP API (v1)",
+    "authentication": "Authorization Bearer API key",
+    "read_only_assertion": "PRTG_BACKEND_READ_ONLY=true",
+    "preferred_identity": "dedicated least-privilege read-only API key or authorization proxy",
+    "redirects": "rejected",
+    "https_default": true,
+    "arbitrary_url_or_method": false
+  },
+  "observe_operations": [
+    "prtg.system.health-status",
+    "prtg.system.health-data",
+    "prtg.devices.list",
+    "prtg.sensors.list",
+    "prtg.alarms.list",
+    "prtg.channels.list",
+    "prtg.messages.list",
+    "prtg.historic.sensor"
+  ],
+  "agent_load_guards": {
+    "shared_query_budget": ["requests", "items", "response_bytes", "fan_out", "elapsed_time"],
+    "page_size_default": 100,
+    "page_size_hard_cap": 500,
+    "sample_after_raw_cost_accounting": true,
+    "concurrency_default": 2,
+    "request_start_rate_default_per_second": 2,
+    "historic_requests_per_minute_max": 5,
+    "historic_default_max_window_hours": 24,
+    "historic_prtg_raw_or_subhour_max_days": 40,
+    "historic_prtg_absolute_max_days": 500,
+    "health_refreshnow_exposed": false,
+    "messages_windows": ["today", "yesterday", "7days"],
+    "diagnostic_bundle": "aggregate health and inventory/alarm pages; no per-sensor detail fan-out"
+  },
+  "alarm_status_ids": [4, 5, 10, 13, 14],
+  "write_layer": {
+    "registered": false,
+    "future_requirement": "separate write identity plus plan, exact-target approval, change, verify, idempotency, pre-state and rollback declaration"
+  },
+  "product_neutrality": {
+    "committed_urls": false,
+    "committed_credentials": false,
+    "committed_topology": false,
+    "deployment_owned_configuration": true
+  },
+  "verification": {
+    "unit_tests": "pending CI",
+    "repository_ci": "pending CI",
+    "dedicated_ci": "pending CI",
+    "container_build": "pending CI"
+  },
+  "next_after_green_merge": "n8n-mcp or next highest-priority non-blocked infrastructure package from docs/infrastructure-mcp-project.json"
+}
