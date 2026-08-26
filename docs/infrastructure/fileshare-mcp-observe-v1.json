@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "work_item": "fileshare-mcp",
+  "branch": "feat/fileshare-mcp-observe-v1",
+  "base_main_sha": "d620d440d34d923ac4ab1c12afce18611ee45b6f",
+  "status": "implementation_complete_ci_pending",
+  "scope": [
+    "deployment-owned root aliases",
+    "bounded path metadata",
+    "single-level directory listing",
+    "normalized NTFS ACL evidence",
+    "optional local SMB share ACL evidence",
+    "conservative SID matching access explanation",
+    "audit/correlation envelopes",
+    "shared per-invocation query budgets"
+  ],
+  "security_invariants": [
+    "read-only backend attestation required",
+    "fixed PowerShell operation allowlist",
+    "no arbitrary path or host selection",
+    "no recursive walk",
+    "no file content read in v1",
+    "no write/delete/rename/ACL mutation",
+    "reparse points blocked by default",
+    "effective access conclusion is explicitly non-authoritative"
+  ],
+  "tests": {
+    "local_compileall": "passed",
+    "github_ci": "pending"
+  },
+  "blockers": [],
+  "next_work_item": "hyperv-mcp",
+  "next_branch": "feat/hyperv-mcp-observe-v1",
+  "next_actions": [
+    "re-sync main/open PRs/issues/CI before starting",
+    "implement bounded Hyper-V host/VM/checkpoint/switch/VHD/replication observations",
+    "aggregate host state before per-VM fan-out",
+    "keep arbitrary PowerShell, guest command and state changes out of observe v1"
+  ]
+}
