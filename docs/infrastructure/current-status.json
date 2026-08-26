@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "project": "infrastructure-mcp-toolbox",
+  "updated_at": "2026-08-26T10:20:00+02:00",
+  "source_of_truth": "docs/infrastructure-mcp-project.json",
+  "last_completed_work_item": "fileshare-mcp",
+  "last_completed_pr": 41,
+  "last_merged_main_sha": "468b765725601f8b2960d3298e6b7fb056d4bf6a",
+  "post_merge_ci": {
+    "run_id": 32947071117,
+    "result": "success"
+  },
+  "current_work_item": "hyperv-mcp",
+  "expected_start_branch": "feat/hyperv-mcp-observe-v1",
+  "blockers": [],
+  "resume_policy": [
+    "re-read current main and compare with last_merged_main_sha",
+    "enumerate open PRs/issues and current CI before creating or reusing a branch",
+    "preserve and synchronize parallel agent or employee changes before editing",
+    "continue the next non-blocked work item from docs/infrastructure-mcp-project.json",
+    "merge only after full repository CI is green and the PR head/base are revalidated"
+  ],
+  "next_scope": [
+    "bounded Hyper-V host and VM inventory",
+    "checkpoint, virtual switch, adapter, VHD and replication observations",
+    "integration health and resource-pressure evidence",
+    "bounded Hyper-V event evidence",
+    "aggregate host state before per-VM fan-out",
+    "no arbitrary PowerShell, guest command or VM state mutation in observe v1"
+  ]
+}

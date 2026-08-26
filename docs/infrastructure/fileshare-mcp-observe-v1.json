@@ -1,11 +1,12 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "work_item": "fileshare-mcp",
   "branch": "feat/fileshare-mcp-observe-v1",
   "pr": 41,
   "base_main_sha": "d620d440d34d923ac4ab1c12afce18611ee45b6f",
   "implementation_head_sha": "cab941c0bd9d6c2704dc099f170f914ff34c558e",
-  "status": "observe_complete_final_metadata_ci_pending",
+  "merged_main_sha": "468b765725601f8b2960d3298e6b7fb056d4bf6a",
+  "status": "observe_complete_merged",
   "scope": [
     "deployment-owned root aliases",
     "bounded path metadata",
@@ -35,7 +36,14 @@
       "ruff": "passed",
       "compileall": "passed"
     },
-    "final_metadata_ci": "pending"
+    "merge_gate_ci": {
+      "run_id": 32946961833,
+      "result": "success"
+    },
+    "post_merge_main_ci": {
+      "run_id": 32947071117,
+      "result": "success"
+    }
   },
   "blockers": [],
   "next_work_item": "hyperv-mcp",
