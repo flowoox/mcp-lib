@@ -20,7 +20,7 @@ from mcp_common.query_budget import QueryBudget, QueryBudgetLimits
 from .backend import FileShareBackend, PowerShellFileShareBackend
 from .config import Settings
 from .contract import capabilities
-from .models import AclObservation, AccessExplanation, DirectoryEntry, PathInfo, ShareAce, ShareRoot
+from .models import AccessExplanation, AclObservation, DirectoryEntry, PathInfo, ShareAce, ShareRoot
 
 
 def _budget_limits(settings: Settings) -> QueryBudgetLimits:
