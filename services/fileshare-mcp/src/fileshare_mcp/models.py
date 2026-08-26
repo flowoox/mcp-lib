@@ -3,9 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import PureWindowsPath
 
-from pydantic import Field, field_validator, model_validator
-
 from mcp_common.operations import StrictModel
+from pydantic import Field, field_validator, model_validator
 
 _ALIAS_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
 
