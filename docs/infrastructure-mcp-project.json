@@ -1,12 +1,12 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus safe agent/n8n reference orchestration.",
-  "updated_at": "2026-08-26T10:15:00+02:00",
-  "current_work_item": "hyperv-mcp",
-  "active_branch": "feat/fileshare-mcp-observe-v1",
-  "active_pr": 41,
-  "next_branch": "feat/hyperv-mcp-observe-v1",
+  "updated_at": "2026-08-27T10:37:00+02:00",
+  "current_work_item": "n8n-mcp",
+  "active_branch": "",
+  "active_pr": null,
+  "next_branch": "feat/n8n-mcp-observe-v1",
   "execution_rule": "At every run re-read current main, open PRs/issues/CI and preserve parallel work before taking the next non-blocked work item.",
   "principles": [
     "observe-plan-change-verify",
@@ -154,42 +154,101 @@
         "reparse points blocked by default",
         "effective-rights explanation is explicitly non-authoritative"
       ],
-      "verification": {
-        "pr": 41,
-        "ci_run": 32946642021,
-        "head_sha": "cab941c0bd9d6c2704dc099f170f914ff34c558e",
-        "result": "success",
-        "fileshare_tests": "8 passed"
-      },
       "remaining": ["add separately bounded allowlisted file-content/hash/text analysis only after explicit design and tests"]
     },
     {
       "id": "hyperv-mcp",
       "priority": 100,
-      "status": "next",
+      "status": "observe_complete",
       "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "network-mcp"],
-      "observe_scope": ["host/VM/checkpoint/switch/adapter/VHD/replication inventory", "integration health/resource pressure", "bounded Hyper-V events", "relationship and diagnostic bundles"],
-      "mandatory_guards": ["fixed PowerShell/CIM probes", "no arbitrary script/WMI/guest command", "event caps", "aggregate before VM fan-out"]
+      "history": ["PR #43"],
+      "capabilities": [
+        "bounded host and VM inventory",
+        "exact VM observation with network adapters and integration services",
+        "bounded switches, checkpoints, VHDs and replication evidence",
+        "fixed bounded Hyper-V event logs",
+        "aggregate-first VM diagnostic bundle"
+      ],
+      "mandatory_guards": [
+        "configured logical target aliases only",
+        "read-only backend attestation",
+        "constrained WinRM/JEA required by production default",
+        "fixed PowerShell probes only",
+        "no arbitrary PowerShell/CIM/WMI or guest commands",
+        "no VM/checkpoint/storage/network state mutations",
+        "shared query budgets and audit/correlation envelopes"
+      ],
+      "verification": {
+        "pr": 43,
+        "main_ci_run": 33053788338,
+        "main_service_ci_run": 33053788288,
+        "result": "success"
+      },
+      "remaining": ["optional approved write layer only for concrete operational needs"]
     },
     {
       "id": "failovercluster-mcp",
       "priority": 110,
-      "status": "queued",
+      "status": "observe_complete",
       "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "network-mcp"],
-      "observe_scope": ["nodes/groups/roles/resources/networks/storage/quorum/witness", "ownership/dependencies/failover history", "bounded cluster events", "relationship bundles"]
+      "history": ["PR #44"],
+      "capabilities": [
+        "aggregate cluster state, node/group/resource counts and quorum summary",
+        "bounded node, group, resource and network inventory",
+        "exact group observation with bounded resource relationships",
+        "bounded CSV ownership/capacity/free-space evidence",
+        "quorum and witness evidence",
+        "fixed bounded FailoverClustering Operational events",
+        "aggregate-first cluster diagnostic bundle"
+      ],
+      "mandatory_guards": [
+        "configured logical target aliases only",
+        "read-only backend attestation",
+        "constrained WinRM/JEA required by production default",
+        "fixed repository-owned PowerShell probes only",
+        "no arbitrary PowerShell/CIM/WMI or event-log selection",
+        "no group/resource movement, failover, node, quorum, storage or network mutation",
+        "shared query budgets and audit/correlation envelopes"
+      ],
+      "verification": {
+        "pr": 44,
+        "pr_ci_run": 33054667922,
+        "pr_service_ci_run": 33054667960,
+        "main_ci_run": 33054736696,
+        "main_service_ci_run": 33054736786,
+        "merge_sha": "da948eeca371bcedabce3e8b7df00b69467c9b7b",
+        "result": "success"
+      },
+      "remaining": ["optional approved failover/maintenance write layer only after a concrete operational need and separate least-privilege identity"]
     },
     {
       "id": "n8n-mcp",
       "priority": 120,
-      "status": "queued",
+      "status": "next",
       "depends_on": ["agent-diagnostics-foundation"],
+      "default_mode": "read_only",
+      "observe_scope": [
+        "bounded workflow inventory and metadata",
+        "bounded execution status/error summaries",
+        "exact execution observation with output redaction and size caps",
+        "workflow activation state and tags without credential contents"
+      ],
+      "mandatory_guards": [
+        "deployment-owned base URL and least-privilege API identity",
+        "no arbitrary API proxy or method/path passthrough",
+        "no credential secret reads",
+        "no workflow execution trigger, mutation or activation change in observe v1",
+        "pagination, timeouts, response-byte, query-budget, concurrency and rate caps",
+        "audit/correlation envelopes"
+      ],
       "orchestration_role": "employee-entry remains an n8n/agent reference workflow invoking specialized MCPs; never a monolithic privileged MCP"
     },
     {
       "id": "employee-entry-reference",
       "priority": 130,
       "status": "queued",
-      "depends_on": ["ad-mcp", "entra-mcp", "network-mcp", "security-audit-mcp", "n8n-mcp"]
+      "depends_on": ["ad-mcp", "entra-mcp", "network-mcp", "security-audit-mcp", "n8n-mcp"],
+      "architecture": "reference orchestration only; specialized MCPs retain backend authority and lifecycle controls"
     },
     {"id": "acmp-mcp", "priority": 140, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "windows-mcp"], "default_mode": "read_only"},
     {"id": "manageengine-mdm-mcp", "priority": 150, "status": "queued", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only"},
@@ -206,14 +265,14 @@
     {"id": "windows-admincenter-mcp", "priority": 260, "status": "decision_gate", "depends_on": ["windows-mcp", "hyperv-mcp", "failovercluster-mcp"], "decision_gate": "implement only if a supported stable gateway API and least-privilege read-only role reduce adapter duplication without becoming a generic PowerShell proxy"}
   ],
   "next_run": {
-    "work_item": "hyperv-mcp",
-    "branch": "feat/hyperv-mcp-observe-v1",
+    "work_item": "n8n-mcp",
+    "branch": "feat/n8n-mcp-observe-v1",
     "first_actions": [
       "sync current main/open PRs/issues/CI/parallel branches",
+      "verify the currently supported n8n API surface and authentication model before freezing the adapter contract",
       "reuse mcp-common query budgets, audit/correlation and fail-closed read-only patterns",
-      "implement bounded typed Hyper-V host/VM/checkpoint/switch/VHD/replication observations",
-      "aggregate host state before per-VM detail fan-out",
-      "keep arbitrary PowerShell, guest command and VM state changes outside observe v1",
+      "implement bounded typed workflow and execution observations without credential or secret exposure",
+      "keep arbitrary API proxying, workflow execution triggers and workflow mutations outside observe v1",
       "add tests, docs, CI and machine-readable status; merge only when full CI is green"
     ]
   }
