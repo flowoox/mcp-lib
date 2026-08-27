@@ -10,6 +10,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
         "ci.yml",
         "entra-mcp.yml",
         "fortigate-mcp.yml",
+        "hyperv-mcp.yml",
         "prtg-mcp.yml",
         "publish-archive.yml",
         "publish-soulseek.yml",
