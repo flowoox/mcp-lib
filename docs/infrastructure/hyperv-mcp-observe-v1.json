@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "service": "hyperv-mcp",
+  "contract": "flowoox.hyperv-diagnostics",
+  "contract_version": "1.0.0",
+  "phase": "observe",
+  "default_mode": "read_only_fail_closed",
+  "backend": {
+    "kind": "powershell-winrm-jea",
+    "read_only_attestation_required": true,
+    "jea_required_by_default": true,
+    "configured_target_aliases_only": true,
+    "credentials_as_tool_arguments": false
+  },
+  "capabilities": [
+    "bounded host health and VM state summary",
+    "paged VM inventory and exact VM detail",
+    "virtual switch inventory",
+    "per-VM checkpoint and VHD relationships",
+    "Hyper-V Replica observation",
+    "bounded fixed VMMS/Worker event evidence",
+    "aggregate-first VM diagnostic bundle"
+  ],
+  "mandatory_guards": [
+    "no arbitrary PowerShell, WMI, CIM, WinRM or event-log surface",
+    "no guest command execution",
+    "no VM, checkpoint, disk, switch, replication or cluster state mutation",
+    "dedicated constrained JEA endpoint required by production default",
+    "unrestricted PowerShell endpoints rejected when JEA is required",
+    "query budgets for requests, items, bytes, fan-out and elapsed time",
+    "connector page, rate, concurrency and response-size limits",
+    "fixed event log IDs and bounded lookback",
+    "additional VHD page cap",
+    "actor, reason and correlation ID in structured audit envelope"
+  ],
+  "deployment_boundary": "Public code contains no company hostnames, IPs, credentials or topology. Logical target aliases and authorization are deployment-owned.",
+  "writes": {
+    "enabled": false,
+    "future_policy": "Any concrete write workflow must use a separate least-privilege identity and plan/approval/change/verify with idempotency, pre-state and rollback where possible."
+  }
+}
