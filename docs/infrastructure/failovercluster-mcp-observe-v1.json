@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "service": "failovercluster-mcp",
+  "contract": "flowoox.failovercluster-diagnostics",
+  "contract_version": "1.0.0",
+  "mode": "observe_only",
+  "default_backend": "configured WinRM target alias with dedicated constrained JEA endpoint",
+  "backend_read_only_attestation_required": true,
+  "production_require_jea_default": true,
+  "operations": [
+    "failovercluster.cluster.observe",
+    "failovercluster.node.list",
+    "failovercluster.group.list",
+    "failovercluster.group.observe",
+    "failovercluster.resource.list",
+    "failovercluster.network.list",
+    "failovercluster.storage.list",
+    "failovercluster.quorum.observe",
+    "failovercluster.event.list",
+    "failovercluster.cluster.diagnose"
+  ],
+  "guards": [
+    "configured logical target aliases only",
+    "unrestricted PowerShell remoting endpoints rejected when JEA is required",
+    "repository-owned static PowerShell probes only",
+    "no arbitrary PowerShell, WMI, CIM, event-log name or backend host",
+    "no cluster/group/resource/node/quorum/storage/network mutation",
+    "typed schemas and strict unknown-field rejection",
+    "bounded pagination, response bytes, elapsed time, requests, items, fan-out, concurrency and rate",
+    "aggregate cluster state before relationship expansion",
+    "fixed FailoverClustering Operational event log with bounded lookback and optional 512-character message preview",
+    "audit/correlation envelope with caller-supplied reason"
+  ],
+  "observe_scope": [
+    "cluster aggregate state counts and quorum summary",
+    "nodes and vote/drain state",
+    "roles/groups and ownership",
+    "exact group detail with bounded resources",
+    "resources",
+    "cluster networks",
+    "cluster shared volumes and capacity evidence",
+    "quorum/witness evidence",
+    "bounded cluster operational events",
+    "aggregate-first cluster diagnostic bundle"
+  ],
+  "writes": {
+    "enabled": false,
+    "future_rule": "Any concrete write workflow must use a separate opt-in least-privilege identity and plan/approval/change/verify with exact approval binding, idempotency, pre-state and independent read-back verification."
+  },
+  "deployment_data_policy": "No organization-specific topology, credentials, IPs, cluster names or policies are stored in the public repository."
+}
