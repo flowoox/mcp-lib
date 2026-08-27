@@ -30,6 +30,7 @@ from .metadata import (
     inspect_audio_file,
     verify_assignment,
     verify_release,
+    verify_release_coverage,
 )
 from .tus import TusUnsupported, TusUploader, TusUploadResult, recursive_find
 
@@ -939,6 +940,20 @@ class TraxxClient:
                         output.add(int(nested))
         return output
 
+    @staticmethod
+    def _imported_track_id(entry: Any) -> int | None:
+        """Read a Traxx track id from both create and existing responses."""
+        if not isinstance(entry, dict):
+            return None
+        track = entry.get("track")
+        if isinstance(track, dict) and isinstance(track.get("track"), dict):
+            track = track["track"]
+        if not isinstance(track, dict):
+            return None
+        with contextlib.suppress(TypeError, ValueError):
+            return int(track.get("id"))
+        return None
+
     async def _find_existing_track(
         self, *, name: str, album_id: int, number: int
     ) -> dict[str, Any] | None:
@@ -1177,37 +1192,60 @@ class TraxxClient:
         record for it would re-upload every file this build cannot parse.
         """
         try:
-            resolved = resolve_contained_path(self.downloads_dir, folder)
-            files = sorted(
-                path
-                for path in resolved.rglob("*")
-                if path.is_file() and path.suffix.casefold() in AUDIO_EXTENSIONS
-            )
-            if not files:
-                return False
-            assigned = assign_track_hints(
-                files,
-                album_root=resolved,
-                hints=[TrackHint.from_mapping(item) for item in (track_hints or [])],
-            )
-            durations: dict[Path, int] = {}
-            for path in files:
-                # Per file, so one unreadable track cannot blind the check for
-                # the rest of the folder. A missing length simply leaves the
-                # name as the only signal for that file.
-                with contextlib.suppress(Exception):
-                    durations[path] = inspect_audio_file(path).duration_ms
-            return bool(
-                verify_assignment(
-                    assigned,
-                    durations,
-                    observed_titles={
-                        path: clean_title_from_filename(path) for path in files
-                    },
-                )
-            )
+            result = self.verify_album_folder(folder, track_hints)
+            return bool(result.get("checked") and not result.get("complete"))
         except Exception:
             return False
+
+    def verify_album_folder(
+        self, folder: str | Path, track_hints: list[dict[str, Any]] | None
+    ) -> dict[str, Any]:
+        """Verify catalogue coverage without mutating tags or Traxx."""
+        resolved = resolve_contained_path(self.downloads_dir, folder)
+        files = sorted(
+            path
+            for path in resolved.rglob("*")
+            if path.is_file() and path.suffix.casefold() in AUDIO_EXTENSIONS
+        )
+        if not files:
+            return {
+                "checked": False,
+                "complete": True,
+                "supported_files": 0,
+                "expected_tracks": len(track_hints or []),
+                "matched_tracks": 0,
+                "missing": [],
+                "reason": "No local audio files are available for source verification",
+            }
+        hints = [TrackHint.from_mapping(item) for item in (track_hints or [])]
+        durations: dict[Path, int] = {}
+        for path in files:
+            with contextlib.suppress(Exception):
+                durations[path] = inspect_audio_file(path).duration_ms
+        # Unreadable files still participate by filename, with an unknown
+        # duration that cannot falsely object to a valid match.
+        for path in files:
+            durations.setdefault(path, 0)
+        coverage = verify_release_coverage(
+            durations,
+            hints,
+            observed_titles={path: clean_title_from_filename(path) for path in files},
+        )
+        release = verify_release(durations, hints)
+        reason = str(release.get("reason") or "")
+        complete = bool(coverage.get("complete")) and not reason
+        if not reason and coverage.get("checked") and not complete:
+            reason = (
+                f"Only {coverage.get('matched_tracks', 0)} of "
+                f"{coverage.get('expected_tracks', 0)} catalogue tracks have "
+                "a distinct matching local file."
+            )
+        return {
+            **coverage,
+            "complete": complete,
+            "supported_files": len(files),
+            "reason": reason,
+        }
 
     async def import_album_folder(
         self,
@@ -1257,7 +1295,12 @@ class TraxxClient:
                 folder, track_hints
             ):
                 album_id = int(result.get("album_id") or 0)
-                expected_tracks = int(result.get("imported_count") or 0)
+                expected_tracks = int(
+                    result.get("expected_track_count")
+                    or result.get("unique_track_count")
+                    or result.get("imported_count")
+                    or 0
+                )
                 if album_id and expected_tracks:
                     current = await self.inspect_album_import(
                         album_id, expected_tracks=expected_tracks
@@ -1295,10 +1338,16 @@ class TraxxClient:
             }
             self.import_ledger.write(ledger)
             raise
-        unresolved_count = int(result.get("unresolved_count") or 0)
+        marker = result.get("complete")
+        complete = (
+            bool(marker)
+            if marker is not None
+            else int(result.get("unresolved_count") or 0) == 0
+            and int(result.get("imported_count") or 0) > 0
+        )
         ledger = self.import_ledger.read()
         ledger[key] = {
-            "status": "needs_configuration" if unresolved_count else "completed",
+            "status": "completed" if complete else "needs_configuration",
             "folder": str(folder),
             "result": result,
             "updated_at": datetime.now(UTC).isoformat(),
@@ -1396,6 +1445,24 @@ class TraxxClient:
             files, album_root=resolved, hints=parsed_track_hints
         )
         durations = {path: inspect_audio_file(path).duration_ms for path in files}
+        source_verification = verify_release_coverage(
+            durations,
+            parsed_track_hints,
+            observed_titles={path: clean_title_from_filename(path) for path in files},
+        )
+        if source_verification.get("checked") and not source_verification.get(
+            "complete"
+        ):
+            missing = ", ".join(
+                str(item.get("title") or "")
+                for item in source_verification.get("missing", [])[:5]
+            )
+            raise TraxxError(
+                f"Only {source_verification.get('matched_tracks', 0)} of "
+                f"{source_verification.get('expected_tracks', 0)} catalogue "
+                "tracks have a distinct matching local file; Traxx was not "
+                f"changed. Missing: {missing or 'unknown tracks'}"
+            )
         # Whether this folder can be the release at all. Judged before the
         # per-file check, because a file that matched nothing passes that one
         # untouched — and an unrelated folder consists of exactly those.
@@ -1624,12 +1691,44 @@ class TraxxClient:
                         }
                     )
                     break
+        unique_track_ids = {
+            track_id
+            for entry in imported
+            if (track_id := self._imported_track_id(entry)) is not None
+        }
+        expected_track_count = int(
+            source_verification.get("expected_tracks")
+            or len(unique_track_ids)
+            or len(imported)
+        )
+        try:
+            verification = await self.inspect_album_import(
+                album_id, expected_tracks=expected_track_count
+            )
+        except Exception as exc:  # noqa: BLE001
+            # The mutation response is not independent proof.  Preserve it
+            # for diagnosis but keep ``complete`` false until a later checker
+            # can read the album back successfully.
+            verification = {
+                "album_id": album_id,
+                "expected_tracks": expected_track_count,
+                "complete": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        complete = bool(verification.get("complete")) and bool(
+            source_verification.get("complete", True)
+        )
         return {
             "dry_run": False,
             "folder": str(resolved),
             "track_count": len(files),
             "imported_count": len(imported),
+            "unique_track_count": len(unique_track_ids),
+            "expected_track_count": expected_track_count,
             "unresolved_count": len(unresolved),
+            "complete": complete,
+            "source_verification": source_verification,
+            "verification": verification,
             "rights": rights.as_dict(),
             "malware_scan": malware_scan,
             "artist_id": artist_id,

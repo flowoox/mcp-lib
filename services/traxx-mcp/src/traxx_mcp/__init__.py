@@ -1,3 +1,3 @@
 """Independent Traxx/BeMusic MCP connector."""
 
-__version__ = "0.3.9"
+__version__ = "0.3.10"

@@ -406,6 +406,91 @@ def title_conflict(expected: str, observed: str) -> bool:
     return not (want & have)
 
 
+def verify_release_coverage(
+    durations: dict[Path, int],
+    hints: list[TrackHint],
+    *,
+    observed_titles: dict[Path, str] | None = None,
+) -> dict[str, Any]:
+    """Prove that every catalogue track has one distinct local audio file.
+
+    Counting files is insufficient: a download may contain two editions of
+    the same eleven-track album, or six entirely unrelated files for a
+    two-track release.  This performs a small bipartite match using both the
+    durable filename and the measured duration.  One file can satisfy at most
+    one catalogue entry, while harmless duplicate files remain allowed.
+
+    With no catalogue hints there is nothing authoritative to prove.  The
+    caller receives ``checked=False`` rather than a pretend success.
+    """
+    unique_hints: list[TrackHint] = []
+    seen_hints: set[tuple[int, int, str]] = set()
+    for hint in hints:
+        key = (hint.disc_number, hint.number, hint.title.casefold().strip())
+        if key in seen_hints:
+            continue
+        seen_hints.add(key)
+        unique_hints.append(hint)
+    if not unique_hints:
+        return {
+            "checked": False,
+            "complete": True,
+            "expected_tracks": 0,
+            "matched_tracks": 0,
+            "missing": [],
+        }
+
+    titles = observed_titles or {}
+    candidates: dict[int, list[Path]] = {}
+    for index, hint in enumerate(unique_hints):
+        matches: list[Path] = []
+        for path, actual in durations.items():
+            if hint.duration_ms and duration_mismatch(hint.duration_ms, actual):
+                continue
+            observed = titles.get(path, "")
+            if observed and title_conflict(hint.title, observed):
+                continue
+            matches.append(path)
+        candidates[index] = matches
+
+    # Match the most constrained catalogue entries first.  The augmenting
+    # path keeps the result maximal even when two similarly named tracks can
+    # initially use the same local file.
+    file_owner: dict[Path, int] = {}
+
+    def claim(hint_index: int, visited: set[Path]) -> bool:
+        for path in candidates[hint_index]:
+            if path in visited:
+                continue
+            visited.add(path)
+            previous = file_owner.get(path)
+            if previous is None or claim(previous, visited):
+                file_owner[path] = hint_index
+                return True
+        return False
+
+    matched: set[int] = set()
+    for index in sorted(candidates, key=lambda item: len(candidates[item])):
+        if claim(index, set()):
+            matched.add(index)
+    missing = [
+        {
+            "title": hint.title,
+            "number": hint.number,
+            "disc_number": hint.disc_number,
+        }
+        for index, hint in enumerate(unique_hints)
+        if index not in matched
+    ]
+    return {
+        "checked": True,
+        "complete": len(matched) == len(unique_hints),
+        "expected_tracks": len(unique_hints),
+        "matched_tracks": len(matched),
+        "missing": missing,
+    }
+
+
 def verify_assignment(
     assigned: dict[Path, TrackHint | None],
     durations: dict[Path, int],

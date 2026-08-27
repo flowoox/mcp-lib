@@ -5,6 +5,7 @@ from traxx_mcp.metadata import (
     duration_mismatch,
     title_conflict,
     verify_assignment,
+    verify_release_coverage,
 )
 
 
@@ -89,6 +90,54 @@ def test_titles_survive_the_usual_rip_decorations() -> None:
     # A bare number carries no information and must not reject anything.
     assert not title_conflict("Wir", "01")
     assert title_conflict("sleeping", "Onative / zubi - How")
+
+
+def test_release_coverage_allows_duplicate_files_but_counts_tracks_once() -> None:
+    files = {
+        Path("/downloads/a/01 Gosh.flac"): 293_000,
+        Path("/downloads/a/01 Gosh duplicate.flac"): 293_500,
+        Path("/downloads/a/02 Sleep Sound.flac"): 229_000,
+        Path("/downloads/a/02 Sleep Sound duplicate.flac"): 228_500,
+    }
+    hints = [
+        TrackHint(title="Gosh", number=1, duration_ms=293_000),
+        TrackHint(title="Sleep Sound", number=2, duration_ms=229_000),
+    ]
+
+    result = verify_release_coverage(
+        files,
+        hints,
+        observed_titles={path: path.stem for path in files},
+    )
+
+    assert result["complete"] is True
+    assert result["expected_tracks"] == 2
+    assert result["matched_tracks"] == 2
+
+
+def test_release_coverage_rejects_unrelated_folder_despite_similar_lengths() -> None:
+    files = {
+        Path("/downloads/a/01 Fish On Land.flac"): 231_000,
+        Path("/downloads/a/02 Wallflower Edit.flac"): 268_000,
+        Path("/downloads/a/03 Tokyo Edit.flac"): 146_000,
+    }
+    hints = [
+        TrackHint(title="angelface", number=1, duration_ms=231_000),
+        TrackHint(title="mean2me", number=2, duration_ms=268_000),
+    ]
+
+    result = verify_release_coverage(
+        files,
+        hints,
+        observed_titles={path: path.stem for path in files},
+    )
+
+    assert result["complete"] is False
+    assert result["matched_tracks"] == 0
+    assert {item["title"] for item in result["missing"]} == {
+        "angelface",
+        "mean2me",
+    }
 
 
 def test_a_recorded_success_stops_answering_for_a_wrong_folder(tmp_path) -> None:

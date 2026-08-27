@@ -52,6 +52,8 @@ async def test_completed_import_is_returned_from_persistent_ledger(tmp_path: Pat
     )
     assert first["idempotent"] is False
     assert first_client.calls == 1
+    assert first_client.import_ledger is not None
+    assert first_client.import_ledger.read()["release-1:traxx"]["status"] == "completed"
 
     restarted_client = StubImportClient(tmp_path)
     second = await restarted_client.import_album_folder(
@@ -170,6 +172,14 @@ async def test_track_deduplication_uses_title_number_and_album(tmp_path: Path) -
     existing = await client._find_existing_track(name="Track", album_id=42, number=1)
     assert existing and existing["id"] == 7
     assert await client._find_existing_track(name="Track", album_id=41, number=1) is None
+
+
+def test_imported_track_id_supports_create_and_existing_response_shapes() -> None:
+    assert TraxxClient._imported_track_id({"track": {"id": 7}}) == 7
+    assert TraxxClient._imported_track_id(
+        {"track": {"status": "success", "track": {"id": 8}}}
+    ) == 8
+    assert TraxxClient._imported_track_id({"track": {"status": "success"}}) is None
 
 
 @pytest.mark.asyncio
@@ -377,7 +387,10 @@ async def test_fully_rejected_folder_never_creates_an_empty_album(
         RuntimeConfig(base_url="https://traxx.test"), downloads_dir=tmp_path
     )
 
-    with pytest.raises(TraxxError, match="No verified audio files remain"):
+    with pytest.raises(
+        TraxxError,
+        match="No verified audio files remain|catalogue tracks have a distinct matching",
+    ):
         await client.import_album_folder(
             "library/Artist/Wrong Album",
             dry_run=False,
