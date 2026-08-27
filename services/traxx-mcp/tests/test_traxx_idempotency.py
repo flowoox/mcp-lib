@@ -29,8 +29,13 @@ class StubImportClient(TraxxClient):
         }
 
     async def inspect_album_import(
-        self, album_id: int, *, expected_tracks: int = 1
+        self,
+        album_id: int,
+        *,
+        expected_tracks: int = 1,
+        track_hints: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
+        del track_hints
         return {
             "album_id": album_id,
             "exists": True,
@@ -80,8 +85,13 @@ async def test_completed_import_is_repaired_when_tracks_disappeared(tmp_path: Pa
 
     class DamagedImportClient(StubImportClient):
         async def inspect_album_import(
-            self, album_id: int, *, expected_tracks: int = 1
+            self,
+            album_id: int,
+            *,
+            expected_tracks: int = 1,
+            track_hints: list[dict[str, Any]] | None = None,
         ) -> dict[str, Any]:
+            del track_hints
             return {
                 "album_id": album_id,
                 "exists": True,
@@ -121,6 +131,40 @@ async def test_missing_album_is_reported_as_repairable_drift(tmp_path: Path) -> 
         "expected_tracks": 3,
         "complete": False,
     }
+
+
+@pytest.mark.asyncio
+async def test_album_checker_rejects_unrelated_remote_tracks(tmp_path: Path) -> None:
+    class WrongTracksClient(TraxxClient):
+        async def request(self, method: str, path: str, **kwargs: Any) -> Any:
+            del method, path, kwargs
+            return {
+                "album": {
+                    "id": 42,
+                    "name": "mean2me",
+                    "tracks_count": 2,
+                    "tracks": [
+                        {"id": 1, "name": "angelface", "duration": 228_000},
+                        {"id": 2, "name": "Unrelated Edit", "duration": 173_000},
+                    ],
+                }
+            }
+
+    client = WrongTracksClient(
+        RuntimeConfig(base_url="https://traxx.test"), downloads_dir=tmp_path
+    )
+    result = await client.inspect_album_import(
+        42,
+        expected_tracks=2,
+        track_hints=[
+            {"title": "angelface", "duration_ms": 228_000},
+            {"title": "mean2me", "duration_ms": 173_000},
+        ],
+    )
+
+    assert result["tracks_count"] == 2
+    assert result["catalog_verification"]["matched_tracks"] == 1
+    assert result["complete"] is False
 
 
 class ResourceClient(TraxxClient):

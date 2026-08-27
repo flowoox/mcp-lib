@@ -228,15 +228,13 @@ def create_server() -> FastMCP:
         """Verify remote track count and, when supplied, the local source."""
         active_client = client()
         result = await active_client.inspect_album_import(
-            album_id, expected_tracks=expected_tracks
+            album_id,
+            expected_tracks=expected_tracks,
+            track_hints=track_hints,
         )
         if path:
             source = active_client.verify_album_folder(path, track_hints)
             result["source_verification"] = source
-            if source.get("checked"):
-                result["complete"] = bool(result.get("complete")) and bool(
-                    source.get("complete")
-                )
         return result
 
     @mcp.tool()

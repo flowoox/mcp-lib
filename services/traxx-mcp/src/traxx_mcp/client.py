@@ -1090,9 +1090,13 @@ class TraxxClient:
         return ""
 
     async def inspect_album_import(
-        self, album_id: int, *, expected_tracks: int = 1
+        self,
+        album_id: int,
+        *,
+        expected_tracks: int = 1,
+        track_hints: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Check that an imported album still exists with all expected tracks."""
+        """Check both the size and catalogue identity of an imported album."""
         try:
             response = await self.request("GET", f"/api/v1/albums/{int(album_id)}")
         except TraxxError as exc:
@@ -1119,13 +1123,50 @@ class TraxxClient:
         if not tracks_count and isinstance(tracks, list):
             tracks_count = len(tracks)
         expected = max(0, int(expected_tracks))
+        catalog_verification: dict[str, Any] = {
+            "checked": False,
+            "complete": True,
+            "expected_tracks": len(track_hints or []),
+            "matched_tracks": 0,
+            "missing": [],
+            "reason": "",
+        }
+        if isinstance(tracks, list) and track_hints:
+            remote_durations: dict[Path, int] = {}
+            remote_titles: dict[Path, str] = {}
+            for index, track in enumerate(tracks):
+                if not isinstance(track, dict):
+                    continue
+                marker = Path(f"remote-{index}-{track.get('id') or index}")
+                with contextlib.suppress(TypeError, ValueError):
+                    remote_durations[marker] = int(track.get("duration") or 0)
+                remote_durations.setdefault(marker, 0)
+                remote_titles[marker] = str(track.get("name") or "")
+            catalog_verification = verify_release_coverage(
+                remote_durations,
+                [TrackHint.from_mapping(item) for item in track_hints],
+                observed_titles=remote_titles,
+            )
+            if catalog_verification.get("checked") and not catalog_verification.get(
+                "complete"
+            ):
+                catalog_verification["reason"] = (
+                    f"Only {catalog_verification.get('matched_tracks', 0)} of "
+                    f"{catalog_verification.get('expected_tracks', 0)} catalogue "
+                    "tracks are present in Traxx."
+                )
         return {
             "album_id": int(album_id),
             "name": str(album.get("name") or ""),
             "exists": bool(album),
             "tracks_count": tracks_count,
             "expected_tracks": expected,
-            "complete": bool(album) and tracks_count >= expected,
+            "complete": (
+                bool(album)
+                and tracks_count >= expected
+                and bool(catalog_verification.get("complete"))
+            ),
+            "catalog_verification": catalog_verification,
         }
 
     async def _load_cover(
@@ -1703,7 +1744,9 @@ class TraxxClient:
         )
         try:
             verification = await self.inspect_album_import(
-                album_id, expected_tracks=expected_track_count
+                album_id,
+                expected_tracks=expected_track_count,
+                track_hints=track_hints,
             )
         except Exception as exc:  # noqa: BLE001
             # The mutation response is not independent proof.  Preserve it
