@@ -9,6 +9,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
         "ad-mcp.yml",
         "ci.yml",
         "entra-mcp.yml",
+        "failovercluster-mcp.yml",
         "fortigate-mcp.yml",
         "hyperv-mcp.yml",
         "prtg-mcp.yml",
