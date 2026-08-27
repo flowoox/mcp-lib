@@ -1,36 +1,38 @@
 {
   "schema_version": 2,
-  "updated_at": "2026-08-27T08:26:00Z",
+  "updated_at": "2026-08-27T08:37:00Z",
   "repository": "flowoox/mcp-lib",
-  "base_main_sha": "5065bbe9f8a03c2ac1733c41a5eafb68f6ff37f9",
+  "base_main_sha": "da948eeca371bcedabce3e8b7df00b69467c9b7b",
   "last_completed": {
-    "work_item": "hyperv-mcp",
+    "work_item": "failovercluster-mcp",
     "status": "observe_complete",
-    "merged_pr": 43,
-    "merge_sha": "5065bbe9f8a03c2ac1733c41a5eafb68f6ff37f9",
+    "merged_pr": 44,
+    "merge_sha": "da948eeca371bcedabce3e8b7df00b69467c9b7b",
     "verification": {
-      "main_ci_run": 33053788338,
-      "service_ci_run": 33053788288,
+      "pr_ci_run": 33054667922,
+      "pr_service_ci_run": 33054667960,
+      "main_ci_run": 33054736696,
+      "main_service_ci_run": 33054736786,
       "result": "success"
     }
   },
   "current": {
-    "work_item": "failovercluster-mcp",
-    "branch": "feat/failovercluster-mcp-observe-v1",
-    "status": "implementation_pending_ci",
+    "work_item": "n8n-mcp",
+    "branch": "feat/n8n-mcp-observe-v1",
+    "status": "next",
     "scope": [
-      "bounded cluster/node/group/resource/network/CSV/quorum/event observations",
-      "configured logical targets with read-only backend attestation",
-      "constrained JEA/WinRM required by production default",
-      "aggregate-first cluster diagnostics",
-      "typed schemas, audit/correlation envelopes and query budgets",
-      "no arbitrary PowerShell/CIM/WMI or cluster mutation"
+      "bounded read-only workflow inventory",
+      "bounded execution/status/error summaries and exact execution observation",
+      "configured deployment-owned base URL and least-privilege API identity",
+      "query budgets, pagination, timeouts, response-byte, rate and concurrency caps",
+      "no arbitrary n8n API proxy, credential content, workflow secret exposure or execution trigger in observe v1",
+      "typed schemas plus audit/correlation envelopes for agents and orchestration"
     ]
   },
   "next_after_current": {
-    "work_item": "n8n-mcp",
-    "branch": "feat/n8n-mcp-observe-v1",
-    "goal": "bounded read-only workflow/execution inventory first; keep employee-entry orchestration outside specialized MCPs"
+    "work_item": "employee-entry-reference",
+    "branch": "feat/employee-entry-reference-workflow",
+    "goal": "Reference orchestration invokes specialized AD, Entra, network, security and n8n MCPs and later endpoint/M365 MCPs; never create a monolithic privileged onboarding MCP."
   },
   "blockers": [],
   "continuation_rule": "Resync main, open PRs, issues and CI before every run; protect parallel work; continue the first non-blocked queued item."
