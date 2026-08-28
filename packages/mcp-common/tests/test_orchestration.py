@@ -10,11 +10,18 @@ from mcp_common.orchestration import OrchestrationStep, OrchestrationWorkflow
 
 
 def _reference_path() -> Path:
-    return Path(__file__).resolve().parents[3] / "docs" / "infrastructure" / "employee-entry-reference-v1.json"
+    return (
+        Path(__file__).resolve().parents[3]
+        / "docs"
+        / "infrastructure"
+        / "employee-entry-reference-v1.json"
+    )
 
 
 def test_employee_entry_reference_is_valid_and_dependency_ordered() -> None:
-    workflow = OrchestrationWorkflow.model_validate_json(_reference_path().read_text(encoding="utf-8"))
+    workflow = OrchestrationWorkflow.model_validate_json(
+        _reference_path().read_text(encoding="utf-8")
+    )
 
     assert workflow.workflow_id == "employee-entry-reference"
     assert workflow.execution_waves() == [
@@ -83,7 +90,7 @@ def test_workflow_rejects_non_allowlisted_operations() -> None:
 
 
 def test_workflow_rejects_dependency_cycles() -> None:
-    with pytest.raises(ValidationError, match="dependency cycle"):
+    with pytest.raises(ValidationError, match="contain a cycle"):
         OrchestrationWorkflow(
             workflow_id="cycle-workflow",
             version="1.0.0",
