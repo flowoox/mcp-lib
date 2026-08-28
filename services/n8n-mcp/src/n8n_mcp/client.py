@@ -332,7 +332,7 @@ class N8nReadOnlyTransport:
             timeout_seconds=timeout_seconds,
             max_response_bytes=max_response_bytes,
         )
-        raw_row: Any = payload.get("data", payload)
+        raw_row: Any = payload
         if not isinstance(raw_row, Mapping):
             raise N8nClientError("n8n execution response must be a JSON object")
         projected = _project_execution(raw_row)
