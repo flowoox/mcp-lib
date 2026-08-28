@@ -1,12 +1,12 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus safe agent/n8n reference orchestration.",
-  "updated_at": "2026-08-27T10:37:00+02:00",
-  "current_work_item": "n8n-mcp",
-  "active_branch": "",
+  "updated_at": "2026-08-28T10:38:00+02:00",
+  "current_work_item": "employee-entry-reference",
+  "active_branch": "feat/employee-entry-reference-workflow",
   "active_pr": null,
-  "next_branch": "feat/n8n-mcp-observe-v1",
+  "next_branch": "feat/acmp-mcp-observe-v1",
   "execution_rule": "At every run re-read current main, open PRs/issues/CI and preserve parallel work before taking the next non-blocked work item.",
   "principles": [
     "observe-plan-change-verify",
@@ -21,7 +21,8 @@
     "read-only-and-fail-closed-by-default",
     "separate-explicit-write-identity",
     "bounded-agent-diagnostics",
-    "server-load-protection"
+    "server-load-protection",
+    "orchestration-by-specialized-MCPs-not-privileged-monoliths"
   ],
   "roadmap_profiles": {
     "standard_read_only": {
@@ -55,6 +56,12 @@
         "independent read-back verification",
         "structured audit and correlation ID"
       ]
+    },
+    "reference_orchestration": {
+      "authority_model": "specialized MCPs retain backend authority and lifecycle enforcement",
+      "public_binding_policy": "workflow definitions contain references only; deployment values and secrets remain external",
+      "write_rule": "every state-changing lifecycle stays inside one specialized MCP and requires plan/change/verify plus explicit approval for risky changes",
+      "agent_rule": "bounded dependency DAG with one propagated correlation ID and no arbitrary tool/API proxy"
     }
   },
   "completed_foundations": [
@@ -70,185 +77,56 @@
     }
   ],
   "work_items": [
-    {
-      "id": "ad-mcp",
-      "priority": 10,
-      "status": "complete",
-      "depends_on": ["foundation"],
-      "history": ["PR #18", "PR #20", "PR #21", "PR #22", "PR #25", "PR #27"]
-    },
-    {
-      "id": "network-mcp",
-      "priority": 20,
-      "status": "complete",
-      "depends_on": ["foundation"],
-      "history": ["PR #23", "PR #26"]
-    },
-    {
-      "id": "fortigate-mcp",
-      "priority": 30,
-      "status": "observe_complete",
-      "depends_on": ["foundation", "network-mcp"],
-      "history": ["PR #29", "PR #30"],
-      "remaining": ["optional separate controlled write layer only for concrete approved workflows"]
-    },
-    {
-      "id": "entra-mcp",
-      "priority": 40,
-      "status": "observe_complete",
-      "depends_on": ["foundation"],
-      "history": ["PR #31", "PR #32"],
-      "remaining": ["optional lifecycle writes with explicit Graph least-privilege permission mapping"]
-    },
-    {
-      "id": "windows-mcp",
-      "priority": 50,
-      "status": "observe_complete",
-      "depends_on": ["foundation", "agent-diagnostics-foundation"],
-      "history": ["PR #33"],
-      "remaining": ["keep generic Windows writes out; implement changes in specialized MCPs"]
-    },
-    {
-      "id": "security-audit-mcp",
-      "priority": 60,
-      "status": "complete",
-      "depends_on": ["ad-mcp", "network-mcp", "fortigate-mcp", "entra-mcp", "windows-mcp"],
-      "history": ["PR #34", "PR #35"]
-    },
-    {
-      "id": "docker-mcp",
-      "priority": 70,
-      "status": "observe_complete",
-      "depends_on": ["agent-diagnostics-foundation", "network-mcp"],
-      "history": ["PR #28", "PR #37", "PR #38", "PR #39"],
-      "remaining": ["production authorization-proxy deployment example", "optional approved write layer only after a concrete operational need"]
-    },
-    {
-      "id": "prtg-mcp",
-      "priority": 80,
-      "status": "observe_complete",
-      "depends_on": ["agent-diagnostics-foundation", "network-mcp"],
-      "history": ["PR #40"],
-      "remaining": ["optional approved acknowledge/pause/maintenance write layer only if required"]
-    },
-    {
-      "id": "fileshare-mcp",
-      "priority": 90,
-      "status": "observe_complete",
-      "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "ad-mcp"],
-      "history": ["PR #41"],
-      "capabilities": [
-        "deployment-owned root aliases without path disclosure",
-        "bounded path metadata",
-        "single-level directory listing",
-        "normalized NTFS ACL evidence",
-        "optional local SMB share ACL evidence",
-        "conservative SID matching access explanation",
-        "audit/correlation envelopes and query budgets"
-      ],
-      "mandatory_guards": [
-        "explicit read-only backend attestation and OS-level least privilege",
-        "fixed PowerShell operation allowlist",
-        "no arbitrary path/host/credential/script",
-        "no recursion or file-content reads in v1",
-        "reparse points blocked by default",
-        "effective-rights explanation is explicitly non-authoritative"
-      ],
-      "remaining": ["add separately bounded allowlisted file-content/hash/text analysis only after explicit design and tests"]
-    },
-    {
-      "id": "hyperv-mcp",
-      "priority": 100,
-      "status": "observe_complete",
-      "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "network-mcp"],
-      "history": ["PR #43"],
-      "capabilities": [
-        "bounded host and VM inventory",
-        "exact VM observation with network adapters and integration services",
-        "bounded switches, checkpoints, VHDs and replication evidence",
-        "fixed bounded Hyper-V event logs",
-        "aggregate-first VM diagnostic bundle"
-      ],
-      "mandatory_guards": [
-        "configured logical target aliases only",
-        "read-only backend attestation",
-        "constrained WinRM/JEA required by production default",
-        "fixed PowerShell probes only",
-        "no arbitrary PowerShell/CIM/WMI or guest commands",
-        "no VM/checkpoint/storage/network state mutations",
-        "shared query budgets and audit/correlation envelopes"
-      ],
-      "verification": {
-        "pr": 43,
-        "main_ci_run": 33053788338,
-        "main_service_ci_run": 33053788288,
-        "result": "success"
-      },
-      "remaining": ["optional approved write layer only for concrete operational needs"]
-    },
-    {
-      "id": "failovercluster-mcp",
-      "priority": 110,
-      "status": "observe_complete",
-      "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "network-mcp"],
-      "history": ["PR #44"],
-      "capabilities": [
-        "aggregate cluster state, node/group/resource counts and quorum summary",
-        "bounded node, group, resource and network inventory",
-        "exact group observation with bounded resource relationships",
-        "bounded CSV ownership/capacity/free-space evidence",
-        "quorum and witness evidence",
-        "fixed bounded FailoverClustering Operational events",
-        "aggregate-first cluster diagnostic bundle"
-      ],
-      "mandatory_guards": [
-        "configured logical target aliases only",
-        "read-only backend attestation",
-        "constrained WinRM/JEA required by production default",
-        "fixed repository-owned PowerShell probes only",
-        "no arbitrary PowerShell/CIM/WMI or event-log selection",
-        "no group/resource movement, failover, node, quorum, storage or network mutation",
-        "shared query budgets and audit/correlation envelopes"
-      ],
-      "verification": {
-        "pr": 44,
-        "pr_ci_run": 33054667922,
-        "pr_service_ci_run": 33054667960,
-        "main_ci_run": 33054736696,
-        "main_service_ci_run": 33054736786,
-        "merge_sha": "da948eeca371bcedabce3e8b7df00b69467c9b7b",
-        "result": "success"
-      },
-      "remaining": ["optional approved failover/maintenance write layer only after a concrete operational need and separate least-privilege identity"]
-    },
+    {"id": "ad-mcp", "priority": 10, "status": "complete", "depends_on": ["foundation"], "history": ["PR #18", "PR #20", "PR #21", "PR #22", "PR #25", "PR #27"]},
+    {"id": "network-mcp", "priority": 20, "status": "complete", "depends_on": ["foundation"], "history": ["PR #23", "PR #26"]},
+    {"id": "fortigate-mcp", "priority": 30, "status": "observe_complete", "depends_on": ["foundation", "network-mcp"], "history": ["PR #29", "PR #30"], "remaining": ["optional separate controlled write layer only for concrete approved workflows"]},
+    {"id": "entra-mcp", "priority": 40, "status": "observe_complete", "depends_on": ["foundation"], "history": ["PR #31", "PR #32"], "remaining": ["optional lifecycle writes with explicit Graph least-privilege permission mapping"]},
+    {"id": "windows-mcp", "priority": 50, "status": "observe_complete", "depends_on": ["foundation", "agent-diagnostics-foundation"], "history": ["PR #33"], "remaining": ["keep generic Windows writes out; implement changes in specialized MCPs"]},
+    {"id": "security-audit-mcp", "priority": 60, "status": "complete", "depends_on": ["ad-mcp", "network-mcp", "fortigate-mcp", "entra-mcp", "windows-mcp"], "history": ["PR #34", "PR #35"]},
+    {"id": "docker-mcp", "priority": 70, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "network-mcp"], "history": ["PR #28", "PR #37", "PR #38", "PR #39"], "remaining": ["production authorization-proxy deployment example", "optional approved write layer only after a concrete operational need"]},
+    {"id": "prtg-mcp", "priority": 80, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "network-mcp"], "history": ["PR #40"], "remaining": ["optional approved acknowledge/pause/maintenance write layer only if required"]},
+    {"id": "fileshare-mcp", "priority": 90, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "ad-mcp"], "history": ["PR #41"], "remaining": ["separately bounded allowlisted file-content/hash/text analysis only after explicit design and tests"]},
+    {"id": "hyperv-mcp", "priority": 100, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "network-mcp"], "history": ["PR #43"], "verification": {"main_ci_run": 33053788338, "main_service_ci_run": 33053788288, "result": "success"}, "remaining": ["optional approved write layer only for concrete operational needs"]},
+    {"id": "failovercluster-mcp", "priority": 110, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "network-mcp"], "history": ["PR #44"], "verification": {"pr_ci_run": 33054667922, "pr_service_ci_run": 33054667960, "main_ci_run": 33054736696, "main_service_ci_run": 33054736786, "merge_sha": "da948eeca371bcedabce3e8b7df00b69467c9b7b", "result": "success"}, "remaining": ["optional approved failover/maintenance write layer only after a concrete operational need and separate least-privilege identity"]},
     {
       "id": "n8n-mcp",
       "priority": 120,
-      "status": "next",
+      "status": "observe_complete",
       "depends_on": ["agent-diagnostics-foundation"],
-      "default_mode": "read_only",
-      "observe_scope": [
-        "bounded workflow inventory and metadata",
-        "bounded execution status/error summaries",
-        "exact execution observation with output redaction and size caps",
-        "workflow activation state and tags without credential contents"
+      "history": ["PR #47"],
+      "verification": {
+        "merge_sha": "dee12ec7212dfdf32c22cc4d0311dcb068fd1282",
+        "main_ci_run": 33155176174,
+        "main_service_ci_run": 33155176162,
+        "result": "success"
+      },
+      "capabilities": [
+        "bounded workflow metadata",
+        "bounded execution metadata and exact execution observation without payload data",
+        "optional workflow allowlisting",
+        "shared query budgets, audit/correlation and rate/concurrency caps"
       ],
       "mandatory_guards": [
-        "deployment-owned base URL and least-privilege API identity",
-        "no arbitrary API proxy or method/path passthrough",
-        "no credential secret reads",
-        "no workflow execution trigger, mutation or activation change in observe v1",
-        "pagination, timeouts, response-byte, query-budget, concurrency and rate caps",
-        "audit/correlation envelopes"
-      ],
-      "orchestration_role": "employee-entry remains an n8n/agent reference workflow invoking specialized MCPs; never a monolithic privileged MCP"
+        "deployment-owned base URL and least-privilege read-only API identity",
+        "no arbitrary n8n API proxy",
+        "no credential values, workflow definitions or execution payloads",
+        "no workflow trigger, retry, stop, activation or mutation in observe v1"
+      ]
     },
     {
       "id": "employee-entry-reference",
       "priority": 130,
-      "status": "queued",
+      "status": "in_progress",
       "depends_on": ["ad-mcp", "entra-mcp", "network-mcp", "security-audit-mcp", "n8n-mcp"],
-      "architecture": "reference orchestration only; specialized MCPs retain backend authority and lifecycle controls"
+      "branch": "feat/employee-entry-reference-workflow",
+      "architecture": "declarative reference orchestration only; specialized MCPs retain backend authority and lifecycle controls",
+      "scope": [
+        "shared typed orchestration contract with explicit operation allowlist and dependency DAG",
+        "references-only bindings prevent public topology, OU, credential and policy literals",
+        "AD disabled-user plan/change/verify lifecycle with out-of-band approval and one idempotency reference",
+        "bounded read-only n8n, Entra, network and security-audit evidence",
+        "documentation for n8n/agent execution and safe extension"
+      ]
     },
     {"id": "acmp-mcp", "priority": 140, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "windows-mcp"], "default_mode": "read_only"},
     {"id": "manageengine-mdm-mcp", "priority": 150, "status": "queued", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only"},
@@ -265,15 +143,13 @@
     {"id": "windows-admincenter-mcp", "priority": 260, "status": "decision_gate", "depends_on": ["windows-mcp", "hyperv-mcp", "failovercluster-mcp"], "decision_gate": "implement only if a supported stable gateway API and least-privilege read-only role reduce adapter duplication without becoming a generic PowerShell proxy"}
   ],
   "next_run": {
-    "work_item": "n8n-mcp",
-    "branch": "feat/n8n-mcp-observe-v1",
+    "work_item": "employee-entry-reference",
+    "branch": "feat/employee-entry-reference-workflow",
     "first_actions": [
-      "sync current main/open PRs/issues/CI/parallel branches",
-      "verify the currently supported n8n API surface and authentication model before freezing the adapter contract",
-      "reuse mcp-common query budgets, audit/correlation and fail-closed read-only patterns",
-      "implement bounded typed workflow and execution observations without credential or secret exposure",
-      "keep arbitrary API proxying, workflow execution triggers and workflow mutations outside observe v1",
-      "add tests, docs, CI and machine-readable status; merge only when full CI is green"
+      "finish shared orchestration contract and reference-workflow tests",
+      "run full CI and merge only when current main and PR are conflict-free",
+      "after merge set continuation pointer to acmp-mcp",
+      "for ACMP, perform vendor/API discovery before freezing any public contract"
     ]
   }
 }
