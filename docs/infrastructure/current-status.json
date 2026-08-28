@@ -1,38 +1,37 @@
 {
-  "schema_version": 2,
-  "updated_at": "2026-08-27T08:37:00Z",
+  "schema_version": 3,
+  "updated_at": "2026-08-28T08:38:00Z",
   "repository": "flowoox/mcp-lib",
-  "base_main_sha": "da948eeca371bcedabce3e8b7df00b69467c9b7b",
+  "base_main_sha": "dee12ec7212dfdf32c22cc4d0311dcb068fd1282",
   "last_completed": {
-    "work_item": "failovercluster-mcp",
+    "work_item": "n8n-mcp",
     "status": "observe_complete",
-    "merged_pr": 44,
-    "merge_sha": "da948eeca371bcedabce3e8b7df00b69467c9b7b",
+    "merged_pr": 47,
+    "merge_sha": "dee12ec7212dfdf32c22cc4d0311dcb068fd1282",
     "verification": {
-      "pr_ci_run": 33054667922,
-      "pr_service_ci_run": 33054667960,
-      "main_ci_run": 33054736696,
-      "main_service_ci_run": 33054736786,
+      "main_ci_run": 33155176174,
+      "main_service_ci_run": 33155176162,
       "result": "success"
     }
   },
   "current": {
-    "work_item": "n8n-mcp",
-    "branch": "feat/n8n-mcp-observe-v1",
-    "status": "next",
+    "work_item": "employee-entry-reference",
+    "branch": "feat/employee-entry-reference-workflow",
+    "status": "in_progress",
     "scope": [
-      "bounded read-only workflow inventory",
-      "bounded execution/status/error summaries and exact execution observation",
-      "configured deployment-owned base URL and least-privilege API identity",
-      "query budgets, pagination, timeouts, response-byte, rate and concurrency caps",
-      "no arbitrary n8n API proxy, credential content, workflow secret exposure or execution trigger in observe v1",
-      "typed schemas plus audit/correlation envelopes for agents and orchestration"
+      "product-neutral declarative reference orchestration for n8n and agents",
+      "specialized MCPs retain backend authority; no monolithic onboarding MCP",
+      "explicit operation allowlist and dependency DAG",
+      "public bindings are references only; deployment topology, OUs, credentials and policy remain external",
+      "one concrete AD disabled-user lifecycle using plan, out-of-band approval, change and independent verify",
+      "shared correlation ID and idempotency reference across lifecycle steps",
+      "bounded read-only n8n, Entra, network and security-audit pre/post-flight evidence"
     ]
   },
   "next_after_current": {
-    "work_item": "employee-entry-reference",
-    "branch": "feat/employee-entry-reference-workflow",
-    "goal": "Reference orchestration invokes specialized AD, Entra, network, security and n8n MCPs and later endpoint/M365 MCPs; never create a monolithic privileged onboarding MCP."
+    "work_item": "acmp-mcp",
+    "branch": "feat/acmp-mcp-observe-v1",
+    "goal": "Discover the supported ACMP API/authorization surface, freeze a least-privilege read-only contract, then implement bounded client/inventory/health diagnostics without generic SQL, script or admin proxying."
   },
   "blockers": [],
   "continuation_rule": "Resync main, open PRs, issues and CI before every run; protect parallel work; continue the first non-blocked queued item."
