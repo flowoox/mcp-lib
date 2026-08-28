@@ -258,9 +258,12 @@ class N8nReadOnlyTransport:
         parameters = self._parameters(query, frozenset({"workflow_id", "status"}))
         workflow_id = self._execution_scope(parameters)
         status = parameters.get("status")
-        if status is not None and status != "":
-            if not isinstance(status, str) or status not in _EXECUTION_STATUSES:
-                raise ValueError("execution status is not in the fixed safe allowlist")
+        if (
+            status is not None
+            and status != ""
+            and (not isinstance(status, str) or status not in _EXECUTION_STATUSES)
+        ):
+            raise ValueError("execution status is not in the fixed safe allowlist")
 
         params: list[tuple[str, str]] = [
             ("limit", str(query.page.limit)),
