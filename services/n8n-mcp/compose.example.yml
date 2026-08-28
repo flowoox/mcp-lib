@@ -1,0 +1,17 @@
+services:
+  mcp-n8n:
+    build:
+      context: ../..
+      dockerfile: services/n8n-mcp/Dockerfile
+    env_file:
+      - .env
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8094:8094"
