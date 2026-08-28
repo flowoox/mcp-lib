@@ -1,37 +1,45 @@
 {
   "schema_version": 3,
-  "updated_at": "2026-08-28T08:38:00Z",
+  "updated_at": "2026-08-28T08:42:00Z",
   "repository": "flowoox/mcp-lib",
-  "base_main_sha": "dee12ec7212dfdf32c22cc4d0311dcb068fd1282",
+  "base_main_sha": "c8fb321d6652a04fdf65354d6aa9e285de93e933",
   "last_completed": {
-    "work_item": "n8n-mcp",
-    "status": "observe_complete",
-    "merged_pr": 47,
-    "merge_sha": "dee12ec7212dfdf32c22cc4d0311dcb068fd1282",
+    "work_item": "employee-entry-reference",
+    "status": "complete",
+    "merged_pr": 48,
+    "merge_sha": "c8fb321d6652a04fdf65354d6aa9e285de93e933",
     "verification": {
-      "main_ci_run": 33155176174,
-      "main_service_ci_run": 33155176162,
+      "pr_ci_run": 33156145728,
+      "main_ci_run": 33156238102,
       "result": "success"
-    }
+    },
+    "delivered": [
+      "shared strict orchestration contract in mcp-common",
+      "explicit operation allowlist and dependency-DAG validation",
+      "references-only workflow bindings for deployment-owned values",
+      "specialized-MCP lifecycle grouping with shared idempotency, explicit approval and independent verify",
+      "product-neutral employee-entry reference for n8n/agents",
+      "bounded n8n, Entra, network and security-audit evidence around an approved AD disabled-user lifecycle",
+      "tests and execution/extension documentation"
+    ]
   },
   "current": {
-    "work_item": "employee-entry-reference",
-    "branch": "feat/employee-entry-reference-workflow",
-    "status": "in_progress",
-    "scope": [
-      "product-neutral declarative reference orchestration for n8n and agents",
-      "specialized MCPs retain backend authority; no monolithic onboarding MCP",
-      "explicit operation allowlist and dependency DAG",
-      "public bindings are references only; deployment topology, OUs, credentials and policy remain external",
-      "one concrete AD disabled-user lifecycle using plan, out-of-band approval, change and independent verify",
-      "shared correlation ID and idempotency reference across lifecycle steps",
-      "bounded read-only n8n, Entra, network and security-audit pre/post-flight evidence"
+    "work_item": "acmp-mcp",
+    "branch": "feat/acmp-mcp-observe-v1",
+    "status": "ready",
+    "goal": "Discover the supported ACMP API and authorization surface, freeze a least-privilege read-only contract, then implement bounded client, inventory and health diagnostics without generic SQL, script or admin proxying.",
+    "first_actions": [
+      "resync main, open PRs/issues and CI before branching",
+      "verify current vendor-supported ACMP API/authentication and least-privilege read role",
+      "define typed observe-only contract and endpoint allowlist before adapter implementation",
+      "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and server-load protections",
+      "keep server URLs, credentials, containers/groups and company policy deployment-owned"
     ]
   },
   "next_after_current": {
-    "work_item": "acmp-mcp",
-    "branch": "feat/acmp-mcp-observe-v1",
-    "goal": "Discover the supported ACMP API/authorization surface, freeze a least-privilege read-only contract, then implement bounded client/inventory/health diagnostics without generic SQL, script or admin proxying."
+    "work_item": "manageengine-mdm-mcp",
+    "branch": "feat/manageengine-mdm-mcp-observe-v1",
+    "goal": "Bounded read-only device/compliance/inventory diagnostics through a least-privilege supported API surface."
   },
   "blockers": [],
   "continuation_rule": "Resync main, open PRs, issues and CI before every run; protect parallel work; continue the first non-blocked queued item."

@@ -2,11 +2,11 @@
   "schema_version": 6,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus safe agent/n8n reference orchestration.",
-  "updated_at": "2026-08-28T10:38:00+02:00",
-  "current_work_item": "employee-entry-reference",
-  "active_branch": "feat/employee-entry-reference-workflow",
+  "updated_at": "2026-08-28T10:43:00+02:00",
+  "current_work_item": "acmp-mcp",
+  "active_branch": "feat/acmp-mcp-observe-v1",
   "active_pr": null,
-  "next_branch": "feat/acmp-mcp-observe-v1",
+  "next_branch": "feat/manageengine-mdm-mcp-observe-v1",
   "execution_rule": "At every run re-read current main, open PRs/issues/CI and preserve parallel work before taking the next non-blocked work item.",
   "principles": [
     "observe-plan-change-verify",
@@ -116,9 +116,15 @@
     {
       "id": "employee-entry-reference",
       "priority": 130,
-      "status": "in_progress",
+      "status": "complete",
       "depends_on": ["ad-mcp", "entra-mcp", "network-mcp", "security-audit-mcp", "n8n-mcp"],
-      "branch": "feat/employee-entry-reference-workflow",
+      "history": ["PR #48"],
+      "verification": {
+        "pr_ci_run": 33156145728,
+        "main_ci_run": 33156238102,
+        "merge_sha": "c8fb321d6652a04fdf65354d6aa9e285de93e933",
+        "result": "success"
+      },
       "architecture": "declarative reference orchestration only; specialized MCPs retain backend authority and lifecycle controls",
       "scope": [
         "shared typed orchestration contract with explicit operation allowlist and dependency DAG",
@@ -128,7 +134,22 @@
         "documentation for n8n/agent execution and safe extension"
       ]
     },
-    {"id": "acmp-mcp", "priority": 140, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "windows-mcp"], "default_mode": "read_only"},
+    {
+      "id": "acmp-mcp",
+      "priority": 140,
+      "status": "ready",
+      "depends_on": ["agent-diagnostics-foundation", "windows-mcp"],
+      "default_mode": "read_only",
+      "branch": "feat/acmp-mcp-observe-v1",
+      "discovery_gate": "verify the current vendor-supported ACMP API, authentication model and least-privilege read role before freezing endpoint contracts",
+      "scope": [
+        "bounded client and inventory observation",
+        "bounded health and deployment-status diagnostics where supported",
+        "typed endpoint allowlist only",
+        "shared query budgets, audit/correlation and server-load protection",
+        "no generic SQL, scripting or administrative proxy"
+      ]
+    },
     {"id": "manageengine-mdm-mcp", "priority": 150, "status": "queued", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only"},
     {"id": "freshdesk-mcp", "priority": 160, "status": "queued", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only"},
     {"id": "mailstore-cloud-mcp", "priority": 170, "status": "queued", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only"},
@@ -143,13 +164,14 @@
     {"id": "windows-admincenter-mcp", "priority": 260, "status": "decision_gate", "depends_on": ["windows-mcp", "hyperv-mcp", "failovercluster-mcp"], "decision_gate": "implement only if a supported stable gateway API and least-privilege read-only role reduce adapter duplication without becoming a generic PowerShell proxy"}
   ],
   "next_run": {
-    "work_item": "employee-entry-reference",
-    "branch": "feat/employee-entry-reference-workflow",
+    "work_item": "acmp-mcp",
+    "branch": "feat/acmp-mcp-observe-v1",
     "first_actions": [
-      "finish shared orchestration contract and reference-workflow tests",
-      "run full CI and merge only when current main and PR are conflict-free",
-      "after merge set continuation pointer to acmp-mcp",
-      "for ACMP, perform vendor/API discovery before freezing any public contract"
+      "resync main, open PRs/issues and CI before branching",
+      "verify current vendor-supported ACMP API/authentication and least-privilege read role using primary vendor documentation",
+      "freeze a typed read-only contract and endpoint allowlist before adapter implementation",
+      "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and server-load protections",
+      "keep server URLs, credentials, containers/groups and company policy deployment-owned"
     ]
   }
 }
