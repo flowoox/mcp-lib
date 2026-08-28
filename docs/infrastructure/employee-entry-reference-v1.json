@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "workflow_id": "employee-entry-reference",
+  "version": "1.0.0",
+  "purpose": "Product-neutral employee-entry reference for n8n or agent orchestrators. Specialized MCPs retain backend authority; the workflow carries only references to deployment-owned inputs, approvals and normalized evidence.",
+  "required_inputs": [
+    "actor",
+    "reason",
+    "directory.dns_name",
+    "employee.name",
+    "employee.sam_account_name",
+    "employee.user_principal_name",
+    "employee.display_name",
+    "directory.ou_dn",
+    "request.idempotency_key"
+  ],
+  "allowed_operations": [
+    "n8n.workflows.list",
+    "entra.tenant.observe",
+    "network.dns.resolve",
+    "ad.domain.summary",
+    "ad.user.provision-disabled.plan",
+    "ad.user.provision-disabled.change",
+    "ad.user.provision-disabled.verify",
+    "security.audit.evaluate"
+  ],
+  "steps": [
+    {
+      "id": "observe-orchestrator",
+      "service": "n8n-mcp",
+      "operation": "n8n.workflows.list",
+      "phase": "observe",
+      "risk": "read_only",
+      "bindings": {
+        "actor": "input.actor",
+        "reason": "input.reason",
+        "correlation_id": "control.correlation_id"
+      }
+    },
+    {
+      "id": "observe-entra",
+      "service": "entra-mcp",
+      "operation": "entra.tenant.observe",
+      "phase": "observe",
+      "risk": "read_only",
+      "bindings": {
+        "actor": "input.actor",
+        "reason": "input.reason",
+        "correlation_id": "control.correlation_id"
+      }
+    },
+    {
+      "id": "observe-directory-network",
+      "service": "network-mcp",
+      "operation": "network.dns.resolve",
+      "phase": "observe",
+      "risk": "read_only",
+      "bindings": {
+        "host": "input.directory.dns_name",
+        "correlation_id": "control.correlation_id"
+      }
+    },
+    {
+      "id": "observe-ad-domain",
+      "service": "ad-mcp",
+      "operation": "ad.domain.summary",
+      "phase": "observe",
+      "risk": "read_only",
+      "bindings": {
+        "correlation_id": "control.correlation_id"
+      }
+    },
+    {
+      "id": "plan-disabled-user",
+      "service": "ad-mcp",
+      "operation": "ad.user.provision-disabled.plan",
+      "phase": "plan",
+      "risk": "high",
+      "depends_on": [
+        "observe-orchestrator",
+        "observe-entra",
+        "observe-directory-network",
+        "observe-ad-domain"
+      ],
+      "bindings": {
+        "name": "input.employee.name",
+        "sam_account_name": "input.employee.sam_account_name",
+        "user_principal_name": "input.employee.user_principal_name",
+        "display_name": "input.employee.display_name",
+        "ou_dn": "input.directory.ou_dn",
+        "idempotency_key": "input.request.idempotency_key",
+        "correlation_id": "control.correlation_id"
+      },
+      "lifecycle_group": "provision-disabled-user",
+      "requires_approval": true,
+      "idempotency_ref": "input.request.idempotency_key"
+    },
+    {
+      "id": "change-disabled-user",
+      "service": "ad-mcp",
+      "operation": "ad.user.provision-disabled.change",
+      "phase": "change",
+      "risk": "high",
+      "depends_on": ["plan-disabled-user"],
+      "bindings": {
+        "name": "input.employee.name",
+        "sam_account_name": "input.employee.sam_account_name",
+        "user_principal_name": "input.employee.user_principal_name",
+        "display_name": "input.employee.display_name",
+        "ou_dn": "input.directory.ou_dn",
+        "idempotency_key": "input.request.idempotency_key",
+        "approval_grant": "control.approvals.ad_user_create",
+        "correlation_id": "control.correlation_id"
+      },
+      "lifecycle_group": "provision-disabled-user",
+      "requires_approval": true,
+      "approval_ref": "control.approvals.ad_user_create",
+      "idempotency_ref": "input.request.idempotency_key"
+    },
+    {
+      "id": "verify-disabled-user",
+      "service": "ad-mcp",
+      "operation": "ad.user.provision-disabled.verify",
+      "phase": "verify",
+      "risk": "read_only",
+      "depends_on": ["change-disabled-user"],
+      "bindings": {
+        "name": "input.employee.name",
+        "sam_account_name": "input.employee.sam_account_name",
+        "user_principal_name": "input.employee.user_principal_name",
+        "display_name": "input.employee.display_name",
+        "ou_dn": "input.directory.ou_dn",
+        "correlation_id": "control.correlation_id"
+      },
+      "lifecycle_group": "provision-disabled-user"
+    },
+    {
+      "id": "evaluate-security-evidence",
+      "service": "security-audit-mcp",
+      "operation": "security.audit.evaluate",
+      "phase": "observe",
+      "risk": "read_only",
+      "depends_on": ["verify-disabled-user"],
+      "bindings": {
+        "actor": "input.actor",
+        "reason": "input.reason",
+        "batch": "control.normalized_security_evidence",
+        "correlation_id": "control.correlation_id"
+      }
+    }
+  ]
+}
