@@ -28,6 +28,7 @@ def capabilities() -> dict[str, Any]:
             "idempotent_queue": True,
             "expected_track_count_validation": True,
             "login_state_reporting": True,
+            "recoverable_retry_archive": True,
         },
         "audio_formats": {
             "lossless": ["flac", "wav", "alac", "aiff", "aif", "ape", "wv"],
@@ -42,6 +43,7 @@ def capabilities() -> dict[str, Any]:
             "get_album_candidate",
             "queue_album_folder",
             "cancel_download_batch",
+            "archive_download_folder",
             "list_downloads",
             "get_download_batch",
             "wait_for_download",

@@ -35,6 +35,32 @@ def build(tmp_path: Path) -> SlskdClient:
     )
 
 
+def test_rejected_album_folder_is_archived_inside_download_root(tmp_path: Path) -> None:
+    client = build(tmp_path)
+    source = tmp_path / "downloads" / "library" / "Artist" / "Album"
+    source.mkdir(parents=True)
+    (source / "01.flac").write_bytes(b"audio")
+
+    result = client.archive_download_folder(str(source), "recommendation-1")
+
+    archived = Path(result["archived_path"])
+    assert result["archived"] is True
+    assert archived.parent == (
+        tmp_path / "downloads" / ".radar-retry-archive" / "recommendation-1"
+    )
+    assert (archived / "01.flac").read_bytes() == b"audio"
+    assert not source.exists()
+
+
+def test_retry_archive_rejects_paths_outside_download_root(tmp_path: Path) -> None:
+    client = build(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    with pytest.raises(ValueError, match="escapes configured root"):
+        client.archive_download_folder(str(outside), "recommendation-1")
+
+
 @pytest.mark.asyncio
 async def test_an_album_is_queued_per_user_as_a_list_of_files(tmp_path: Path) -> None:
     client = build(tmp_path)

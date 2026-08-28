@@ -230,6 +230,11 @@ def create_server() -> FastMCP:
         return await client().cancel_batch(batch_id, remove=remove)
 
     @mcp.tool()
+    async def archive_download_folder(path: str, namespace: str) -> dict[str, Any]:
+        """Move one rejected album folder into the internal retry archive."""
+        return client().archive_download_folder(path, namespace)
+
+    @mcp.tool()
     async def list_downloads() -> Any:
         """List current downloads from slskd."""
         return await client().list_downloads()

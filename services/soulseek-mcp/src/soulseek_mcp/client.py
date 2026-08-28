@@ -10,7 +10,12 @@ from urllib.parse import quote
 
 import httpx
 from mcp_common.http import get_case_insensitive
-from mcp_common.paths import safe_relative_destination, safe_segment, stable_id
+from mcp_common.paths import (
+    resolve_contained_path,
+    safe_relative_destination,
+    safe_segment,
+    stable_id,
+)
 
 from .config import RuntimeConfig
 from .matcher import build_album_candidates, extract_search_responses
@@ -155,6 +160,21 @@ class SlskdClient:
         if self.config.api_key:
             headers["X-API-Key"] = self.config.api_key
         return headers
+
+    def archive_download_folder(self, folder: str, namespace: str) -> dict[str, Any]:
+        """Move one rejected artifact aside through a constrained operation."""
+        root = self.downloads_dir.resolve()
+        source = resolve_contained_path(root, folder)
+        if source == root or ".radar-retry-archive" in source.relative_to(root).parts:
+            raise ValueError("Only an active album folder can be archived")
+        if not source.is_dir() or not any(source.iterdir()):
+            return {"archived": False, "archived_path": ""}
+        archive_root = root / ".radar-retry-archive" / safe_segment(namespace)
+        archive_root.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        target = archive_root / f"{safe_segment(source.name)}-{stamp}"
+        source.rename(target)
+        return {"archived": True, "archived_path": str(target)}
 
     async def request(
         self,
