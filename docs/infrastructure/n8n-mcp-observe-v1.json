@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "work_item": "n8n-mcp",
+  "release": "observe-v1",
+  "status": "implementation",
+  "contract": "flowoox.n8n-diagnostics/1.0",
+  "backend": {
+    "api": "n8n Public API v1",
+    "base_url": "deployment-owned and must end in /api/v1",
+    "authentication": "X-N8N-API-KEY",
+    "read_only_attestation_required": true,
+    "native_or_proxy_least_privilege_required": true,
+    "project_id_authorization_boundary": false
+  },
+  "operations": [
+    "n8n.workflows.list",
+    "n8n.executions.list",
+    "n8n.executions.get"
+  ],
+  "mcp_tools": [
+    "get_capabilities",
+    "n8n_list_workflows",
+    "n8n_list_executions",
+    "n8n_get_execution",
+    "n8n_diagnostic_bundle"
+  ],
+  "returned_data": {
+    "workflow_metadata": ["id", "name", "active", "archived", "timestamps", "bounded tags"],
+    "execution_metadata": ["id", "workflow_id", "status", "mode", "timestamps", "retry linkage", "finished"],
+    "execution_payload_data": false,
+    "workflow_node_parameters": false,
+    "credential_values": false
+  },
+  "mandatory_guards": [
+    "fixed GET-only adapter paths",
+    "no arbitrary URL/method/query passthrough",
+    "includeData=false on execution reads",
+    "optional exact workflow allowlist with response-side scope verification",
+    "execution reads require workflow_id when deployment workflow allowlist is configured",
+    "do not rely on projectId for authorization",
+    "redirects rejected",
+    "bounded pagination and sampling",
+    "response-byte and elapsed-time budgets",
+    "request/fan-out budgets",
+    "rate and concurrency caps",
+    "aggregate-before-fan-out diagnostic bundle",
+    "audit and correlation envelopes",
+    "no workflow trigger/mutation/activation/retry/stop/delete tools"
+  ],
+  "write_layer": {
+    "present": false,
+    "future_requirement": "separate identity and plan-approval-change-verify with pre-state/idempotency/rollback where safely supported"
+  },
+  "product_neutrality": {
+    "company_topology_embedded": false,
+    "credentials_embedded": false,
+    "workflow_ids_embedded": false,
+    "project_ids_embedded": false,
+    "company_policy_embedded": false
+  },
+  "references_checked": [
+    "n8n public API endpoint reference",
+    "n8n workflow/execution access model",
+    "current n8n projectId execution-filter behavior was not accepted as an authorization boundary"
+  ]
+}
