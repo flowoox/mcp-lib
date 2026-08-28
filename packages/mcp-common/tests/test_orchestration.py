@@ -3,10 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
 from mcp_common.operations import OperationPhase, RiskLevel
 from mcp_common.orchestration import OrchestrationStep, OrchestrationWorkflow
+from pydantic import ValidationError
 
 
 def _reference_path() -> Path:
