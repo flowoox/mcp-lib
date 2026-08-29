@@ -141,6 +141,44 @@ def test_a_rip_without_leading_numbers_is_not_collapsed_into_one_track(
     assert [assigned[path].title for path in files] == ["Deep", "Nocturnal", "Swarm"]
 
 
+def test_unique_titles_override_alphabetical_file_order(tmp_path: Path) -> None:
+    from traxx_mcp.metadata import assign_track_hints, verify_assignment
+
+    album = tmp_path / "X10 Vinyl"
+    album.mkdir()
+    paths = {
+        "asiento": album / "Horacio Cruz - Asiento XL (Original Mix).flac",
+        "egregor": album / "Horacio Cruz, Oscar Escapa - Egregor (Original Mix).flac",
+        "southern": album / "Horacio Cruz - Southern Countdown (Original Mix).flac",
+        "overcome": album / "Jay Lumen - Overcome (Original Mix).flac",
+    }
+    for path in paths.values():
+        path.write_bytes(b"fLaC")
+    files = sorted(paths.values())
+    hints = [
+        TrackHint(title="Overcome", number=1, duration_ms=300_000),
+        TrackHint(title="Asiento XL", number=2, duration_ms=383_378),
+        TrackHint(title="Southern Countdown", number=3, duration_ms=344_275),
+        TrackHint(title="Egregor", number=4, duration_ms=349_090),
+    ]
+
+    assigned = assign_track_hints(files, album_root=album, hints=hints)
+
+    assert assigned[paths["overcome"]].title == "Overcome"
+    assert assigned[paths["asiento"]].title == "Asiento XL"
+    assert assigned[paths["southern"]].title == "Southern Countdown"
+    assert assigned[paths["egregor"]].title == "Egregor"
+    assert verify_assignment(
+        assigned,
+        {
+            paths["overcome"]: 300_000,
+            paths["asiento"]: 383_378,
+            paths["southern"]: 344_275,
+            paths["egregor"]: 349_090,
+        },
+    ) == {}
+
+
 def test_a_number_in_the_middle_of_the_name_is_read(tmp_path: Path):
     album = tmp_path / "Wildflower"
     album.mkdir()
