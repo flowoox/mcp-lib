@@ -28,10 +28,10 @@ def test_contract_is_read_only_and_redacts_backend_details() -> None:
 
 
 def test_operation_surface_contains_only_inventory_gets() -> None:
-    assert _CONNECTOR_OPERATIONS == frozenset(
+    assert frozenset(
         {
             "manageengine_mdm.devices.list",
             "manageengine_mdm.devices.scan_status",
             "manageengine_mdm.devices.command_history",
         }
-    )
+    ) == _CONNECTOR_OPERATIONS
