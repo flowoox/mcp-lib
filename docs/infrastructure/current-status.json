@@ -1,46 +1,68 @@
 {
-  "schema_version": 3,
-  "updated_at": "2026-08-28T08:42:00Z",
+  "schema_version": 4,
+  "updated_at": "2026-08-29T08:21:00Z",
   "repository": "flowoox/mcp-lib",
-  "base_main_sha": "c8fb321d6652a04fdf65354d6aa9e285de93e933",
+  "base_main_sha": "bdc634c442d667d73188b6cdf11ad51ff29d2c17",
   "last_completed": {
-    "work_item": "employee-entry-reference",
-    "status": "complete",
-    "merged_pr": 48,
-    "merge_sha": "c8fb321d6652a04fdf65354d6aa9e285de93e933",
+    "work_item": "manageengine-mdm-mcp",
+    "status": "observe_complete",
+    "merged_pr": 51,
+    "merge_sha": "bdc634c442d667d73188b6cdf11ad51ff29d2c17",
     "verification": {
-      "pr_ci_run": 33156145728,
-      "main_ci_run": 33156238102,
+      "pr_ci_run": 33242832539,
+      "pr_service_ci_run": 33242832535,
+      "main_ci_run": 33242909146,
+      "main_service_ci_run": 33242909176,
       "result": "success"
     },
     "delivered": [
-      "shared strict orchestration contract in mcp-common",
-      "explicit operation allowlist and dependency-DAG validation",
-      "references-only workflow bindings for deployment-owned values",
-      "specialized-MCP lifecycle grouping with shared idempotency, explicit approval and independent verify",
-      "product-neutral employee-entry reference for n8n/agents",
-      "bounded n8n, Entra, network and security-audit evidence around an approved AD disabled-user lifecycle",
-      "tests and execution/extension documentation"
+      "product-neutral ManageEngine Mobile Device Manager Plus Observe v1 service",
+      "explicit fail-closed read-only backend attestation and least-privilege reader contract",
+      "fixed GET-only REST v1 operation allowlist with no generic URL or HTTP-method proxy",
+      "bounded device inventory, exact scan status, command history and aggregate-first diagnostic bundle",
+      "redacted public projections excluding hardware identifiers, assigned-user PII, location, firmware/APN secrets and command-initiator identity",
+      "shared ReadOnlyConnector, QueryBudget, audit/correlation and MCP transport-security integration",
+      "response-byte, concurrency, rate, page, sample, time and fan-out protections",
+      "tests, documentation, non-root container example and dedicated CI"
     ]
   },
+  "blocked_work_items": [
+    {
+      "work_item": "acmp-mcp",
+      "status": "blocked_vendor_contract",
+      "reason": "Current Aagon ACMP Public API documentation routes access through SICS and documents an unsafe privilege behavior for unknown SICS users. A production adapter cannot satisfy the mcp-lib least-privilege and fail-closed requirements until the exact supported REST/session contract and a dedicated non-admin read-only identity are proven for the target ACMP release.",
+      "required_to_resume": [
+        "obtain the current Aagon Support-supplied REST/Insomnia API definition for the deployed ACMP release",
+        "prove a dedicated service identity cannot inherit the documented unknown-SICS-user administrative/no-permission-check behavior",
+        "prove the exact read-only permissions for the planned inventory and health operations",
+        "keep ACMP public-API response limits bounded at the server and enforce lower MCP-side query budgets"
+      ],
+      "prohibited_until_resolved": [
+        "generic SICS publish/consume proxy",
+        "generic SQL or script execution",
+        "production credential wiring with an administrative SICS identity",
+        "write or admin operations"
+      ]
+    }
+  ],
   "current": {
-    "work_item": "acmp-mcp",
-    "branch": "feat/acmp-mcp-observe-v1",
+    "work_item": "freshdesk-mcp",
+    "branch": "feat/freshdesk-mcp-observe-v1",
     "status": "ready",
-    "goal": "Discover the supported ACMP API and authorization surface, freeze a least-privilege read-only contract, then implement bounded client, inventory and health diagnostics without generic SQL, script or admin proxying.",
+    "goal": "Freeze and implement a bounded, product-neutral, least-privilege read-only Freshdesk diagnostics contract for ticket/service-desk observation without exposing unrestricted message bodies, attachments, arbitrary API paths or mutation operations.",
     "first_actions": [
-      "resync main, open PRs/issues and CI before branching",
-      "verify current vendor-supported ACMP API/authentication and least-privilege read role",
-      "define typed observe-only contract and endpoint allowlist before adapter implementation",
-      "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and server-load protections",
-      "keep server URLs, credentials, containers/groups and company policy deployment-owned"
+      "resync main, open PRs/issues, active branches and CI before branching",
+      "verify the current Freshdesk API v2 authentication, pagination, rate-limit and least-privilege read permissions from vendor documentation",
+      "define typed projections for ticket status, assignment, SLA and bounded conversation metadata before adapter implementation",
+      "redact or omit requester/agent PII and message bodies by default; never stream arbitrary attachments",
+      "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and aggregate-before-fan-out protections",
+      "keep tenant URL, credentials, groups, agents and company policy deployment-owned"
     ]
   },
   "next_after_current": {
-    "work_item": "manageengine-mdm-mcp",
-    "branch": "feat/manageengine-mdm-mcp-observe-v1",
-    "goal": "Bounded read-only device/compliance/inventory diagnostics through a least-privilege supported API surface."
+    "work_item": "mailstore-cloud-mcp",
+    "status": "queued",
+    "goal": "Discover the supported MailStore Cloud API and implement bounded read-only archive/search/health diagnostics without unrestricted mailbox-content export."
   },
-  "blockers": [],
-  "continuation_rule": "Resync main, open PRs, issues and CI before every run; protect parallel work; continue the first non-blocked queued item."
+  "continuation_rule": "Before every run resync main, open PRs/issues, CI and parallel branches; protect foreign work; skip blocked items and continue the first non-blocked queued item. Merge only after relevant PR CI is green and verify main CI after merge."
 }
