@@ -24,8 +24,10 @@ from .repository import BatchRepository
 
 COMPLETE_STATES = {"completed", "complete", "succeeded", "success", "finished"}
 FAILED_STATES = {
+    "aborted",
     "cancelled",
     "canceled",
+    "denied",
     "errored",
     "error",
     "failed",
