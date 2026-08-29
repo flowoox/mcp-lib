@@ -3,29 +3,28 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "flowoox-mcp-soulseek"
-version = "0.3.6"
-description = "Independent MCP service for complete Soulseek/slskd album folders."
+name = "flowoox-mcp-manageengine-mdm"
+version = "0.1.0"
+description = "Product-neutral, bounded read-only MCP service for ManageEngine Mobile Device Manager Plus diagnostics."
 readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}
 dependencies = [
-  "flowoox-mcp-common>=0.1.0",
+  "flowoox-mcp-common>=0.2.0",
   "httpx>=0.28,<1",
   "mcp>=1.28.1,<2",
   "pydantic>=2.10,<3",
   "pydantic-settings>=2.7,<3",
-  "pyyaml>=6,<7",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=9.1,<10", "pytest-asyncio>=1.4,<2", "ruff>=0.9,<1"]
 
 [project.scripts]
-mcp-soulseek = "soulseek_mcp.server:main"
+mcp-manageengine-mdm = "manageengine_mdm_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/soulseek_mcp"]
+packages = ["src/manageengine_mdm_mcp"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "../../packages/mcp-common/src"]

@@ -1,6 +1,6 @@
 FROM python:3.12-slim AS runtime
 
-ARG VERSION=0.3.5
+ARG VERSION=0.3.6
 LABEL org.opencontainers.image.title="flowoox Soulseek MCP" \
       org.opencontainers.image.description="MCP service for complete Soulseek/slskd album folders" \
       org.opencontainers.image.source="https://github.com/flowoox/mcp-lib" \
