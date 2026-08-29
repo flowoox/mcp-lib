@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp_common.mcp_security import build_mcp_server_security
 from mcp_common.rights import validate_rights
 
-from .client import SlskdClient, classify_batch
+from .client import ReconnectCoordinator, SlskdClient, classify_batch
 from .config import RuntimeConfig, RuntimeConfigStore, get_settings
 from .contract import capabilities
 from .repository import BatchRepository, CandidateRepository
@@ -21,6 +21,7 @@ def create_server() -> FastMCP:
     batches = BatchRepository(settings.soulseek_batch_file)
     slskd_config = SlskdConfigurationWriter(settings.slskd_config_path)
     queue_locks: dict[str, asyncio.Lock] = {}
+    reconnect = ReconnectCoordinator()
     security = build_mcp_server_security(settings, service_hosts=("mcp-soulseek",))
     mcp = FastMCP(
         "Soulseek Album MCP",
@@ -47,6 +48,7 @@ def create_server() -> FastMCP:
             configs.get(),
             batches=batches,
             downloads_dir=settings.downloads_dir,
+            reconnect=reconnect,
         )
 
     @mcp.tool()
@@ -64,6 +66,9 @@ def create_server() -> FastMCP:
         web_username: str = "",
         web_password: str = "",
         listen_port: int = 50300,
+        auto_reconnect: bool = True,
+        reconnect_wait_seconds: int = 12,
+        reconnect_cooldown_seconds: int = 30,
     ) -> dict[str, Any]:
         """Persist API, search, quality and optional account settings.
 
@@ -81,6 +86,9 @@ def create_server() -> FastMCP:
             preferred_formats=preferred_formats,
             lossless_only=lossless_only,
             minimum_lossy_bitrate_kbps=minimum_lossy_bitrate_kbps,
+            auto_reconnect=auto_reconnect,
+            reconnect_wait_seconds=reconnect_wait_seconds,
+            reconnect_cooldown_seconds=reconnect_cooldown_seconds,
         )
         configs.save(config)
 
@@ -173,6 +181,7 @@ def create_server() -> FastMCP:
             "lossless_only": stats.get("lossless_only"),
             "minimum_lossy_bitrate_kbps": stats.get("minimum_lossy_bitrate_kbps"),
             "search_text": stats.get("search_text"),
+            "auto_reconnect_triggered": stats.get("auto_reconnect_triggered", False),
         }
 
     @mcp.tool()

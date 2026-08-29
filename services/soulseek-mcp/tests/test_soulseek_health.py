@@ -8,7 +8,13 @@ from soulseek_mcp.config import RuntimeConfig
 
 class StubClient(SlskdClient):
     def __init__(self, server: Any, *, after_connect: Any = None) -> None:
-        super().__init__(RuntimeConfig(base_url="http://slskd:5030", api_key="k"))
+        super().__init__(
+            RuntimeConfig(
+                base_url="http://slskd:5030",
+                api_key="k",
+                auto_reconnect=False,
+            )
+        )
         self.server = server
         self.after_connect = after_connect
         self.calls: list[tuple[str, str]] = []

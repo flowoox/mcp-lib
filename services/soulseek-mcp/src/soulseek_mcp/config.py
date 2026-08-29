@@ -20,6 +20,9 @@ class RuntimeConfig(BaseModel):
     )
     lossless_only: bool = True
     minimum_lossy_bitrate_kbps: int = Field(default=320, ge=128, le=1411)
+    auto_reconnect: bool = True
+    reconnect_wait_seconds: int = Field(default=12, ge=1, le=60)
+    reconnect_cooldown_seconds: int = Field(default=30, ge=1, le=300)
 
     @field_validator("base_url")
     @classmethod
@@ -64,6 +67,9 @@ class Settings(BaseSettings):
     preferred_audio_formats: str = "flac,wav,alac,aiff,aif,ape,wv"
     lossless_only: bool = True
     minimum_lossy_bitrate_kbps: int = 320
+    slskd_auto_reconnect: bool = True
+    slskd_reconnect_wait_seconds: int = 12
+    slskd_reconnect_cooldown_seconds: int = 30
 
     def initial_runtime_config(self) -> RuntimeConfig:
         return RuntimeConfig(
@@ -75,6 +81,9 @@ class Settings(BaseSettings):
             preferred_formats=self.preferred_audio_formats,
             lossless_only=self.lossless_only,
             minimum_lossy_bitrate_kbps=self.minimum_lossy_bitrate_kbps,
+            auto_reconnect=self.slskd_auto_reconnect,
+            reconnect_wait_seconds=self.slskd_reconnect_wait_seconds,
+            reconnect_cooldown_seconds=self.slskd_reconnect_cooldown_seconds,
         )
 
 

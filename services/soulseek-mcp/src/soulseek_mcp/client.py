@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import shutil
 import uuid
 from contextlib import suppress
@@ -50,7 +51,17 @@ MAX_FILE_RETRIES = 2
 
 
 class SlskdError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class ReconnectCoordinator:
+    """Serialize reconnects and suppress reconnect storms in one MCP process."""
+
+    def __init__(self) -> None:
+        self.lock = asyncio.Lock()
+        self.last_attempt_at: float | None = None
 
 
 def deterministic_batch_id(candidate_id: str, external_id: str | None = None) -> str:
@@ -148,12 +159,14 @@ class SlskdClient:
         timeout: float = 45,
         batches: BatchRepository | None = None,
         downloads_dir: Path = Path("/downloads"),
+        reconnect: ReconnectCoordinator | None = None,
     ):
         self.config = config
         self.timeout = timeout
         # An album is a local idea; slskd only knows users and files.
         self.batches = batches
         self.downloads_dir = downloads_dir
+        self.reconnect = reconnect or ReconnectCoordinator()
 
     @property
     def headers(self) -> dict[str, str]:
@@ -220,7 +233,8 @@ class SlskdClient:
         if response.status_code >= 400:
             raise SlskdError(
                 f"slskd {method} {path} failed ({response.status_code}): "
-                f"{response.text[:1200]}"
+                f"{response.text[:1200]}",
+                status_code=response.status_code,
             )
         if response.status_code == 204 or not response.content:
             return None
@@ -238,14 +252,7 @@ class SlskdClient:
         """
         await self.request("GET", "/api/v0/searches")
 
-        status = await self.server_status()
-        if not status["logged_in"]:
-            raise SlskdError(
-                f"slskd ist erreichbar, aber nicht im Soulseek-Netz angemeldet "
-                f"(Zustand: {status['state'] or 'unbekannt'}). Ohne Anmeldung schlägt "
-                "jede Suche mit 409 fehl. Rufe connect_soulseek auf, oder prüfe "
-                "Benutzername und Passwort, falls die Anmeldung abgelehnt wird."
-            )
+        status = await self.ensure_connected()
         shared = await self.shared_file_count()
         warnings: list[str] = []
         if shared == 0:
@@ -264,6 +271,7 @@ class SlskdClient:
             "soulseek_state": status["state"],
             "soulseek_username": status["username"],
             "logged_in": True,
+            "auto_reconnect_triggered": status["reconnect_triggered"],
             "shared_files": shared,
             "warnings": warnings,
             "lossless_only": self.config.lossless_only,
@@ -318,11 +326,19 @@ class SlskdClient:
         if already["logged_in"]:
             return {**already, "triggered": False}
 
+        # This method is also used by the automatic path. Keep even internal
+        # callers bounded if a future configuration or refactor supplies a
+        # surprising value.
+        wait_seconds = max(0, min(int(wait_seconds), 60))
         await self.request("PUT", "/api/v0/server", json={"action": "connect"})
-        deadline = asyncio.get_running_loop().time() + wait_seconds
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + wait_seconds
         status = already
-        while asyncio.get_running_loop().time() < deadline:
-            await asyncio.sleep(1.5)
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                break
+            await asyncio.sleep(min(1.5, remaining))
             status = await self.server_status()
             if status["logged_in"]:
                 return {**status, "triggered": True}
@@ -335,6 +351,81 @@ class SlskdClient:
                 "Soulseek-Server ihn ab — dann hilft ein anderer Name."
             ),
         }
+
+    @staticmethod
+    def _disconnected_error(
+        status: dict[str, Any],
+        *,
+        detail: str = "",
+    ) -> SlskdError:
+        state = str(status.get("state") or "unbekannt")[:120]
+        suffix = f" {detail}" if detail else ""
+        return SlskdError(
+            "slskd ist erreichbar, aber nicht im Soulseek-Netz angemeldet "
+            f"(Zustand: {state}). Ohne Anmeldung schlägt jede Suche mit 409 fehl."
+            f"{suffix}"
+        )
+
+    async def ensure_connected(self) -> dict[str, Any]:
+        """Return a logged-in state, attempting one bounded reconnect if needed.
+
+        Every client created by the MCP server shares one coordinator. This
+        prevents concurrent searches from sending a burst of connect requests,
+        while the cooldown prevents repeated failed credentials from creating
+        an endless reconnect loop.
+        """
+        status = await self.server_status()
+        if status["logged_in"]:
+            return {**status, "reconnect_triggered": False}
+        if not self.config.auto_reconnect:
+            raise self._disconnected_error(
+                status,
+                detail="Automatische Wiederverbindung ist deaktiviert.",
+            )
+
+        async with self.reconnect.lock:
+            # A concurrent request may have completed the login while this one
+            # waited for the lock.
+            status = await self.server_status()
+            if status["logged_in"]:
+                return {**status, "reconnect_triggered": False}
+
+            loop = asyncio.get_running_loop()
+            now = loop.time()
+            if self.reconnect.last_attempt_at is not None:
+                elapsed = now - self.reconnect.last_attempt_at
+                if elapsed < self.config.reconnect_cooldown_seconds:
+                    retry_after = math.ceil(
+                        self.config.reconnect_cooldown_seconds - elapsed
+                    )
+                    raise self._disconnected_error(
+                        status,
+                        detail=(
+                            "Ein automatischer Wiederverbindungsversuch lief bereits; "
+                            f"der nächste ist frühestens in {retry_after} Sekunden erlaubt."
+                        ),
+                    )
+
+            # Set the timestamp before performing I/O so even a rejected or
+            # failed PUT is subject to the same bounded cooldown.
+            self.reconnect.last_attempt_at = now
+            try:
+                connected = await self.connect_soulseek(
+                    wait_seconds=self.config.reconnect_wait_seconds
+                )
+            finally:
+                # Start the full cooldown after the I/O completes as well. A
+                # slow failed login must not consume most of its own cooldown.
+                self.reconnect.last_attempt_at = loop.time()
+            if not connected["logged_in"]:
+                raise self._disconnected_error(
+                    connected,
+                    detail=(
+                        "Der automatische Wiederverbindungsversuch wurde ausgelöst, "
+                        "aber nicht rechtzeitig abgeschlossen. Prüfe das Konto in slskd."
+                    ),
+                )
+            return {**connected, "reconnect_triggered": bool(connected["triggered"])}
 
     async def search_album(
         self,
@@ -349,6 +440,7 @@ class SlskdClient:
         search_text: str | None = None,
     ) -> tuple[str, list[AlbumCandidate], dict[str, Any]]:
         timeout_seconds = timeout_seconds or self.config.search_timeout
+        connection = await self.ensure_connected()
         payload = {
             # Peers match every term against the file path, so the query is an
             # AND over words. A caller that got no answer at all may hand in a
@@ -373,7 +465,19 @@ class SlskdClient:
             # same query: 20 gives 0 responses, 20000 gives 10.
             "searchTimeout": timeout_seconds * 1000,
         }
-        started = await self.request("POST", "/api/v0/searches", json=payload)
+        try:
+            started = await self.request("POST", "/api/v0/searches", json=payload)
+        except SlskdError as exc:
+            # A disconnect can race the preflight. Retry exactly once, and only
+            # when slskd itself confirms that the 409 came with a logged-out
+            # state. Other conflicts must keep their original meaning.
+            if exc.status_code != 409 or connection["reconnect_triggered"]:
+                raise
+            status = await self.server_status()
+            if status["logged_in"]:
+                raise
+            connection = await self.ensure_connected()
+            started = await self.request("POST", "/api/v0/searches", json=payload)
         if not isinstance(started, dict):
             raise SlskdError("slskd returned an unexpected search response")
         search_id = str(
@@ -431,6 +535,7 @@ class SlskdClient:
             "lossless_only": effective_lossless,
             "minimum_lossy_bitrate_kbps": effective_bitrate,
             "search_text": payload["searchText"],
+            "auto_reconnect_triggered": connection["reconnect_triggered"],
         }
         return (search_id, candidates[:max_candidates], stats)
 

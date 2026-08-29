@@ -28,6 +28,7 @@ def capabilities() -> dict[str, Any]:
             "idempotent_queue": True,
             "expected_track_count_validation": True,
             "login_state_reporting": True,
+            "bounded_auto_reconnect": True,
             "recoverable_retry_archive": True,
             "verified_library_cleanup": True,
         },

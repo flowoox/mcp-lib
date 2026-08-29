@@ -20,7 +20,13 @@ async def run_search(client: SlskdClient, **kwargs: Any) -> dict[str, Any]:
         params: dict[str, Any] | None = None,
         allow_not_found: bool = False,
     ) -> Any:
-        del path, params, allow_not_found
+        del params, allow_not_found
+        if path == "/api/v0/server":
+            return {
+                "state": "Connected, LoggedIn",
+                "isConnected": True,
+                "isLoggedIn": True,
+            }
         if method == "POST":
             sent.update(json or {})
             return {"id": "search-1", "state": "InProgress"}
