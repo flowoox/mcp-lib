@@ -610,6 +610,32 @@ def assign_track_hints(
     ordered = list(files)
     chosen: dict[Path, TrackHint | None] = {}
 
+    # Some rippers prefix every file as "track-total", for example
+    # "5-12. Alors on danse.flac". The generic parser must treat that shape
+    # as disc-track because one filename alone is ambiguous. At album scope it
+    # becomes provable when every file carries the same total and the first
+    # numbers uniquely cover the single-disc release.
+    if len(ordered) == len(hints):
+        track_total: dict[Path, TrackHint] = {}
+        for path in ordered:
+            match = LEADING_TRACK_RE.match(path.stem)
+            if not match or not match.group("disc"):
+                break
+            number = int(match.group("disc"))
+            total = int(match.group("track"))
+            candidates = [
+                hint
+                for hint in hints
+                if hint.disc_number == 1 and hint.number == number
+            ]
+            if total != len(ordered) or len(candidates) != 1:
+                break
+            track_total[path] = candidates[0]
+        if len(track_total) == len(ordered) and len(
+            {(hint.disc_number, hint.number) for hint in track_total.values()}
+        ) == len(ordered):
+            return track_total
+
     # Claim unambiguous filename-title matches first.  Require all meaningful
     # catalogue words so generic fragments such as "mix" cannot win, and only
     # accept a claim when both the path's best hint and that hint's path are
