@@ -15,12 +15,61 @@ concurrency:
 jobs:
   actions-policy:
     name: GitHub Actions pin policy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Reject mutable third-party Action references
         run: python scripts/check_actions_pins.py
+      - name: Reject transitive Buildx bootstrap regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -nE 'docker/setup-(buildx|qemu)-action@' .github/workflows; then
+            echo 'setup-buildx/setup-qemu Actions reintroduce transitive executable bootstrap' >&2
+            exit 1
+          fi
+          grep -Fq 'BUILDX_LINUX_AMD64_SHA256="48af8a397ebd60178778bf63611dbcebe5f5e7a9be90eb9147b24b9587455778"' scripts/bootstrap-buildx-secure.sh
+          grep -Fq 'BUILDKIT_IMAGE="docker.io/moby/buildkit:v0.32.2@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8"' scripts/bootstrap-buildx-secure.sh
+          for workflow in .github/workflows/publish-archive.yml .github/workflows/publish-soulseek.yml .github/workflows/publish-traxx.yml; do
+            grep -Fq 'persist-credentials: false' "$workflow"
+            grep -Fq 'run: bash scripts/bootstrap-buildx-secure.sh' "$workflow"
+            grep -Fq "github-token: ''" "$workflow"
+            grep -Fq 'builder:' "$workflow"
+            grep -Fq 'steps.buildx.outputs.builder' "$workflow"
+          done
+
+  publisher-bootstrap:
+    name: Verified publisher bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Bootstrap pinned Buildx and BuildKit
+        id: buildx
+        shell: bash
+        run: bash scripts/bootstrap-buildx-secure.sh
+      - name: Verify pinned builder is usable
+        shell: bash
+        env:
+          BUILDER: ${{ steps.buildx.outputs.builder }}
+        run: |
+          set -euo pipefail
+          test -n "$BUILDER"
+          docker buildx inspect "$BUILDER" --bootstrap
+      - name: Remove ephemeral Buildx builder
+        if: always()
+        shell: bash
+        env:
+          BUILDER: ${{ steps.buildx.outputs.builder }}
+        run: |
+          if [[ -n "$BUILDER" ]]; then
+            docker buildx rm --force "$BUILDER" || true
+          fi
 
   common:
     name: mcp-common tests
@@ -28,6 +77,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
@@ -86,6 +137,8 @@ jobs:
             distribution: flowoox-mcp-n8n
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
@@ -118,7 +171,7 @@ jobs:
 
   docker:
     name: ${{ matrix.service }} image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -126,12 +179,30 @@ jobs:
         service: [soulseek-mcp, traxx-mcp, archive-mcp]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          persist-credentials: false
+      - name: Bootstrap verified Buildx and BuildKit
+        id: buildx
+        shell: bash
+        env:
+          SECURE_BUILDX_BUILDER: mcp-lib-${{ matrix.service }}
+        run: bash scripts/bootstrap-buildx-secure.sh
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
+          builder: ${{ steps.buildx.outputs.builder }}
           context: .
           file: services/${{ matrix.service }}/Dockerfile
           push: false
+          github-token: ''
           tags: local/${{ matrix.service }}:test
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+      - name: Remove ephemeral Buildx builder
+        if: always()
+        shell: bash
+        env:
+          BUILDER: ${{ steps.buildx.outputs.builder }}
+        run: |
+          if [[ -n "$BUILDER" ]]; then
+            docker buildx rm --force "$BUILDER" || true
+          fi
