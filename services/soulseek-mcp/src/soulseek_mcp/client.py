@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import uuid
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -175,6 +176,29 @@ class SlskdClient:
         target = archive_root / f"{safe_segment(source.name)}-{stamp}"
         source.rename(target)
         return {"archived": True, "archived_path": str(target)}
+
+    def cleanup_download_folder(self, folder: str) -> dict[str, Any]:
+        """Remove one verified Radar artifact, never an arbitrary download path.
+
+        The caller still has to prove that Traxx contains the complete album.
+        This filesystem boundary independently limits deletion to descendants
+        of ``/downloads/library`` so a bad or forged MCP argument cannot erase
+        the share, retry archive, quarantine, or the downloads root itself.
+        """
+        root = self.downloads_dir.resolve()
+        source = resolve_contained_path(root, folder)
+        relative = source.relative_to(root)
+        # Radar writes library/<profile>/<artist>/<album>. Requiring all four
+        # components prevents a forged call from deleting a whole profile or
+        # artist tree while still allowing a nested album/disc directory.
+        if not relative.parts or relative.parts[0] != "library" or len(relative.parts) < 4:
+            raise ValueError("Only a Radar album folder below library can be cleaned")
+        if not source.exists():
+            return {"removed": False, "path": str(source), "reason": "missing"}
+        if not source.is_dir():
+            raise ValueError("Only a Radar album directory can be cleaned")
+        shutil.rmtree(source)
+        return {"removed": True, "path": str(source)}
 
     async def request(
         self,
@@ -429,6 +453,17 @@ class SlskdClient:
         stored = self.batches.get(requested_id)
         if stored is None:
             return None
+        # A cancelled operation is historical evidence, not an active queue
+        # entry. Returning it as idempotent made every Radar retry a no-op.
+        # Saving a new DownloadBatch below reuses the deterministic key while
+        # resetting cancelled/retries/queued_at to the new attempt.
+        if stored.cancelled:
+            return None
+        target = self.downloads_dir / PurePosixPath(stored.destination)
+        if stored.collected and not target.is_dir():
+            # The verified retention job may have removed the local artifact.
+            # A later repair must be able to acquire it again.
+            return None
         output = await self.get_batch(requested_id)
         if destination:
             output.setdefault("artifact_path", sanitize_destination(destination))
@@ -569,6 +604,21 @@ class SlskdClient:
                 f"Unknown download batch {batch_id}. It was queued by a different "
                 "instance of this connector, or its record has expired."
             )
+        if record.cancelled:
+            return {
+                "batch_id": batch_id,
+                "retried": [],
+                "username": record.username,
+                "state": "cancelled",
+                "file_count": len(record.filenames),
+                "files_seen": 0,
+                "destination": record.destination,
+                "artifact_path": record.destination,
+                "local_path": str(
+                    self.downloads_dir / PurePosixPath(record.destination)
+                ),
+                "files": [],
+            }
         payload = await self.request(
             "GET",
             f"/api/v0/transfers/downloads/{quote(record.username, safe='')}",

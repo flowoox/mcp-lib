@@ -36,7 +36,45 @@ from .tus import TusUnsupported, TusUploader, TusUploadResult, recursive_find
 
 
 class TraxxError(RuntimeError):
-    pass
+    """Traxx failure with enough transport detail for mutation cleanup.
+
+    A client-side timeout after a POST is fundamentally different from a 422
+    response: the former may have lost the success response after Traxx
+    committed, while the latter positively rejected the request.  Import
+    cleanup must retain uploaded files in the first case and may remove them in
+    the second.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        method: str = "",
+        path: str = "",
+        mutation_ambiguous: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.method = method.upper()
+        self.path = path
+        self.mutation_ambiguous = mutation_ambiguous
+
+    @property
+    def definitively_rejected(self) -> bool:
+        """Whether Traxx positively refused this request before mutation.
+
+        Ordinary 4xx API validation/auth/conflict responses are definitive.
+        Request Timeout is deliberately excluded because an intermediary can
+        emit it while the origin is still completing the mutation.
+        """
+
+        return (
+            self.status_code is not None
+            and 400 <= self.status_code < 500
+            and self.status_code != 408
+            and not self.mutation_ambiguous
+        )
 
 
 # The instance publishes the upload types it accepts in its bootstrap
@@ -237,18 +275,33 @@ class TraxxClient:
     ) -> Any:
         if not self.config.base_url:
             raise TraxxError("Traxx URL is not configured")
-        async with httpx.AsyncClient(
-            base_url=self.config.base_url,
-            headers=self.headers,
-            verify=self.config.verify_tls,
-            timeout=self.config.timeout_seconds,
-            follow_redirects=True,
-        ) as client:
-            response = await client.request(method, path, json=json, params=params)
+        normalized_method = method.upper()
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.config.base_url,
+                headers=self.headers,
+                verify=self.config.verify_tls,
+                timeout=self.config.timeout_seconds,
+                follow_redirects=True,
+            ) as client:
+                response = await client.request(method, path, json=json, params=params)
+        except httpx.HTTPError as exc:
+            mutation_ambiguous = normalized_method not in {"GET", "HEAD", "OPTIONS"}
+            raise TraxxError(
+                f"Traxx {normalized_method} {path} transport failed: {exc}",
+                method=normalized_method,
+                path=path,
+                mutation_ambiguous=mutation_ambiguous,
+            ) from exc
         if response.status_code >= 400 and not allow_error:
             raise TraxxError(
-                f"Traxx {method} {path} failed ({response.status_code}): "
-                f"{response.text[:1400]}"
+                f"Traxx {normalized_method} {path} failed ({response.status_code}): "
+                f"{response.text[:1400]}",
+                status_code=response.status_code,
+                method=normalized_method,
+                path=path,
+                mutation_ambiguous=response.status_code >= 500
+                or response.status_code == 408,
             )
         body: Any = None
         if response.content:
@@ -1002,9 +1055,22 @@ class TraxxClient:
         image: str = "",
         genres: list[str] | None = None,
     ) -> int:
+        artist_id, _created = await self._ensure_artist_with_state(
+            name, image=image, genres=genres
+        )
+        return artist_id
+
+    async def _ensure_artist_with_state(
+        self,
+        name: str,
+        *,
+        image: str = "",
+        genres: list[str] | None = None,
+    ) -> tuple[int, bool]:
+        """Return the artist id and whether this call created the entity."""
         existing = await self._find_exact_resource("artists", name)
         if existing:
-            return existing
+            return existing, False
         created = await self.request(
             "POST",
             "/api/v1/artists",
@@ -1018,16 +1084,10 @@ class TraxxClient:
         value = recursive_find(created, {"id"})
         if value is None:
             raise TraxxError(f"Traxx created artist {name!r} without returning an id")
-        return int(value)
+        return int(value), True
 
-    async def ensure_album(
-        self,
-        name: str,
-        *,
-        artist_id: int,
-        release_date: str = "",
-        image: str = "",
-    ) -> int:
+    async def _find_existing_album(self, name: str, *, artist_id: int) -> int | None:
+        """Find the exact artist/album pair without creating anything."""
         expected = normalize_text(name)
         for item in await self.search_resource("albums", name, limit=50):
             current = str(get_case_insensitive(item, "name", "title", default=""))
@@ -1043,6 +1103,35 @@ class TraxxClient:
                 return int(value)
             except (TypeError, ValueError):
                 continue
+        return None
+
+    async def ensure_album(
+        self,
+        name: str,
+        *,
+        artist_id: int,
+        release_date: str = "",
+        image: str = "",
+    ) -> int:
+        existing = await self._find_existing_album(name, artist_id=artist_id)
+        if existing:
+            return existing
+        return await self._create_album(
+            name,
+            artist_id=artist_id,
+            release_date=release_date,
+            image=image,
+        )
+
+    async def _create_album(
+        self,
+        name: str,
+        *,
+        artist_id: int,
+        release_date: str = "",
+        image: str = "",
+    ) -> int:
+        """Create an album and return the id produced by this exact request."""
         date_value = self._normalise_release_date(release_date)
         payload: dict[str, Any] = {
             "name": name,
@@ -1064,6 +1153,28 @@ class TraxxClient:
         if value is None:
             raise TraxxError(f"Traxx created album {name!r} without returning an id")
         return int(value)
+
+    async def _delete_staging_file_entries(self, entry_ids: list[str]) -> bool:
+        """Best-effort removal for uploads that were never attached to a track."""
+        numeric_ids = sorted(
+            {
+                int(value)
+                for value in entry_ids
+                if str(value).strip().isdigit() and int(value) > 0
+            }
+        )
+        if not numeric_ids:
+            return not entry_ids
+        try:
+            result = await self.request(
+                "POST",
+                "/api/v1/file-entries/delete",
+                json={"entryIds": numeric_ids, "deleteForever": True},
+                allow_error=True,
+            )
+        except Exception:  # noqa: BLE001 - cleanup must not mask the root failure
+            return False
+        return 200 <= int(result.get("status") or 0) < 300
 
     @staticmethod
     def _normalise_release_date(value: str) -> str:
@@ -1166,6 +1277,12 @@ class TraxxClient:
                 and tracks_count >= expected
                 and bool(catalog_verification.get("complete"))
             ),
+            # Count equality is not identity proof.  Destructive retention in
+            # Radar may only rely on a readback that matched the concrete
+            # catalogue titles supplied for this release.
+            "identity_verified": bool(track_hints)
+            and bool(catalog_verification.get("checked"))
+            and bool(catalog_verification.get("complete")),
             "catalog_verification": catalog_verification,
         }
 
@@ -1209,11 +1326,21 @@ class TraxxClient:
         *,
         external_url: str,
         local_cover: Path | None,
+        staging_file_entry_ids: list[str] | None = None,
     ) -> str:
         if local_cover:
             try:
                 upload = await self.upload_file(local_cover, upload_type="image")
+                if upload.file_entry_id and staging_file_entry_ids is not None:
+                    staging_file_entry_ids.append(str(upload.file_entry_id))
                 discovery = await self.discover_file_entry(upload)
+                discovered_id = discovery.get("file_entry_id")
+                if (
+                    discovered_id
+                    and staging_file_entry_ids is not None
+                    and str(discovered_id) not in staging_file_entry_ids
+                ):
+                    staging_file_entry_ids.append(str(discovered_id))
                 uploaded = str(discovery.get("file_url") or "")
                 if uploaded:
                     return uploaded
@@ -1419,6 +1546,12 @@ class TraxxClient:
         resolved = resolve_contained_path(self.downloads_dir, folder)
         if not resolved.is_dir():
             raise FileNotFoundError(resolved)
+        # A remote cover becomes part of the artifact before the authoritative
+        # scan. Previously it was downloaded afterwards and could bypass the
+        # malware gate entirely.
+        cover_data, cover_mime, cover_path = await self._load_cover(
+            resolved, cover_url, persist=not dry_run
+        )
         malware_scan: dict[str, Any] = {
             "enabled": False,
             "clean": None,
@@ -1454,9 +1587,6 @@ class TraxxClient:
         release_date = self._normalise_release_date(
             release_date
         ) or self._normalise_release_date(first_local.release_date)
-        cover_data, cover_mime, cover_path = await self._load_cover(
-            resolved, cover_url, persist=not dry_run
-        )
         inspection = [
             {"path": str(path), "metadata": inspect_audio_file(path).as_dict()}
             for path in files
@@ -1553,30 +1683,195 @@ class TraxxClient:
         oversized = await self.check_upload_sizes(files)
         if oversized:
             raise TraxxError(oversized)
-        traxx_cover_url = await self._cover_url_for_traxx(
-            external_url=cover_url,
-            local_cover=cover_path,
-        )
-        cover_report = describe_cover(cover_path, traxx_cover_url)
-        artist_id = await self.ensure_artist(
-            expected_artist,
-            image=traxx_cover_url,
-            genres=list(genres or []),
-        )
-        album_id = await self.ensure_album(
-            expected_album,
-            artist_id=artist_id,
-            release_date=release_date,
-            image=traxx_cover_url,
-        )
 
+        # Complete the fallible upload/FileEntry/metadata phase before creating
+        # a library artist or album. A failed upload used to happen after
+        # ensure_album(), leaving the empty albums seen in production.
+        existing_artist_id = await self._find_exact_resource("artists", expected_artist)
+        existing_album_id = (
+            await self._find_existing_album(
+                expected_album, artist_id=existing_artist_id
+            )
+            if existing_artist_id
+            else None
+        )
+        existing_tracks: dict[Path, dict[str, Any]] = {}
+        if existing_album_id:
+            for path in files:
+                local = inspect_audio_file(path)
+                existing = await self._find_existing_track(
+                    name=local.title,
+                    album_id=existing_album_id,
+                    number=max(1, local.track_number),
+                )
+                if existing is not None:
+                    existing_tracks[path] = existing
+        files_to_upload = [path for path in files if path not in existing_tracks]
+        cover_file_entry_ids: list[str] = []
+        audio_file_entry_ids: dict[Path, list[str]] = {
+            path: [] for path in files_to_upload
+        }
+        # A completed idempotent readback has nothing new to attach the image
+        # to.  Uploading the same cover again on every reconcile leaked one
+        # FileEntry per run even though no catalogue entity changed.
+        if files_to_upload or not existing_album_id:
+            try:
+                traxx_cover_url = await self._cover_url_for_traxx(
+                    external_url=cover_url,
+                    local_cover=cover_path,
+                    staging_file_entry_ids=cover_file_entry_ids,
+                )
+            except Exception:
+                # No library mutation has started, so every FileEntry produced
+                # by the failed cover upload is unreferenced.
+                await self._delete_staging_file_entries(cover_file_entry_ids)
+                raise
+        else:
+            traxx_cover_url = ""
+        # If local cover upload fell back to the external URL, its FileEntry is
+        # not the URL any entity will receive and is safe to remove immediately.
+        cover_upload_selected = bool(
+            cover_file_entry_ids
+            and traxx_cover_url
+            and traxx_cover_url != str(cover_url or "")
+        )
+        if cover_file_entry_ids and not cover_upload_selected:
+            await self._delete_staging_file_entries(cover_file_entry_ids)
+            cover_file_entry_ids.clear()
+        cover_report = describe_cover(cover_path, traxx_cover_url)
+        prepared: dict[Path, dict[str, Any]] = {}
+        preflight_failures: list[str] = []
+        for path in files_to_upload:
+            try:
+                upload = await self.upload_file(path)
+                if upload.file_entry_id:
+                    audio_file_entry_ids[path].append(str(upload.file_entry_id))
+                discovery = await self.discover_file_entry(upload)
+                file_id = discovery.get("file_entry_id")
+                file_url = discovery.get("file_url")
+                if file_id and str(file_id) not in audio_file_entry_ids[path]:
+                    audio_file_entry_ids[path].append(str(file_id))
+                if not file_id:
+                    preflight_failures.append(
+                        f"{path.name}: no BeMusic FileEntry id was exposed"
+                    )
+                    continue
+                extracted = await self.extract_metadata(
+                    str(file_id), auto_match_album=False
+                )
+                metadata = (
+                    get_case_insensitive(extracted, "metadata", default=extracted)
+                    if isinstance(extracted, dict)
+                    else {}
+                )
+                if not file_url:
+                    preflight_failures.append(
+                        f"{path.name}: a playable uploaded-file URL is required"
+                    )
+                    continue
+                prepared[path] = {
+                    "upload": upload,
+                    "discovery": discovery,
+                    "file_id": file_id,
+                    "file_url": file_url,
+                    "metadata": metadata,
+                }
+            except Exception as exc:  # noqa: BLE001
+                preflight_failures.append(f"{path.name}: {exc}")
+        if preflight_failures or len(prepared) != len(files_to_upload):
+            staging_removed = await self._delete_staging_file_entries(
+                cover_file_entry_ids
+                + [
+                    entry_id
+                    for values in audio_file_entry_ids.values()
+                    for entry_id in values
+                ]
+            )
+            cleanup_note = (
+                " Uploaded staging FileEntries were removed."
+                if staging_removed
+                else " Uploaded staging FileEntries require the Traxx temporary-file cleanup policy."
+            )
+            raise TraxxError(
+                "All audio uploads must expose a FileEntry id and playable URL "
+                "before Traxx creates the album; no artist, album or track was "
+                "created."
+                + cleanup_note
+                + " "
+                + "; ".join(preflight_failures[:5])
+            )
+
+        artist_created = False
+        entity_stage = ""
+        try:
+            if existing_artist_id:
+                artist_id = existing_artist_id
+            else:
+                entity_stage = "artist"
+                artist_id, artist_created = await self._ensure_artist_with_state(
+                    expected_artist,
+                    image=traxx_cover_url,
+                    genres=list(genres or []),
+                )
+            if existing_album_id:
+                album_id = existing_album_id
+                album_created = False
+            else:
+                # Do not call ensure_album() here: its second lookup could adopt an
+                # album created by another request between preflight and mutation,
+                # after which an empty-import rollback would not own its target.
+                entity_stage = "album"
+                album_id = await self._create_album(
+                    expected_album,
+                    artist_id=artist_id,
+                    release_date=release_date,
+                    image=traxx_cover_url,
+                )
+                album_created = True
+        except Exception as exc:
+            # Audio uploads cannot be attached before an album id exists.  The
+            # cover is retained only when a successful artist creation or an
+            # ambiguous artist/album mutation may have attached it. A structured
+            # 4xx rejection (or a read-only lookup failure) proves that this
+            # request did not create a new cover reference.
+            await self._delete_staging_file_entries(
+                [
+                    entry_id
+                    for values in audio_file_entry_ids.values()
+                    for entry_id in values
+                ]
+            )
+            mutation_may_have_committed = not (
+                isinstance(exc, TraxxError)
+                and (
+                    exc.definitively_rejected
+                    or exc.method in {"GET", "HEAD", "OPTIONS"}
+                )
+            )
+            cover_may_be_referenced = bool(
+                artist_created
+                or (
+                    entity_stage in {"artist", "album"}
+                    and mutation_may_have_committed
+                )
+            )
+            if cover_upload_selected and not cover_may_be_referenced:
+                await self._delete_staging_file_entries(cover_file_entry_ids)
+            raise
+
+        cover_referenced_by_artist = bool(cover_upload_selected and artist_created)
+        cover_referenced_by_album = bool(cover_upload_selected and album_created)
+        cover_may_be_referenced_by_track = False
         imported: list[dict[str, Any]] = []
         unresolved: list[dict[str, Any]] = [
             {"path": str(path), "stage": "verification", "reason": reason}
             for path, reason in rejected.items()
         ]
-        for path in files:
+        for file_index, path in enumerate(files):
             local = inspect_audio_file(path)
+            attempted_title = local.title
+            attempted_number = max(1, local.track_number)
+            create_attempted = False
             try:
                 hint = assigned.get(path)
                 track_artist_names = list(hint.artists) if hint and hint.artists else []
@@ -1601,12 +1896,20 @@ class TraxxClient:
                     track_artist_ids.append(current_artist_id)
                 if not track_artist_ids:
                     track_artist_ids = [artist_id]
-                existing_track = await self._find_existing_track(
-                    name=local.title,
-                    album_id=album_id,
-                    number=max(1, local.track_number),
-                )
+                existing_track = existing_tracks.get(path)
+                if existing_track is None:
+                    existing_track = await self._find_existing_track(
+                        name=local.title,
+                        album_id=album_id,
+                        number=max(1, local.track_number),
+                    )
                 if existing_track is not None:
+                    # A concurrent importer can win between preflight and this
+                    # second lookup. Its track owns a different file, so ours
+                    # is still staging and can be removed safely.
+                    await self._delete_staging_file_entries(
+                        audio_file_entry_ids.get(path, [])
+                    )
                     imported.append(
                         {
                             "path": str(path),
@@ -1616,48 +1919,12 @@ class TraxxClient:
                         }
                     )
                     continue
-                upload = await self.upload_file(path)
-                discovery = await self.discover_file_entry(upload)
-                file_id = discovery.get("file_entry_id")
-                file_url = discovery.get("file_url")
-                if not file_id:
-                    unresolved.append(
-                        {
-                            "path": str(path),
-                            "stage": "upload",
-                            "reason": "No BeMusic FileEntry id was exposed",
-                            "upload": upload.as_dict(),
-                            "discovery": discovery,
-                        }
-                    )
-                    continue
-                extracted = await self.extract_metadata(
-                    str(file_id),
-                    # The importer already resolved the authoritative album
-                    # above and passes its id explicitly when creating the
-                    # track. Letting BeMusic auto-match here can create a
-                    # second, empty album from a featured track artist before
-                    # the real track is saved (for example an album by George
-                    # Fitzgerald with one Bonobo feature).
-                    auto_match_album=False,
-                )
-                metadata = (
-                    get_case_insensitive(extracted, "metadata", default=extracted)
-                    if isinstance(extracted, dict)
-                    else {}
-                )
-                if not file_url:
-                    unresolved.append(
-                        {
-                            "path": str(path),
-                            "stage": "track-create",
-                            "reason": "A playable uploaded-file URL is required",
-                            "upload": upload.as_dict(),
-                            "discovery": discovery,
-                            "metadata": metadata,
-                        }
-                    )
-                    continue
+                ready = prepared[path]
+                upload = ready["upload"]
+                discovery = ready["discovery"]
+                file_id = ready["file_id"]
+                file_url = ready["file_url"]
+                metadata = ready["metadata"]
                 duration = int(
                     get_case_insensitive(
                         metadata,
@@ -1686,10 +1953,12 @@ class TraxxClient:
                     number = int(str(number_raw).split("/", 1)[0])
                 except (TypeError, ValueError):
                     number = local.track_number
+                attempted_title = title
+                attempted_number = max(1, number)
                 payload: dict[str, Any] = {
-                    "name": title,
+                    "name": attempted_title,
                     "duration": max(1, duration),
-                    "number": max(1, number),
+                    "number": attempted_number,
                     "artists": track_artist_ids,
                     "album_id": album_id,
                     "src": file_url,
@@ -1700,7 +1969,10 @@ class TraxxClient:
                 }
                 if traxx_cover_url:
                     payload["image"] = traxx_cover_url
+                create_attempted = True
                 created = await self.create_track(payload)
+                if cover_upload_selected:
+                    cover_may_be_referenced_by_track = True
                 imported.append(
                     {
                         "path": str(path),
@@ -1710,17 +1982,74 @@ class TraxxClient:
                     }
                 )
             except Exception as exc:
+                cleanup_note = ""
+                definitely_rejected = bool(
+                    create_attempted
+                    and isinstance(exc, TraxxError)
+                    and exc.definitively_rejected
+                )
+                mutation_ambiguous = create_attempted and not definitely_rejected
+                if mutation_ambiguous and cover_upload_selected:
+                    # The response may have been lost after commit. Both audio
+                    # and cover can now be referenced by the unseen track.
+                    cover_may_be_referenced_by_track = True
+                # Re-read with exactly the identity sent to Traxx. This can
+                # recover a lost success response, but a negative search alone
+                # never proves that an ambiguous POST did not commit.
+                proven_existing: dict[str, Any] | None = None
+                with contextlib.suppress(Exception):
+                    proven_existing = await self._find_existing_track(
+                        name=attempted_title,
+                        album_id=album_id,
+                        number=attempted_number,
+                    )
+                if proven_existing is not None:
+                    if not create_attempted or definitely_rejected:
+                        # The found track belongs to another request; our POST
+                        # never ran or was positively rejected.
+                        await self._delete_staging_file_entries(
+                            audio_file_entry_ids.get(path, [])
+                        )
+                    imported.append(
+                        {
+                            "path": str(path),
+                            "existing": True,
+                            "track": proven_existing,
+                            "metadata": local.as_dict(),
+                        }
+                    )
+                    continue
+                if (
+                    (not create_attempted or definitely_rejected)
+                    and audio_file_entry_ids.get(path)
+                ):
+                    removed_staging = await self._delete_staging_file_entries(
+                        audio_file_entry_ids[path]
+                    )
+                    cleanup_note = (
+                        " Staging-Upload entfernt."
+                        if removed_staging
+                        else " Staging-Upload konnte nicht entfernt werden."
+                    )
                 unresolved.append(
                     {
                         "path": str(path),
                         "stage": "exception",
-                        "reason": str(exc),
+                        "reason": str(exc) + cleanup_note,
                     }
                 )
                 if "may not be greater than" in str(exc):
                     # A size limit applies to every file of this album, so
                     # trying the rest only repeats the same refusal and keeps
-                    # the instance busy for nothing.
+                    # the instance busy for nothing. Every later file was only
+                    # preflight-uploaded and is therefore safe to remove.
+                    await self._delete_staging_file_entries(
+                        [
+                            entry_id
+                            for remaining in files[file_index + 1 :]
+                            for entry_id in audio_file_entry_ids.get(remaining, [])
+                        ]
+                    )
                     unresolved.append(
                         {
                             "path": str(resolved),
@@ -1737,6 +2066,43 @@ class TraxxClient:
             for entry in imported
             if (track_id := self._imported_track_id(entry)) is not None
         }
+        if album_created and not unique_track_ids:
+            # The only album we may remove is the one this exact call created,
+            # and only after a fresh read proves it still has zero tracks. This
+            # closes the final all-create_track-failed empty-album path without
+            # ever touching an existing or concurrently populated album.
+            snapshot = await self.inspect_album_import(
+                album_id, expected_tracks=0, track_hints=[]
+            )
+            if int(snapshot.get("tracks_count") or 0) == 0:
+                rollback = await self.request(
+                    "DELETE", f"/api/v1/albums/{album_id}", allow_error=True
+                )
+                rollback_status = int(rollback.get("status") or 0)
+                reasons = "; ".join(
+                    str(item.get("reason") or "") for item in unresolved[:5]
+                )
+                if 200 <= rollback_status < 300:
+                    cover_referenced_by_album = False
+                    if not (
+                        cover_referenced_by_artist
+                        or cover_may_be_referenced_by_track
+                    ):
+                        await self._delete_staging_file_entries(cover_file_entry_ids)
+                    raise TraxxError(
+                        "Traxx rejected every prepared track; the newly created "
+                        f"empty album was rolled back. {reasons}".strip()
+                    )
+                raise TraxxError(
+                    "Traxx rejected every prepared track and rollback of the empty "
+                    f"album failed ({rollback_status}). {reasons}".strip()
+                )
+        if not (
+            cover_referenced_by_artist
+            or cover_referenced_by_album
+            or cover_may_be_referenced_by_track
+        ):
+            await self._delete_staging_file_entries(cover_file_entry_ids)
         expected_track_count = int(
             source_verification.get("expected_tracks")
             or len(unique_track_ids)

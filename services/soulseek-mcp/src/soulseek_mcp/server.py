@@ -235,6 +235,11 @@ def create_server() -> FastMCP:
         return client().archive_download_folder(path, namespace)
 
     @mcp.tool()
+    async def cleanup_download_folder(path: str) -> dict[str, Any]:
+        """Delete one imported album folder confined below /downloads/library."""
+        return client().cleanup_download_folder(path)
+
+    @mcp.tool()
     async def list_downloads() -> Any:
         """List current downloads from slskd."""
         return await client().list_downloads()

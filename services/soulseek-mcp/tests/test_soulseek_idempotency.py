@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 
-from soulseek_mcp.client import SlskdClient
+from soulseek_mcp.client import SlskdClient, deterministic_batch_id
 from soulseek_mcp.config import RuntimeConfig
-from soulseek_mcp.models import AlbumCandidate, RemoteFile
+from soulseek_mcp.models import AlbumCandidate, DownloadBatch, RemoteFile
 from soulseek_mcp.repository import BatchRepository
 
 
@@ -59,6 +59,43 @@ def test_retry_archive_rejects_paths_outside_download_root(tmp_path: Path) -> No
 
     with pytest.raises(ValueError, match="escapes configured root"):
         client.archive_download_folder(str(outside), "recommendation-1")
+
+
+def test_verified_library_album_can_be_cleaned(tmp_path: Path) -> None:
+    client = build(tmp_path)
+    source = tmp_path / "downloads" / "library" / "profile-1" / "Artist" / "Album"
+    source.mkdir(parents=True)
+    (source / "01.flac").write_bytes(b"audio")
+
+    result = client.cleanup_download_folder(str(source))
+
+    assert result["removed"] is True
+    assert not source.exists()
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "",
+        "library",
+        "library/Artist",
+        "library/Artist/Album",
+        "share/Artist/Album",
+        ".radar-retry-archive/job/Album",
+    ],
+)
+def test_cleanup_is_confined_to_a_library_album(
+    tmp_path: Path, relative: str
+) -> None:
+    client = build(tmp_path)
+    root = tmp_path / "downloads"
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / relative if relative else root
+    if target != root:
+        target.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(ValueError, match="below library"):
+        client.cleanup_download_folder(str(target))
 
 
 @pytest.mark.asyncio
@@ -124,6 +161,98 @@ async def test_queueing_the_same_album_twice_transfers_it_once(tmp_path: Path) -
 
     assert first["batch_id"] == second["batch_id"]
     assert second["idempotent"] is True
+    assert posts == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_album_can_be_queued_again(tmp_path: Path) -> None:
+    client = build(tmp_path)
+    posts = 0
+
+    async def request(
+        method: str,
+        path: str,
+        *,
+        json: Any = None,
+        params: dict[str, Any] | None = None,
+        allow_not_found: bool = False,
+    ) -> Any:
+        nonlocal posts
+        del json, params, allow_not_found
+        if method == "POST":
+            posts += 1
+            return {}
+        if method == "GET":
+            return {
+                "directories": [
+                    {
+                        "files": [
+                            {
+                                "id": "transfer-1",
+                                "filename": "Music\\Artist\\Album\\01 Deep.flac",
+                                "state": "InProgress",
+                            }
+                        ]
+                    }
+                ]
+            }
+        if method == "DELETE":
+            return {}
+        raise AssertionError((method, path))
+
+    client.request = request  # type: ignore[method-assign]
+    first = await client.queue_candidate(
+        candidate(), destination="library/Artist/Album", external_id="release-1"
+    )
+    await client.cancel_batch(first["batch_id"], remove=True)
+
+    cancelled = await client.get_batch(first["batch_id"])
+    second = await client.queue_candidate(
+        candidate(), destination="library/Artist/Album", external_id="release-1"
+    )
+
+    assert cancelled["state"] == "cancelled"
+    assert second["idempotent"] is False
+    assert posts == 2
+    stored = client.batches.get(first["batch_id"])
+    assert stored is not None
+    assert stored.cancelled is False
+    assert stored.retries == {}
+
+
+@pytest.mark.asyncio
+async def test_collected_album_with_missing_artifact_can_be_queued_again(
+    tmp_path: Path,
+) -> None:
+    client = build(tmp_path)
+    posts = 0
+    stale = candidate()
+    batch_id = deterministic_batch_id(stale.candidate_id, "release-1")
+    client.batches.save(
+        DownloadBatch(
+            batch_id=batch_id,
+            candidate_id=stale.candidate_id,
+            username=stale.username,
+            filenames=[item.filename for item in stale.files],
+            destination="library/Artist/Album",
+            external_id="release-1",
+            collected=True,
+        )
+    )
+
+    async def request(method: str, path: str, **kwargs: Any) -> Any:
+        nonlocal posts
+        del path, kwargs
+        if method == "POST":
+            posts += 1
+        return {}
+
+    client.request = request  # type: ignore[method-assign]
+    result = await client.queue_candidate(
+        stale, destination="library/Artist/Album", external_id="release-1"
+    )
+
+    assert result["idempotent"] is False
     assert posts == 1
 
 
