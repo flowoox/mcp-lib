@@ -379,3 +379,74 @@ async def test_one_dropped_file_is_asked_for_again(tmp_path: Path) -> None:
     final = await client.get_batch(queued["batch_id"])
     assert final["state"] == "failed"
     assert final["retried"] == []
+
+
+@pytest.mark.asyncio
+async def test_failed_sidecar_does_not_fail_complete_audio_batch(tmp_path: Path) -> None:
+    from soulseek_mcp.models import RemoteFile
+
+    client = build(tmp_path)
+    posts: list[Any] = []
+    collected: list[list[dict[str, Any]]] = []
+    album = candidate().model_copy(
+        update={
+            "files": [
+                RemoteFile(
+                    filename="Music\\Artist\\Album\\01 Deep.flac", size=123
+                ),
+                RemoteFile(filename="Music\\Artist\\Album\\album.nfo", size=12),
+            ],
+            "audio_file_count": 1,
+            "total_file_count": 2,
+        }
+    )
+
+    async def request(
+        method: str,
+        path: str,
+        *,
+        json: Any = None,
+        params: dict[str, Any] | None = None,
+        allow_not_found: bool = False,
+    ) -> Any:
+        del path, params, allow_not_found
+        if method == "POST":
+            posts.append(json)
+            return {}
+        return {
+            "directories": [
+                {
+                    "files": [
+                        {
+                            "filename": "Music\\Artist\\Album\\01 Deep.flac",
+                            "state": "Completed, Succeeded",
+                            "size": 123,
+                        },
+                        {
+                            "filename": "Music\\Artist\\Album\\album.nfo",
+                            "state": "Completed, Errored",
+                            "size": 12,
+                        },
+                    ]
+                }
+            ]
+        }
+
+    client.request = request  # type: ignore[method-assign]
+    client.collect_batch = (  # type: ignore[method-assign]
+        lambda _record, files: collected.append(files) or {"moved": len(files)}
+    )
+    queued = await client.queue_candidate(
+        album, destination="library/Artist/Album", external_id="release-sidecar"
+    )
+
+    status = await client.get_batch(queued["batch_id"])
+
+    assert status["state"] == "completed"
+    assert status["audio_file_count"] == 1
+    assert status["audio_files_seen"] == 1
+    assert status["collected"]["moved"] == 1
+    assert len(posts) == 1
+    assert [item["filename"] for item in collected[0]] == [
+        "Music\\Artist\\Album\\01 Deep.flac"
+    ]
