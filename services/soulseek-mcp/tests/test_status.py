@@ -11,6 +11,19 @@ def test_failed_batch():
     assert classify_batch({"files": [{"state": "Rejected"}]}) == "failed"
 
 
+@pytest.mark.parametrize(
+    "state",
+    [
+        "Completed, Aborted",
+        "Completed, Rejected",
+        "Completed, Errored",
+        "Completed, Cancelled",
+    ],
+)
+def test_compound_terminal_failure_is_never_completed(state: str) -> None:
+    assert classify_batch({"files": [{"state": state}]}) == "failed"
+
+
 def test_active_batch():
     assert classify_batch({"files": [{"state": "Downloading"}]}) == "active"
 

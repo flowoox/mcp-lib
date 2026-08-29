@@ -601,25 +601,76 @@ def assign_track_hints(
     an album of ten arrives in Traxx as a single track — the other nine are
     recognised as duplicates of it and dropped.
 
-    When the folder and the listing hold the same number of tracks, the sorted
-    order settles it, since that is the order the release is in.
+    A unique title carried by the filename is stronger than sorted position.
+    Download folders are commonly sorted by artist while catalogue listings
+    are sorted by track number; assigning those two orders directly can pair
+    every correctly downloaded file with the wrong track.  Position remains a
+    fallback for rips whose filenames contain no usable title.
     """
     ordered = list(files)
     chosen: dict[Path, TrackHint | None] = {}
+
+    # Claim unambiguous filename-title matches first.  Require all meaningful
+    # catalogue words so generic fragments such as "mix" cannot win, and only
+    # accept a claim when both the path's best hint and that hint's path are
+    # unique. Ambiguous duplicate titles are deliberately left for numbering.
+    path_choices: dict[Path, tuple[int, int]] = {}
+    for path in ordered:
+        observed = title_tokens(clean_title_from_filename(path))
+        scored: list[tuple[int, int]] = []
+        for index, hint in enumerate(hints):
+            expected = title_tokens(hint.title)
+            if expected and expected <= observed:
+                scored.append((len(expected), index))
+        if not scored:
+            continue
+        best_score = max(score for score, _ in scored)
+        best = [index for score, index in scored if score == best_score]
+        if len(best) == 1:
+            path_choices[path] = (best_score, best[0])
+
+    hint_claims: dict[int, list[Path]] = {}
+    for path, (_, hint_index) in path_choices.items():
+        hint_claims.setdefault(hint_index, []).append(path)
+    claimed: set[tuple[int, int, str]] = set()
+    for path, (_, hint_index) in path_choices.items():
+        if len(hint_claims[hint_index]) != 1:
+            continue
+        hint = hints[hint_index]
+        chosen[path] = hint
+        claimed.add((hint.disc_number, hint.number, hint.title))
+
     for index, path in enumerate(ordered):
-        chosen[path] = choose_track_hint(
+        if path in chosen:
+            continue
+        hint = choose_track_hint(
             path,
             album_root=album_root,
             hints=hints,
             position=index + 1,
             total_files=len(ordered),
         )
+        if hint is None:
+            chosen[path] = None
+            continue
+        key = (hint.disc_number, hint.number, hint.title)
+        chosen[path] = None if key in claimed else hint
+        claimed.add(key)
     matched = [hint for hint in chosen.values() if hint is not None]
     distinct = {(hint.disc_number, hint.number, hint.title) for hint in matched}
-    if len(distinct) == len(matched):
+    if len(distinct) == len(matched) == len(ordered):
         return chosen
     if len(hints) == len(ordered):
-        return {path: hints[index] for index, path in enumerate(ordered)}
+        remaining_files = [path for path in ordered if chosen.get(path) is None]
+        remaining_hints = [
+            hint
+            for hint in hints
+            if (hint.disc_number, hint.number, hint.title) not in distinct
+        ]
+        if len(remaining_files) == len(remaining_hints):
+            for path, hint in zip(remaining_files, remaining_hints, strict=True):
+                chosen[path] = hint
+            return chosen
     # The folder holds a different number of tracks than the listing — a
     # partial rip, or a listing for another edition — so position says nothing.
     # Two files must still never be given the same entry: the second would be

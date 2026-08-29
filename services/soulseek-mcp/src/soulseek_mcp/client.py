@@ -26,8 +26,10 @@ from .repository import BatchRepository
 
 COMPLETE_STATES = {"completed", "complete", "succeeded", "success", "finished"}
 FAILED_STATES = {
+    "aborted",
     "cancelled",
     "canceled",
+    "denied",
     "errored",
     "error",
     "failed",
@@ -43,6 +45,17 @@ ACTIVE_STATES = {
     "in_progress",
     "downloading",
     "transferring",
+}
+AUDIO_EXTENSIONS = {
+    ".aac",
+    ".aif",
+    ".aiff",
+    ".flac",
+    ".m4a",
+    ".mp3",
+    ".ogg",
+    ".opus",
+    ".wav",
 }
 # How often one dropped file is asked for again before the album counts as
 # lost. Peers abort single transfers often enough that one attempt is not a
@@ -97,6 +110,10 @@ def remote_to_posix(value: str) -> PurePosixPath:
 def normalize_remote_path(value: str) -> str:
     """One spelling for comparing two remote paths, and only for that."""
     return str(remote_to_posix(value)).casefold()
+
+
+def is_audio_filename(value: str) -> bool:
+    return remote_to_posix(value).suffix.casefold() in AUDIO_EXTENSIONS
 
 
 def classify_transfer_state(raw: str) -> str:
@@ -738,10 +755,25 @@ class SlskdClient:
             if get_case_insensitive(item, "state", "status") is None:
                 continue
             files.append(item)
-        state = classify_batch({"files": files}) if files else "unknown"
+        audio_wanted = {
+            normalize_remote_path(name)
+            for name in record.filenames
+            if is_audio_filename(name)
+        }
+        audio_files = [
+            item
+            for item in files
+            if normalize_remote_path(
+                str(get_case_insensitive(item, "filename", "fileName") or "")
+            )
+            in audio_wanted
+        ]
+        required_files = audio_files if audio_wanted else files
+        required_count = len(audio_wanted) if audio_wanted else len(record.filenames)
+        state = classify_batch({"files": required_files}) if required_files else "unknown"
         retried: list[str] = []
         if state == "failed":
-            state, retried = await self.retry_failed_files(record, files)
+            state, retried = await self.retry_failed_files(record, required_files)
         result: dict[str, Any] = {
             "batch_id": batch_id,
             "retried": retried,
@@ -749,13 +781,23 @@ class SlskdClient:
             "state": state,
             "file_count": len(record.filenames),
             "files_seen": len(files),
+            "audio_file_count": len(audio_wanted),
+            "audio_files_seen": len(audio_files),
             "destination": record.destination,
             "artifact_path": record.destination,
             "local_path": str(self.downloads_dir / PurePosixPath(record.destination)),
             "files": files,
         }
-        if state == "completed" and len(files) >= len(record.filenames):
-            result["collected"] = self.collect_batch(record, files)
+        if state == "completed" and len(required_files) >= required_count:
+            completed_files = [
+                item
+                for item in files
+                if classify_transfer_state(
+                    str(get_case_insensitive(item, "state", "status") or "")
+                )
+                == "completed"
+            ]
+            result["collected"] = self.collect_batch(record, completed_files)
         return result
 
     async def retry_failed_files(

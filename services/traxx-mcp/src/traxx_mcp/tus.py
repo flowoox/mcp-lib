@@ -85,6 +85,48 @@ class TusUploader:
         )
 
     @staticmethod
+    def resolve_upload_url(
+        endpoint: str,
+        created_url: str,
+        location: str,
+        headers: dict[str, str],
+    ) -> str:
+        """Keep a public TUS Location on the reachable internal origin.
+
+        BeMusic uses the forwarded Host header when it creates an absolute
+        Location. Internal clients still need to PATCH the same service via
+        its Docker address; routing the public URL back through the edge can
+        fail on hosts without NAT hairpinning. Only the explicitly forwarded
+        host is rewritten, so genuine external upload targets remain intact.
+        """
+        resolved = urljoin(created_url, location)
+        endpoint_url = urlparse(endpoint)
+        location_url = urlparse(resolved)
+        forwarded_host = next(
+            (
+                value
+                for key, value in headers.items()
+                if key.casefold() == "host"
+            ),
+            "",
+        )
+        forwarded_hostname = urlparse(f"//{forwarded_host}").hostname
+        if (
+            endpoint_url.scheme
+            and endpoint_url.netloc
+            and forwarded_hostname
+            and location_url.hostname
+            and location_url.hostname.casefold() == forwarded_hostname.casefold()
+            and location_url.hostname.casefold()
+            != (endpoint_url.hostname or "").casefold()
+        ):
+            return location_url._replace(
+                scheme=endpoint_url.scheme,
+                netloc=endpoint_url.netloc,
+            ).geturl()
+        return resolved
+
+    @staticmethod
     def extract_identity(
         headers: dict[str, str],
         upload_url: str,
@@ -207,7 +249,12 @@ class TusUploader:
             location = created.headers.get("Location")
             if not location:
                 raise TusError("TUS create response did not include a Location header")
-            upload_url = urljoin(str(created.url), location)
+            upload_url = self.resolve_upload_url(
+                self.endpoint,
+                str(created.url),
+                location,
+                self.headers,
+            )
             response_headers.update(dict(created.headers))
             if created.content:
                 try:
