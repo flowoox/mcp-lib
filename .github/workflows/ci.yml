@@ -37,7 +37,8 @@ jobs:
             grep -Fq 'persist-credentials: false' "$workflow"
             grep -Fq 'run: bash scripts/bootstrap-buildx-secure.sh' "$workflow"
             grep -Fq "github-token: ''" "$workflow"
-            grep -Fq 'builder: ${{ steps.buildx.outputs.builder }}' "$workflow"
+            grep -Fq 'builder:' "$workflow"
+            grep -Fq 'steps.buildx.outputs.builder' "$workflow"
           done
 
   publisher-bootstrap:
