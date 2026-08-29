@@ -894,6 +894,58 @@ async def _run_staging_import(
 
 
 @pytest.mark.asyncio
+async def test_multidisc_import_uses_unique_flat_catalog_numbers(
+    tmp_path: Path,
+) -> None:
+    import wave
+
+    album = tmp_path / "library" / "Artist" / "Album"
+    for disc, title in ((1, "First"), (2, "Second")):
+        disc_path = album / f"CD{disc}"
+        disc_path.mkdir(parents=True)
+        with wave.open(str(disc_path / f"01 - {title}.wav"), "wb") as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(8000)
+            handle.writeframes(b"\x00\x00" * 800)
+
+    class MultiDiscClient(StagingLifecycleClient):
+        async def upload_file(
+            self, path: Path, *, upload_type: str = "track"
+        ) -> TusUploadResult:
+            assert upload_type == "track"
+            file_entry_id = "101" if path.parent.name == "CD1" else "102"
+            return TusUploadResult(
+                upload_url=f"https://traxx.test/tus/{file_entry_id}",
+                bytes_uploaded=path.stat().st_size,
+                file_entry_id=file_entry_id,
+                file_url=f"https://traxx.test/files/{file_entry_id}.wav",
+            )
+
+    client = MultiDiscClient(tmp_path, ["First", "Second"])
+    client.metadata_by_file_id = {
+        "101": {"title": "First", "number": 1, "duration": 100},
+        "102": {"title": "Second", "number": 1, "duration": 100},
+    }
+    client.inspect_tracks_count = 2
+
+    await _run_staging_import(
+        client,
+        ["First", "Second"],
+        track_hints=[
+            {"title": "First", "number": 1, "disc_number": 1, "artist": "Artist"},
+            {"title": "Second", "number": 1, "disc_number": 2, "artist": "Artist"},
+        ],
+    )
+
+    assert [payload["number"] for payload in client.create_payloads] == [1, 2]
+    assert [(name, number) for name, _album, number in client.lookup_calls] == [
+        ("First", 1),
+        ("Second", 2),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_staging_cleanup_1_preflight_removes_cover_and_every_audio(
     tmp_path: Path,
 ) -> None:

@@ -229,6 +229,35 @@ def target_user_id(value: str) -> str:
     return user_id
 
 
+def _catalog_track_numbers(
+    files: list[Path],
+    assigned: dict[Path, TrackHint],
+    hints: list[TrackHint],
+) -> dict[Path, int]:
+    """Map disc-local release positions to Traxx's flat track numbering."""
+    discs = {max(1, hint.disc_number) for hint in hints}
+    if len(discs) <= 1:
+        return {}
+
+    ordered = sorted(
+        enumerate(hints),
+        key=lambda item: (
+            max(1, item[1].disc_number),
+            max(1, item[1].number),
+            item[0],
+        ),
+    )
+    position_by_identity = {
+        id(hint): position for position, (_, hint) in enumerate(ordered, start=1)
+    }
+    return {
+        path: position_by_identity[id(hint)]
+        for path in files
+        if (hint := assigned.get(path)) is not None
+        and id(hint) in position_by_identity
+    }
+
+
 class TraxxClient:
     def __init__(
         self,
@@ -1659,6 +1688,9 @@ class TraxxClient:
                 "No verified audio files remain; Traxx was not changed. "
                 f"{reasons[:900]}"
             )
+        catalog_track_numbers = _catalog_track_numbers(
+            files, assigned, parsed_track_hints
+        )
         tag_results: list[dict[str, Any]] = []
         for path in files:
             tag_results.append(
@@ -1702,7 +1734,9 @@ class TraxxClient:
                 existing = await self._find_existing_track(
                     name=local.title,
                     album_id=existing_album_id,
-                    number=max(1, local.track_number),
+                    number=catalog_track_numbers.get(
+                        path, max(1, local.track_number)
+                    ),
                 )
                 if existing is not None:
                     existing_tracks[path] = existing
@@ -1870,7 +1904,9 @@ class TraxxClient:
         for file_index, path in enumerate(files):
             local = inspect_audio_file(path)
             attempted_title = local.title
-            attempted_number = max(1, local.track_number)
+            attempted_number = catalog_track_numbers.get(
+                path, max(1, local.track_number)
+            )
             create_attempted = False
             try:
                 hint = assigned.get(path)
@@ -1901,7 +1937,7 @@ class TraxxClient:
                     existing_track = await self._find_existing_track(
                         name=local.title,
                         album_id=album_id,
-                        number=max(1, local.track_number),
+                        number=attempted_number,
                     )
                 if existing_track is not None:
                     # A concurrent importer can win between preflight and this
@@ -1953,6 +1989,7 @@ class TraxxClient:
                     number = int(str(number_raw).split("/", 1)[0])
                 except (TypeError, ValueError):
                     number = local.track_number
+                number = catalog_track_numbers.get(path, number)
                 attempted_title = title
                 attempted_number = max(1, number)
                 payload: dict[str, Any] = {
