@@ -1,13 +1,13 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus safe agent/n8n reference orchestration.",
-  "updated_at": "2026-08-28T10:43:00+02:00",
-  "current_work_item": "acmp-mcp",
-  "active_branch": "feat/acmp-mcp-observe-v1",
+  "updated_at": "2026-08-30T10:20:00+02:00",
+  "current_work_item": "mailstore-cloud-mcp",
+  "active_branch": "feat/mailstore-cloud-mcp-observe-v1",
   "active_pr": null,
-  "next_branch": "feat/manageengine-mdm-mcp-observe-v1",
-  "execution_rule": "At every run re-read current main, open PRs/issues/CI and preserve parallel work before taking the next non-blocked work item.",
+  "next_branch": "feat/codetwo-mcp-observe-v1",
+  "execution_rule": "At every run re-read current main, open PRs/issues/CI and preserve parallel work before taking the next non-blocked work item. Discovery-gated items must prove a current vendor-supported API and least-privilege read role before contract freeze or code implementation.",
   "principles": [
     "observe-plan-change-verify",
     "least-privilege",
@@ -88,71 +88,12 @@
     {"id": "fileshare-mcp", "priority": 90, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "ad-mcp"], "history": ["PR #41"], "remaining": ["separately bounded allowlisted file-content/hash/text analysis only after explicit design and tests"]},
     {"id": "hyperv-mcp", "priority": 100, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "network-mcp"], "history": ["PR #43"], "verification": {"main_ci_run": 33053788338, "main_service_ci_run": 33053788288, "result": "success"}, "remaining": ["optional approved write layer only for concrete operational needs"]},
     {"id": "failovercluster-mcp", "priority": 110, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "network-mcp"], "history": ["PR #44"], "verification": {"pr_ci_run": 33054667922, "pr_service_ci_run": 33054667960, "main_ci_run": 33054736696, "main_service_ci_run": 33054736786, "merge_sha": "da948eeca371bcedabce3e8b7df00b69467c9b7b", "result": "success"}, "remaining": ["optional approved failover/maintenance write layer only after a concrete operational need and separate least-privilege identity"]},
-    {
-      "id": "n8n-mcp",
-      "priority": 120,
-      "status": "observe_complete",
-      "depends_on": ["agent-diagnostics-foundation"],
-      "history": ["PR #47"],
-      "verification": {
-        "merge_sha": "dee12ec7212dfdf32c22cc4d0311dcb068fd1282",
-        "main_ci_run": 33155176174,
-        "main_service_ci_run": 33155176162,
-        "result": "success"
-      },
-      "capabilities": [
-        "bounded workflow metadata",
-        "bounded execution metadata and exact execution observation without payload data",
-        "optional workflow allowlisting",
-        "shared query budgets, audit/correlation and rate/concurrency caps"
-      ],
-      "mandatory_guards": [
-        "deployment-owned base URL and least-privilege read-only API identity",
-        "no arbitrary n8n API proxy",
-        "no credential values, workflow definitions or execution payloads",
-        "no workflow trigger, retry, stop, activation or mutation in observe v1"
-      ]
-    },
-    {
-      "id": "employee-entry-reference",
-      "priority": 130,
-      "status": "complete",
-      "depends_on": ["ad-mcp", "entra-mcp", "network-mcp", "security-audit-mcp", "n8n-mcp"],
-      "history": ["PR #48"],
-      "verification": {
-        "pr_ci_run": 33156145728,
-        "main_ci_run": 33156238102,
-        "merge_sha": "c8fb321d6652a04fdf65354d6aa9e285de93e933",
-        "result": "success"
-      },
-      "architecture": "declarative reference orchestration only; specialized MCPs retain backend authority and lifecycle controls",
-      "scope": [
-        "shared typed orchestration contract with explicit operation allowlist and dependency DAG",
-        "references-only bindings prevent public topology, OU, credential and policy literals",
-        "AD disabled-user plan/change/verify lifecycle with out-of-band approval and one idempotency reference",
-        "bounded read-only n8n, Entra, network and security-audit evidence",
-        "documentation for n8n/agent execution and safe extension"
-      ]
-    },
-    {
-      "id": "acmp-mcp",
-      "priority": 140,
-      "status": "ready",
-      "depends_on": ["agent-diagnostics-foundation", "windows-mcp"],
-      "default_mode": "read_only",
-      "branch": "feat/acmp-mcp-observe-v1",
-      "discovery_gate": "verify the current vendor-supported ACMP API, authentication model and least-privilege read role before freezing endpoint contracts",
-      "scope": [
-        "bounded client and inventory observation",
-        "bounded health and deployment-status diagnostics where supported",
-        "typed endpoint allowlist only",
-        "shared query budgets, audit/correlation and server-load protection",
-        "no generic SQL, scripting or administrative proxy"
-      ]
-    },
-    {"id": "manageengine-mdm-mcp", "priority": 150, "status": "queued", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only"},
-    {"id": "freshdesk-mcp", "priority": 160, "status": "queued", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only"},
-    {"id": "mailstore-cloud-mcp", "priority": 170, "status": "queued", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only"},
+    {"id": "n8n-mcp", "priority": 120, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation"], "history": ["PR #47"], "verification": {"merge_sha": "dee12ec7212dfdf32c22cc4d0311dcb068fd1282", "main_ci_run": 33155176174, "main_service_ci_run": 33155176162, "result": "success"}, "remaining": ["keep triggers, retries, activation and mutation out of Observe v1"]},
+    {"id": "employee-entry-reference", "priority": 130, "status": "complete", "depends_on": ["ad-mcp", "entra-mcp", "network-mcp", "security-audit-mcp", "n8n-mcp"], "history": ["PR #48"], "verification": {"pr_ci_run": 33156145728, "main_ci_run": 33156238102, "merge_sha": "c8fb321d6652a04fdf65354d6aa9e285de93e933", "result": "success"}, "architecture": "declarative reference orchestration only; specialized MCPs retain backend authority and lifecycle controls"},
+    {"id": "acmp-mcp", "priority": 140, "status": "blocked_vendor_contract", "depends_on": ["agent-diagnostics-foundation", "windows-mcp"], "default_mode": "read_only", "branch": "feat/acmp-mcp-observe-v1", "blocker": "The currently documented SICS/Public API privilege behavior cannot yet prove a non-admin fail-closed service identity. Obtain the exact supported API definition for the deployed ACMP release and prove least-privilege read authorization before implementation.", "prohibited_until_resolved": ["generic SICS proxy", "generic SQL", "arbitrary scripting", "administrative backend identity", "write operations"]},
+    {"id": "manageengine-mdm-mcp", "priority": 150, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only", "history": ["PR #51"], "verification": {"merge_sha": "bdc634c442d667d73188b6cdf11ad51ff29d2c17", "pr_ci_run": 33242832539, "pr_service_ci_run": 33242832535, "main_ci_run": 33242909146, "main_service_ci_run": 33242909176, "result": "success"}},
+    {"id": "freshdesk-mcp", "priority": 160, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only", "history": ["PR #54"], "verification": {"merge_sha": "c52d426cf66fbf188e7b072e9adba8e451a092e1", "pr_ci_run": 33301191582, "pr_service_ci_run": 33301191647, "main_ci_run": 33301254123, "main_service_ci_run": 33301254116, "result": "success"}, "capabilities": ["bounded ticket list and exact ticket metadata", "bounded conversation metadata without bodies or identities", "aggregate-first diagnostic bundle", "fixed GET-only API v2 allowlist", "same-origin pagination and server-load protection"], "remaining": ["keep replies, notes, forwarding, assignment and other ticket mutations out of Observe v1"]},
+    {"id": "mailstore-cloud-mcp", "priority": 170, "status": "discovery_required", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only", "branch": "feat/mailstore-cloud-mcp-observe-v1", "discovery_gate": "Prove the current MailStore Cloud-specific API/authentication contract and a least-privilege read role from MailStore/OpenText primary documentation or support material. Do not assume MailStore Server Administration API or SPE Management API compatibility.", "scope_if_supported": ["bounded service/archive health", "bounded archive/activity status", "bounded search metadata", "optional tightly capped message excerpt only after explicit data-classification design"], "prohibited": ["unrestricted mailbox or archive export", "arbitrary message-body streaming", "attachment streaming", "retention/legal-hold changes", "user/admin mutations", "generic API proxy"]},
     {"id": "codetwo-mcp", "priority": 180, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "entra-mcp"], "default_mode": "read_only"},
     {"id": "abacus-mcp", "priority": 190, "status": "discovery_required", "depends_on": ["agent-diagnostics-foundation"], "discovery_gate": "select exact product edition, supported API, data classification and least-privilege role before freezing a public contract"},
     {"id": "unifi-mcp", "priority": 200, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "network-mcp"], "default_mode": "read_only"},
@@ -164,14 +105,16 @@
     {"id": "windows-admincenter-mcp", "priority": 260, "status": "decision_gate", "depends_on": ["windows-mcp", "hyperv-mcp", "failovercluster-mcp"], "decision_gate": "implement only if a supported stable gateway API and least-privilege read-only role reduce adapter duplication without becoming a generic PowerShell proxy"}
   ],
   "next_run": {
-    "work_item": "acmp-mcp",
-    "branch": "feat/acmp-mcp-observe-v1",
+    "work_item": "mailstore-cloud-mcp",
+    "branch": "feat/mailstore-cloud-mcp-observe-v1",
     "first_actions": [
-      "resync main, open PRs/issues and CI before branching",
-      "verify current vendor-supported ACMP API/authentication and least-privilege read role using primary vendor documentation",
-      "freeze a typed read-only contract and endpoint allowlist before adapter implementation",
+      "resync main, open PRs/issues, CI and parallel branches before branching",
+      "verify MailStore Cloud-specific current API/authentication documentation rather than reusing Server/SPE contracts by assumption",
+      "prove a dedicated least-privilege read identity for the exact observation scope",
+      "if the Cloud API contract is unsupported or cannot satisfy least privilege, mark mailstore-cloud-mcp blocked_vendor_contract and continue to codetwo-mcp in the same run",
+      "if supported, freeze typed bounded health/archive/search-metadata projections and a fixed operation allowlist before adapter implementation",
       "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and server-load protections",
-      "keep server URLs, credentials, containers/groups and company policy deployment-owned"
+      "keep tenant URLs, credentials, archive identities, retention/legal-hold policy and company configuration deployment-owned"
     ]
   }
 }
