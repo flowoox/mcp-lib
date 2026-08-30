@@ -179,6 +179,45 @@ def test_unique_titles_override_alphabetical_file_order(tmp_path: Path) -> None:
     ) == {}
 
 
+def test_track_total_prefix_resolves_colliding_titles(tmp_path: Path) -> None:
+    from traxx_mcp.metadata import assign_track_hints
+
+    album = tmp_path / "Cheese"
+    album.mkdir()
+    titles = [
+        "Bienvenue Chez Moi",
+        "Te Quiero",
+        "Peace Or Violence",
+        "Rail De Musique",
+        "Alors on danse - Radio Edit",
+        "Summertime",
+        "Dodo",
+        "Silence",
+        "Je Cours",
+        "House'llelujah",
+        "Cheese",
+        "Alors On Danse - 90's Remix",
+    ]
+    filenames = list(titles)
+    filenames[4] = "Alors on danse"
+    filenames[11] = "Alors on danse (90s remix)"
+    paths = []
+    for number, title in enumerate(filenames, start=1):
+        path = album / f"{number}-12. {title}.flac"
+        path.write_bytes(b"fLaC")
+        paths.append(path)
+    hints = [
+        TrackHint(title=title, number=number)
+        for number, title in enumerate(titles, start=1)
+    ]
+
+    assigned = assign_track_hints(sorted(paths), album_root=album, hints=hints)
+
+    assert assigned[paths[4]] is not None and assigned[paths[4]].number == 5
+    assert assigned[paths[11]] is not None and assigned[paths[11]].number == 12
+
+
+
 def test_a_number_in_the_middle_of_the_name_is_read(tmp_path: Path):
     album = tmp_path / "Wildflower"
     album.mkdir()
