@@ -1,29 +1,30 @@
 {
-  "schema_version": 4,
-  "updated_at": "2026-08-29T08:21:00Z",
+  "schema_version": 5,
+  "updated_at": "2026-08-30T08:20:00Z",
   "repository": "flowoox/mcp-lib",
-  "base_main_sha": "bdc634c442d667d73188b6cdf11ad51ff29d2c17",
+  "base_main_sha": "c52d426cf66fbf188e7b072e9adba8e451a092e1",
   "last_completed": {
-    "work_item": "manageengine-mdm-mcp",
+    "work_item": "freshdesk-mcp",
     "status": "observe_complete",
-    "merged_pr": 51,
-    "merge_sha": "bdc634c442d667d73188b6cdf11ad51ff29d2c17",
+    "merged_pr": 54,
+    "merge_sha": "c52d426cf66fbf188e7b072e9adba8e451a092e1",
     "verification": {
-      "pr_ci_run": 33242832539,
-      "pr_service_ci_run": 33242832535,
-      "main_ci_run": 33242909146,
-      "main_service_ci_run": 33242909176,
+      "pr_ci_run": 33301191582,
+      "pr_service_ci_run": 33301191647,
+      "main_ci_run": 33301254123,
+      "main_service_ci_run": 33301254116,
       "result": "success"
     },
     "delivered": [
-      "product-neutral ManageEngine Mobile Device Manager Plus Observe v1 service",
-      "explicit fail-closed read-only backend attestation and least-privilege reader contract",
-      "fixed GET-only REST v1 operation allowlist with no generic URL or HTTP-method proxy",
-      "bounded device inventory, exact scan status, command history and aggregate-first diagnostic bundle",
-      "redacted public projections excluding hardware identifiers, assigned-user PII, location, firmware/APN secrets and command-initiator identity",
+      "product-neutral Freshdesk API v2 Observe v1 service",
+      "explicit fail-closed read-only backend attestation with deployment-owned least-privilege API identity",
+      "fixed GET-only endpoint and parameter allowlists; no arbitrary API path, HTTP method or search DSL",
+      "bounded ticket list, exact ticket observation, conversation metadata and aggregate-first diagnostic bundle",
+      "public projections omit requester and agent identities, requester contact data, message bodies, custom fields and attachment content",
+      "same-origin pagination validation, deep-page cap, redirect rejection and response-byte limits",
+      "Freshdesk HTTP 429 is surfaced without automatic retry to avoid agent-driven rate-limit amplification",
       "shared ReadOnlyConnector, QueryBudget, audit/correlation and MCP transport-security integration",
-      "response-byte, concurrency, rate, page, sample, time and fan-out protections",
-      "tests, documentation, non-root container example and dedicated CI"
+      "tests, documentation, non-root hardened container example and dedicated CI"
     ]
   },
   "blocked_work_items": [
@@ -46,23 +47,30 @@
     }
   ],
   "current": {
-    "work_item": "freshdesk-mcp",
-    "branch": "feat/freshdesk-mcp-observe-v1",
-    "status": "ready",
-    "goal": "Freeze and implement a bounded, product-neutral, least-privilege read-only Freshdesk diagnostics contract for ticket/service-desk observation without exposing unrestricted message bodies, attachments, arbitrary API paths or mutation operations.",
+    "work_item": "mailstore-cloud-mcp",
+    "branch": "feat/mailstore-cloud-mcp-observe-v1",
+    "status": "discovery_required",
+    "goal": "Verify the currently supported MailStore Cloud management/search integration contract and least-privilege read identity, then implement only a bounded product-neutral read-only archive/health diagnostic surface if the vendor contract can satisfy mcp-lib security requirements.",
+    "vendor_discovery": {
+      "verified_product": "MailStore Cloud is the cloud-native service offering and MailStore 26.2 is current in 2026.",
+      "public_api_state": "The public vendor material reviewed for this handoff documents MailStore Cloud features and mentions Management API improvements in the 26.1 product family, but did not expose a sufficiently precise public MailStore Cloud developer contract for archive/search operations. Do not reuse MailStore Server or SPE APIs by assumption.",
+      "decision": "contract-first; block the item and continue to codetwo-mcp if a supported Cloud API plus least-privilege read role cannot be proven"
+    },
     "first_actions": [
       "resync main, open PRs/issues, active branches and CI before branching",
-      "verify the current Freshdesk API v2 authentication, pagination, rate-limit and least-privilege read permissions from vendor documentation",
-      "define typed projections for ticket status, assignment, SLA and bounded conversation metadata before adapter implementation",
-      "redact or omit requester/agent PII and message bodies by default; never stream arbitrary attachments",
+      "verify the current MailStore Cloud API endpoint/authentication model and supported automation surface from MailStore/OpenText primary documentation or support material",
+      "prove a dedicated least-privilege read identity can be restricted to the required health/archive-search observations",
+      "do not map MailStore Server Administration API or SPE Management API contracts onto MailStore Cloud unless the vendor explicitly documents compatibility",
+      "if supported, freeze typed bounded health, archive-status and search-metadata projections before adapter implementation",
+      "default to metadata/count/status results; never expose unrestricted archive export, full-mailbox extraction, arbitrary message bodies or attachment streams",
       "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and aggregate-before-fan-out protections",
-      "keep tenant URL, credentials, groups, agents and company policy deployment-owned"
+      "keep tenant URLs, credentials, archive identities, retention policy and compliance policy deployment-owned"
     ]
   },
   "next_after_current": {
-    "work_item": "mailstore-cloud-mcp",
+    "work_item": "codetwo-mcp",
     "status": "queued",
-    "goal": "Discover the supported MailStore Cloud API and implement bounded read-only archive/search/health diagnostics without unrestricted mailbox-content export."
+    "goal": "Verify the supported CodeTwo cloud/service API and implement bounded read-only signature/configuration/health diagnostics using a dedicated least-privilege identity; keep signature changes and tenant administration outside Observe v1."
   },
   "continuation_rule": "Before every run resync main, open PRs/issues, CI and parallel branches; protect foreign work; skip blocked items and continue the first non-blocked queued item. Merge only after relevant PR CI is green and verify main CI after merge."
 }
