@@ -1,12 +1,12 @@
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus safe agent/n8n reference orchestration.",
-  "updated_at": "2026-08-31T10:19:00+02:00",
-  "current_work_item": "veeam-mcp",
-  "active_branch": "feat/veeam-mcp-observe-v1",
+  "updated_at": "2026-08-31T10:43:00+02:00",
+  "current_work_item": "wazuh-mcp",
+  "active_branch": "feat/wazuh-mcp-observe-v1",
   "active_pr": null,
-  "next_branch": "feat/wazuh-mcp-observe-v1",
+  "next_branch": "feat/checkmk-mcp-observe-v1",
   "execution_rule": "At every run re-read current main, open PRs/issues/CI and preserve parallel work before taking the next non-blocked work item. Discovery-gated items must prove a current vendor-supported API and least-privilege read role before contract freeze or code implementation.",
   "principles": [
     "observe-plan-change-verify",
@@ -97,23 +97,23 @@
     {"id": "codetwo-mcp", "priority": 180, "status": "blocked_vendor_contract", "depends_on": ["agent-diagnostics-foundation", "entra-mcp"], "default_mode": "read_only", "blocker": "CodeTwo Email Signatures 365 documents no external endpoints, web services or public API calls to its cloud infrastructure, so a direct supported adapter cannot be frozen without a future vendor API.", "safe_alternative": "Observe Microsoft 365-side dependencies through exchange-m365-mcp and entra-mcp.", "prohibited": ["browser automation as an API substitute", "undocumented CodeTwo internal endpoints", "signature or tenant mutations"]},
     {"id": "abacus-mcp", "priority": 190, "status": "blocked_target_contract", "depends_on": ["agent-diagnostics-foundation"], "blocker": "Select the exact Abacus product/edition, supported vendor API, business/financial data classification and least-privilege read role before freezing a product-neutral public contract."},
     {"id": "unifi-mcp", "priority": 200, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "network-mcp"], "default_mode": "read_only", "history": ["PR #56"], "verification": {"merge_sha": "0a11a39ebdff170997fb50bcfaa26e6a6122fb57", "pr_ci_run": 33372092284, "pr_service_ci_run": 33372092434, "main_ci_run": 33372199064, "main_service_ci_run": 33372199066, "result": "success"}, "capabilities": ["official UniFi Network Integration API 10.0.162", "fixed GET-only application/site/device/client/latest-statistics observations", "read-only backend attestation", "typed privacy-minimized projections", "bounded offset pagination and query budgets", "aggregate-first site diagnostics"], "remaining": ["keep configuration and action endpoints out of Observe v1; any future writes require a separate identity and plan/approval/change/verify"]},
-    {"id": "veeam-mcp", "priority": 210, "status": "queued", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only", "branch": "feat/veeam-mcp-observe-v1"},
-    {"id": "wazuh-mcp", "priority": 220, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "security-audit-mcp"], "default_mode": "read_only"},
-    {"id": "checkmk-mcp", "priority": 230, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "network-mcp"], "default_mode": "read_only"},
+    {"id": "veeam-mcp", "priority": 210, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only", "history": ["PR #58"], "verification": {"merge_sha": "da3a0fb182e0a866551b4afa5a9ecffb50cc52de", "pr_ci_run": 33374040161, "pr_service_ci_run": 33374040156, "main_ci_run": 33374131568, "main_service_ci_run": 33374131583, "result": "success"}, "capabilities": ["VBR 13 REST API 1.3-rev2", "Backup Viewer least-privilege role attestation", "fixed job/session/repository-state/backup/restore-point observations", "privacy-minimized typed projections", "bounded history, pagination and query budgets", "aggregate-first diagnostics"], "remaining": ["keep job actions, restores, configuration mutations and generic API/filter proxies out of Observe v1; any future writes require a separate identity and plan/approval/change/verify"]},
+    {"id": "wazuh-mcp", "priority": 220, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "security-audit-mcp"], "default_mode": "read_only", "branch": "feat/wazuh-mcp-observe-v1"},
+    {"id": "checkmk-mcp", "priority": 230, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "network-mcp"], "default_mode": "read_only", "branch": "feat/checkmk-mcp-observe-v1"},
     {"id": "pki-mcp", "priority": 240, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "ad-mcp"], "default_mode": "read_only"},
     {"id": "exchange-m365-mcp", "priority": 250, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "entra-mcp"], "default_mode": "read_only"},
     {"id": "windows-admincenter-mcp", "priority": 260, "status": "decision_gate", "depends_on": ["windows-mcp", "hyperv-mcp", "failovercluster-mcp"], "decision_gate": "implement only if a supported stable gateway API and least-privilege read-only role reduce adapter duplication without becoming a generic PowerShell proxy"}
   ],
   "next_run": {
-    "work_item": "veeam-mcp",
-    "branch": "feat/veeam-mcp-observe-v1",
+    "work_item": "wazuh-mcp",
+    "branch": "feat/wazuh-mcp-observe-v1",
     "first_actions": [
       "resync main, open PRs/issues, CI and parallel branches before branching",
-      "verify the current vendor-supported Veeam REST API version, authentication and exact least-privilege read role",
-      "freeze typed bounded backup-server, job/session, repository and restore-point health projections before adapter implementation",
+      "verify the current vendor-supported Wazuh API version, authentication and exact least-privilege read permissions",
+      "freeze typed privacy-minimized manager, agent, alert and vulnerability/security-health projections before adapter implementation",
       "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and server-load protections",
-      "keep restore, delete, repository, job and infrastructure mutations out of Observe v1",
-      "keep server URLs, credentials, repository paths and company backup policy deployment-owned"
+      "aggregate manager and agent health before narrowly bounded alert or vulnerability drill-down",
+      "keep active-response, enrollment/removal, configuration mutation and arbitrary API/search DSL out of Observe v1"
     ]
   }
 }
