@@ -21,6 +21,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
         "publish-traxx.yml",
         "security-audit-mcp.yml",
         "unifi-mcp.yml",
+        "veeam-mcp.yml",
         "windows-mcp.yml",
     }
 
