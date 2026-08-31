@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "service": "veeam-mcp",
-  "status": "implemented_pending_ci",
+  "status": "observe_complete",
   "contract": "flowoox.veeam-backup-diagnostics/1.0",
   "vendor_contract": {
     "product": "Veeam Backup & Replication 13",
@@ -26,6 +26,15 @@
       "https://helpcenter.veeam.com/references/vbr/13/rest/1.3-rev2/tag/Restore-Points/index.html",
       "https://helpcenter.veeam.com/docs/vbr/userguide/configure_roles.html"
     ]
+  },
+  "verification": {
+    "merged_pr": 58,
+    "merge_sha": "da3a0fb182e0a866551b4afa5a9ecffb50cc52de",
+    "pr_ci_run": 33374040161,
+    "pr_service_ci_run": 33374040156,
+    "main_ci_run": 33374131568,
+    "main_service_ci_run": 33374131583,
+    "result": "success"
   },
   "safety": {
     "default_mode": "read_only",
