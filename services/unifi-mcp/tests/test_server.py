@@ -27,7 +27,7 @@ def test_contract_is_read_only_and_minimizes_network_identity_data() -> None:
 
 
 def test_operation_surface_contains_only_fixed_get_observations() -> None:
-    assert _CONNECTOR_OPERATIONS == frozenset(
+    assert frozenset(
         {
             "unifi.application.info",
             "unifi.sites.list",
@@ -37,4 +37,4 @@ def test_operation_surface_contains_only_fixed_get_observations() -> None:
             "unifi.clients.list",
             "unifi.clients.get",
         }
-    )
+    ) == _CONNECTOR_OPERATIONS
