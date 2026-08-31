@@ -70,7 +70,7 @@ def create_server() -> FastMCP:
         reconnect_wait_seconds: int = 12,
         reconnect_cooldown_seconds: int = 30,
         minimum_free_space_gib: int = 20,
-        minimum_free_space_percent: int = 15,
+        minimum_free_space_percent: int = 20,
     ) -> dict[str, Any]:
         """Persist API, search, quality and optional account settings.
 
