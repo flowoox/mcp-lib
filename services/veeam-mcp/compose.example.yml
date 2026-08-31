@@ -1,0 +1,15 @@
+services:
+  mcp-veeam:
+    build:
+      context: ../..
+      dockerfile: services/veeam-mcp/Dockerfile
+    env_file: .env
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "127.0.0.1:8098:8098"
