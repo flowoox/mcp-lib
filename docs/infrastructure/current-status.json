@@ -1,27 +1,27 @@
 {
-  "schema_version": 7,
-  "updated_at": "2026-08-31T08:18:30Z",
+  "schema_version": 8,
+  "updated_at": "2026-08-31T08:43:00Z",
   "repository": "flowoox/mcp-lib",
-  "base_main_sha": "0a11a39ebdff170997fb50bcfaa26e6a6122fb57",
+  "base_main_sha": "da3a0fb182e0a866551b4afa5a9ecffb50cc52de",
   "last_completed": {
-    "work_item": "unifi-mcp",
+    "work_item": "veeam-mcp",
     "status": "observe_complete",
-    "merged_pr": 56,
-    "merge_sha": "0a11a39ebdff170997fb50bcfaa26e6a6122fb57",
+    "merged_pr": 58,
+    "merge_sha": "da3a0fb182e0a866551b4afa5a9ecffb50cc52de",
     "verification": {
-      "pr_ci_run": 33372092284,
-      "pr_service_ci_run": 33372092434,
-      "main_ci_run": 33372199064,
-      "main_service_ci_run": 33372199066,
+      "pr_ci_run": 33374040161,
+      "pr_service_ci_run": 33374040156,
+      "main_ci_run": 33374131568,
+      "main_service_ci_run": 33374131583,
       "result": "success"
     },
     "capabilities": [
-      "official UniFi Network Integration API 10.0.162 only",
-      "fixed GET-only application/site/device/client/statistics observations",
-      "deployment-managed read-only API-key attestation",
-      "typed privacy-minimized projections",
-      "bounded offset pagination and shared QueryBudget server-load controls",
-      "aggregate-first site diagnostic bundle without per-device fan-out",
+      "Veeam Backup & Replication 13 REST API 1.3-rev2",
+      "built-in Backup Viewer least-privilege backend role with explicit read-only attestation",
+      "fixed job-state, session, repository-state, backup and bounded restore-point observations",
+      "typed privacy-minimized projections excluding repository paths/hosts and session initiators/messages",
+      "shared ReadOnlyConnector and QueryBudget server-load protection",
+      "aggregate-first diagnostic bundle without per-object fan-out",
       "audit/correlation integration, tests, documentation, hardened non-root container and dedicated CI"
     ]
   },
@@ -83,24 +83,24 @@
     }
   ],
   "current": {
-    "work_item": "veeam-mcp",
-    "branch": "feat/veeam-mcp-observe-v1",
-    "status": "queued",
-    "goal": "Verify the current supported Veeam REST API/authentication and least-privilege read role, then implement bounded backup infrastructure, job/session/repository/restore-point health diagnostics without exposing restore or configuration writes in Observe v1.",
-    "first_actions": [
-      "resync main, open PRs/issues, CI and parallel branches before branching",
-      "freeze only current vendor-supported Veeam REST operations and authentication",
-      "prove a dedicated least-privilege read identity/role before implementation",
-      "define typed bounded job/session/repository/restore-point health projections before adapter code",
-      "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and server-load protections",
-      "keep restore, delete, repository, job and infrastructure mutation endpoints out of Observe v1"
-    ]
-  },
-  "next_after_current": {
     "work_item": "wazuh-mcp",
     "branch": "feat/wazuh-mcp-observe-v1",
     "status": "queued",
-    "goal": "Implement bounded agent, manager, alert and vulnerability/security-health observations using the current supported Wazuh API after a least-privilege read contract is proven."
+    "goal": "Implement bounded read-only Wazuh manager, agent, alert and vulnerability/security-health diagnostics only after verifying the current supported Wazuh API/authentication and a dedicated least-privilege observation role.",
+    "first_actions": [
+      "resync main, open PRs/issues, CI and parallel branches before branching",
+      "verify the current supported Wazuh API version, authentication and least-privilege read permissions from primary documentation",
+      "freeze typed privacy-minimized manager, agent, alert and vulnerability-health projections before adapter implementation",
+      "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and server-load protections",
+      "aggregate manager/agent health before any narrowly bounded alert or vulnerability drill-down",
+      "keep active-response, agent enrollment/removal, configuration changes and arbitrary API/search DSL out of Observe v1"
+    ]
+  },
+  "next_after_current": {
+    "work_item": "checkmk-mcp",
+    "branch": "feat/checkmk-mcp-observe-v1",
+    "status": "queued",
+    "goal": "Implement bounded Checkmk monitoring health observations after verifying the current supported REST API and least-privilege read role."
   },
   "continuation_rule": "Before every run resync main, open PRs/issues, CI and parallel branches; protect foreign work; skip blocked items and continue the first non-blocked queued item. Merge only after relevant PR CI is green and verify main CI after merge."
 }
