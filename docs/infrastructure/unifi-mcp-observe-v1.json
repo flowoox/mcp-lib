@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_item": "unifi-mcp",
+  "status": "observe_v1_candidate",
+  "vendor_contract": {
+    "api": "UniFi Network Integration API",
+    "documented_version": "10.0.162",
+    "base_urls": [
+      "https://{consoleIP}/proxy/network/integration",
+      "https://api.ui.com/v1/connector/consoles/{consoleId}/proxy/network/integration"
+    ],
+    "authentication": "X-API-Key",
+    "evidence_date": "2026-08-31"
+  },
+  "operations": [
+    "unifi.application.info",
+    "unifi.sites.list",
+    "unifi.devices.list",
+    "unifi.devices.get",
+    "unifi.devices.statistics.latest",
+    "unifi.clients.list",
+    "unifi.clients.get"
+  ],
+  "guards": [
+    "backend read-only attestation is mandatory",
+    "API key must belong to a deployment-managed read-only UniFi identity/role",
+    "fixed GET-only paths; no generic proxy",
+    "no filter DSL",
+    "offset/limit pagination with maximum offset",
+    "query budgets, rate/concurrency/timeout/response byte limits",
+    "redirects rejected",
+    "device/client IP and MAC addresses omitted",
+    "client names and raw configuration identifiers omitted",
+    "site diagnostics aggregate lists before any optional exact-resource observation"
+  ],
+  "writes": "not exposed in Observe v1; future writes require separate identity and plan/approval/change/verify"
+}
