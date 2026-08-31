@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "service": "veeam-mcp",
+  "status": "implemented_pending_ci",
+  "contract": "flowoox.veeam-backup-diagnostics/1.0",
+  "vendor_contract": {
+    "product": "Veeam Backup & Replication 13",
+    "rest_api_version": "1.3-rev2",
+    "verified_on": "2026-08-31",
+    "authentication": "POST /api/oauth2/token password grant; bearer token for resource requests",
+    "least_privilege_role": "Backup Viewer",
+    "role_evidence": "Built-in Backup Viewer is read-only; the selected GET endpoints document Backup Viewer availability.",
+    "selected_get_endpoints": [
+      "/api/v1/jobs/states",
+      "/api/v1/sessions",
+      "/api/v1/backupInfrastructure/repositories/states",
+      "/api/v1/backups",
+      "/api/v1/restorePoints"
+    ],
+    "primary_docs": [
+      "https://helpcenter.veeam.com/references/vbr/13/rest/1.3-rev2/tag/Login/index.html",
+      "https://helpcenter.veeam.com/references/vbr/13/rest/1.3-rev2/tag/Jobs/index.html",
+      "https://helpcenter.veeam.com/references/vbr/13/rest/1.3-rev2/tag/Sessions/index.html",
+      "https://helpcenter.veeam.com/references/vbr/13/rest/1.3-rev2/tag/Repositories/index.html",
+      "https://helpcenter.veeam.com/references/vbr/13/rest/1.3-rev2/tag/Backups/index.html",
+      "https://helpcenter.veeam.com/references/vbr/13/rest/1.3-rev2/tag/Restore-Points/index.html",
+      "https://helpcenter.veeam.com/docs/vbr/userguide/configure_roles.html"
+    ]
+  },
+  "safety": {
+    "default_mode": "read_only",
+    "backend_attestation_required": true,
+    "required_backend_role": "Backup Viewer",
+    "fixed_resource_methods": ["GET"],
+    "authentication_post_is_internal_only": true,
+    "generic_api_proxy": false,
+    "generic_filter_dsl": false,
+    "repository_paths_returned": false,
+    "repository_hostnames_returned": false,
+    "session_initiators_returned": false,
+    "session_result_messages_returned": false,
+    "credential_inventory_returned": false,
+    "job_actions": false,
+    "restore_actions": false,
+    "configuration_writes": false,
+    "query_budgeted": true,
+    "aggregate_before_fan_out": true
+  },
+  "next": "wazuh-mcp"
+}
