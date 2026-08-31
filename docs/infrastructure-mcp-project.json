@@ -1,12 +1,12 @@
 {
-  "schema_version": 7,
+  "schema_version": 8,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus safe agent/n8n reference orchestration.",
-  "updated_at": "2026-08-30T10:20:00+02:00",
-  "current_work_item": "mailstore-cloud-mcp",
-  "active_branch": "feat/mailstore-cloud-mcp-observe-v1",
+  "updated_at": "2026-08-31T10:19:00+02:00",
+  "current_work_item": "veeam-mcp",
+  "active_branch": "feat/veeam-mcp-observe-v1",
   "active_pr": null,
-  "next_branch": "feat/codetwo-mcp-observe-v1",
+  "next_branch": "feat/wazuh-mcp-observe-v1",
   "execution_rule": "At every run re-read current main, open PRs/issues/CI and preserve parallel work before taking the next non-blocked work item. Discovery-gated items must prove a current vendor-supported API and least-privilege read role before contract freeze or code implementation.",
   "principles": [
     "observe-plan-change-verify",
@@ -93,11 +93,11 @@
     {"id": "acmp-mcp", "priority": 140, "status": "blocked_vendor_contract", "depends_on": ["agent-diagnostics-foundation", "windows-mcp"], "default_mode": "read_only", "branch": "feat/acmp-mcp-observe-v1", "blocker": "The currently documented SICS/Public API privilege behavior cannot yet prove a non-admin fail-closed service identity. Obtain the exact supported API definition for the deployed ACMP release and prove least-privilege read authorization before implementation.", "prohibited_until_resolved": ["generic SICS proxy", "generic SQL", "arbitrary scripting", "administrative backend identity", "write operations"]},
     {"id": "manageengine-mdm-mcp", "priority": 150, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only", "history": ["PR #51"], "verification": {"merge_sha": "bdc634c442d667d73188b6cdf11ad51ff29d2c17", "pr_ci_run": 33242832539, "pr_service_ci_run": 33242832535, "main_ci_run": 33242909146, "main_service_ci_run": 33242909176, "result": "success"}},
     {"id": "freshdesk-mcp", "priority": 160, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only", "history": ["PR #54"], "verification": {"merge_sha": "c52d426cf66fbf188e7b072e9adba8e451a092e1", "pr_ci_run": 33301191582, "pr_service_ci_run": 33301191647, "main_ci_run": 33301254123, "main_service_ci_run": 33301254116, "result": "success"}, "capabilities": ["bounded ticket list and exact ticket metadata", "bounded conversation metadata without bodies or identities", "aggregate-first diagnostic bundle", "fixed GET-only API v2 allowlist", "same-origin pagination and server-load protection"], "remaining": ["keep replies, notes, forwarding, assignment and other ticket mutations out of Observe v1"]},
-    {"id": "mailstore-cloud-mcp", "priority": 170, "status": "discovery_required", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only", "branch": "feat/mailstore-cloud-mcp-observe-v1", "discovery_gate": "Prove the current MailStore Cloud-specific API/authentication contract and a least-privilege read role from MailStore/OpenText primary documentation or support material. Do not assume MailStore Server Administration API or SPE Management API compatibility.", "scope_if_supported": ["bounded service/archive health", "bounded archive/activity status", "bounded search metadata", "optional tightly capped message excerpt only after explicit data-classification design"], "prohibited": ["unrestricted mailbox or archive export", "arbitrary message-body streaming", "attachment streaming", "retention/legal-hold changes", "user/admin mutations", "generic API proxy"]},
-    {"id": "codetwo-mcp", "priority": 180, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "entra-mcp"], "default_mode": "read_only"},
-    {"id": "abacus-mcp", "priority": 190, "status": "discovery_required", "depends_on": ["agent-diagnostics-foundation"], "discovery_gate": "select exact product edition, supported API, data classification and least-privilege role before freezing a public contract"},
-    {"id": "unifi-mcp", "priority": 200, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "network-mcp"], "default_mode": "read_only"},
-    {"id": "veeam-mcp", "priority": 210, "status": "queued", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only"},
+    {"id": "mailstore-cloud-mcp", "priority": 170, "status": "blocked_vendor_contract", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only", "branch": "feat/mailstore-cloud-mcp-observe-v1", "blocker": "MailStore Cloud 26.3 is current, but current primary vendor material does not expose a Cloud-specific public management/search API and least-privilege read role. MailStore Server/SPE management API contracts must not be reused for Cloud by assumption.", "required_to_resume": ["MailStore/OpenText-supported MailStore Cloud API documentation for the target tenant", "authentication and a dedicated least-privilege read role for bounded health/archive/search metadata"], "prohibited": ["reuse of MailStore Server/SPE APIs by assumption", "browser scraping or undocumented internal endpoints", "unrestricted mailbox/archive export", "arbitrary message-body or attachment streaming", "retention/legal-hold changes", "user/admin mutations", "generic API proxy"]},
+    {"id": "codetwo-mcp", "priority": 180, "status": "blocked_vendor_contract", "depends_on": ["agent-diagnostics-foundation", "entra-mcp"], "default_mode": "read_only", "blocker": "CodeTwo Email Signatures 365 documents no external endpoints, web services or public API calls to its cloud infrastructure, so a direct supported adapter cannot be frozen without a future vendor API.", "safe_alternative": "Observe Microsoft 365-side dependencies through exchange-m365-mcp and entra-mcp.", "prohibited": ["browser automation as an API substitute", "undocumented CodeTwo internal endpoints", "signature or tenant mutations"]},
+    {"id": "abacus-mcp", "priority": 190, "status": "blocked_target_contract", "depends_on": ["agent-diagnostics-foundation"], "blocker": "Select the exact Abacus product/edition, supported vendor API, business/financial data classification and least-privilege read role before freezing a product-neutral public contract."},
+    {"id": "unifi-mcp", "priority": 200, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "network-mcp"], "default_mode": "read_only", "history": ["PR #56"], "verification": {"merge_sha": "0a11a39ebdff170997fb50bcfaa26e6a6122fb57", "pr_ci_run": 33372092284, "pr_service_ci_run": 33372092434, "main_ci_run": 33372199064, "main_service_ci_run": 33372199066, "result": "success"}, "capabilities": ["official UniFi Network Integration API 10.0.162", "fixed GET-only application/site/device/client/latest-statistics observations", "read-only backend attestation", "typed privacy-minimized projections", "bounded offset pagination and query budgets", "aggregate-first site diagnostics"], "remaining": ["keep configuration and action endpoints out of Observe v1; any future writes require a separate identity and plan/approval/change/verify"]},
+    {"id": "veeam-mcp", "priority": 210, "status": "queued", "depends_on": ["agent-diagnostics-foundation"], "default_mode": "read_only", "branch": "feat/veeam-mcp-observe-v1"},
     {"id": "wazuh-mcp", "priority": 220, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "security-audit-mcp"], "default_mode": "read_only"},
     {"id": "checkmk-mcp", "priority": 230, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "network-mcp"], "default_mode": "read_only"},
     {"id": "pki-mcp", "priority": 240, "status": "queued", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "ad-mcp"], "default_mode": "read_only"},
@@ -105,16 +105,15 @@
     {"id": "windows-admincenter-mcp", "priority": 260, "status": "decision_gate", "depends_on": ["windows-mcp", "hyperv-mcp", "failovercluster-mcp"], "decision_gate": "implement only if a supported stable gateway API and least-privilege read-only role reduce adapter duplication without becoming a generic PowerShell proxy"}
   ],
   "next_run": {
-    "work_item": "mailstore-cloud-mcp",
-    "branch": "feat/mailstore-cloud-mcp-observe-v1",
+    "work_item": "veeam-mcp",
+    "branch": "feat/veeam-mcp-observe-v1",
     "first_actions": [
       "resync main, open PRs/issues, CI and parallel branches before branching",
-      "verify MailStore Cloud-specific current API/authentication documentation rather than reusing Server/SPE contracts by assumption",
-      "prove a dedicated least-privilege read identity for the exact observation scope",
-      "if the Cloud API contract is unsupported or cannot satisfy least privilege, mark mailstore-cloud-mcp blocked_vendor_contract and continue to codetwo-mcp in the same run",
-      "if supported, freeze typed bounded health/archive/search-metadata projections and a fixed operation allowlist before adapter implementation",
+      "verify the current vendor-supported Veeam REST API version, authentication and exact least-privilege read role",
+      "freeze typed bounded backup-server, job/session, repository and restore-point health projections before adapter implementation",
       "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and server-load protections",
-      "keep tenant URLs, credentials, archive identities, retention/legal-hold policy and company configuration deployment-owned"
+      "keep restore, delete, repository, job and infrastructure mutations out of Observe v1",
+      "keep server URLs, credentials, repository paths and company backup policy deployment-owned"
     ]
   }
 }
