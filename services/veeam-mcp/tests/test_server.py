@@ -32,7 +32,7 @@ def test_contract_is_read_only_and_minimizes_sensitive_backup_data() -> None:
 
 
 def test_operation_surface_contains_only_fixed_get_observations() -> None:
-    assert _CONNECTOR_OPERATIONS == frozenset(
+    assert frozenset(
         {
             "veeam.jobs.states",
             "veeam.sessions.list",
@@ -40,4 +40,4 @@ def test_operation_surface_contains_only_fixed_get_observations() -> None:
             "veeam.backups.list",
             "veeam.restore_points.list",
         }
-    )
+    ) == _CONNECTOR_OPERATIONS
