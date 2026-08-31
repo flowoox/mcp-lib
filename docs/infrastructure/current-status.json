@@ -1,8 +1,8 @@
 {
-  "schema_version": 5,
-  "updated_at": "2026-08-30T08:20:00Z",
+  "schema_version": 6,
+  "updated_at": "2026-08-31T08:20:00Z",
   "repository": "flowoox/mcp-lib",
-  "base_main_sha": "c52d426cf66fbf188e7b072e9adba8e451a092e1",
+  "base_main_sha": "b603f3f78c6ff6186061dbc79acedd934ed7aebc",
   "last_completed": {
     "work_item": "freshdesk-mcp",
     "status": "observe_complete",
@@ -14,63 +14,100 @@
       "main_ci_run": 33301254123,
       "main_service_ci_run": 33301254116,
       "result": "success"
-    },
-    "delivered": [
-      "product-neutral Freshdesk API v2 Observe v1 service",
-      "explicit fail-closed read-only backend attestation with deployment-owned least-privilege API identity",
-      "fixed GET-only endpoint and parameter allowlists; no arbitrary API path, HTTP method or search DSL",
-      "bounded ticket list, exact ticket observation, conversation metadata and aggregate-first diagnostic bundle",
-      "public projections omit requester and agent identities, requester contact data, message bodies, custom fields and attachment content",
-      "same-origin pagination validation, deep-page cap, redirect rejection and response-byte limits",
-      "Freshdesk HTTP 429 is surfaced without automatic retry to avoid agent-driven rate-limit amplification",
-      "shared ReadOnlyConnector, QueryBudget, audit/correlation and MCP transport-security integration",
-      "tests, documentation, non-root hardened container example and dedicated CI"
-    ]
+    }
   },
   "blocked_work_items": [
     {
       "work_item": "acmp-mcp",
       "status": "blocked_vendor_contract",
-      "reason": "Current Aagon ACMP Public API documentation routes access through SICS and documents an unsafe privilege behavior for unknown SICS users. A production adapter cannot satisfy the mcp-lib least-privilege and fail-closed requirements until the exact supported REST/session contract and a dedicated non-admin read-only identity are proven for the target ACMP release.",
+      "reason": "Current Aagon ACMP Public API documentation does not yet prove the required non-admin fail-closed service identity for the deployed release.",
       "required_to_resume": [
         "obtain the current Aagon Support-supplied REST/Insomnia API definition for the deployed ACMP release",
-        "prove a dedicated service identity cannot inherit the documented unknown-SICS-user administrative/no-permission-check behavior",
-        "prove the exact read-only permissions for the planned inventory and health operations",
-        "keep ACMP public-API response limits bounded at the server and enforce lower MCP-side query budgets"
+        "prove a dedicated non-admin read-only service identity and exact observation permissions"
       ],
       "prohibited_until_resolved": [
         "generic SICS publish/consume proxy",
         "generic SQL or script execution",
-        "production credential wiring with an administrative SICS identity",
+        "administrative backend identity",
         "write or admin operations"
+      ]
+    },
+    {
+      "work_item": "mailstore-cloud-mcp",
+      "status": "blocked_vendor_contract",
+      "reason": "MailStore Cloud 26.3 is current, but current primary vendor material does not expose a MailStore Cloud-specific public management/search API and least-privilege read role. MailStore 26.3 documentation explicitly scopes management-API improvements to MailStore Server and SPE, so those contracts must not be reused for Cloud by assumption.",
+      "required_to_resume": [
+        "obtain MailStore/OpenText-supported MailStore Cloud API documentation for the target tenant",
+        "prove authentication and a dedicated least-privilege read role for bounded health/archive/search metadata"
+      ],
+      "prohibited_until_resolved": [
+        "reuse of MailStore Server Administration API or SPE Management API by assumption",
+        "browser scraping or undocumented internal endpoint automation",
+        "unrestricted mailbox/archive export, message-body or attachment streaming",
+        "retention/legal-hold or user/admin mutations"
+      ]
+    },
+    {
+      "work_item": "codetwo-mcp",
+      "status": "blocked_vendor_contract",
+      "reason": "CodeTwo states that Email Signatures 365 exposes no external endpoints, web services, or public API calls to its cloud infrastructure. A direct CodeTwo MCP therefore cannot be implemented through a supported external service contract without browser scraping or undocumented internals.",
+      "required_to_resume": [
+        "obtain a vendor-supported external management/diagnostics API if CodeTwo introduces one",
+        "prove a dedicated least-privilege read identity and stable supported contract"
+      ],
+      "safe_alternative": "Observe Microsoft 365-side dependencies such as Exchange connectors, transport configuration and Entra integration through exchange-m365-mcp and entra-mcp instead of scraping CodeTwo internals.",
+      "prohibited_until_resolved": [
+        "browser automation as an API substitute",
+        "undocumented CodeTwo internal endpoints",
+        "signature or tenant mutations"
+      ]
+    },
+    {
+      "work_item": "abacus-mcp",
+      "status": "blocked_target_contract",
+      "reason": "A product-neutral public contract cannot be frozen until the exact Abacus product/edition and vendor-supported API plus data classification and least-privilege role are selected for the target deployment.",
+      "required_to_resume": [
+        "identify exact Abacus product/edition and supported integration API",
+        "classify business/financial data that may be returned",
+        "prove a dedicated least-privilege read role"
       ]
     }
   ],
   "current": {
-    "work_item": "mailstore-cloud-mcp",
-    "branch": "feat/mailstore-cloud-mcp-observe-v1",
-    "status": "discovery_required",
-    "goal": "Verify the currently supported MailStore Cloud management/search integration contract and least-privilege read identity, then implement only a bounded product-neutral read-only archive/health diagnostic surface if the vendor contract can satisfy mcp-lib security requirements.",
-    "vendor_discovery": {
-      "verified_product": "MailStore Cloud is the cloud-native service offering and MailStore 26.2 is current in 2026.",
-      "public_api_state": "The public vendor material reviewed for this handoff documents MailStore Cloud features and mentions Management API improvements in the 26.1 product family, but did not expose a sufficiently precise public MailStore Cloud developer contract for archive/search operations. Do not reuse MailStore Server or SPE APIs by assumption.",
-      "decision": "contract-first; block the item and continue to codetwo-mcp if a supported Cloud API plus least-privilege read role cannot be proven"
+    "work_item": "unifi-mcp",
+    "branch": "feat/unifi-mcp-observe-v1",
+    "status": "implementation_in_progress",
+    "goal": "Ship bounded Observe v1 on the official UniFi Network Integration API only, using deployment-managed read-only API-key identity, typed projections and aggregate-first diagnostics.",
+    "vendor_contract": {
+      "verified_api": "UniFi Network Integration API 10.0.162",
+      "authentication": "X-API-Key",
+      "documented_local_base": "https://{consoleIP}/proxy/network/integration",
+      "documented_cloud_connector_base": "https://api.ui.com/v1/connector/consoles/{consoleId}/proxy/network/integration",
+      "verified_read_operations": [
+        "GET /v1/info",
+        "GET /v1/sites",
+        "GET /v1/sites/{siteId}/devices",
+        "GET /v1/sites/{siteId}/devices/{deviceId}",
+        "GET /v1/sites/{siteId}/devices/{deviceId}/statistics/latest",
+        "GET /v1/sites/{siteId}/clients",
+        "GET /v1/sites/{siteId}/clients/{clientId}"
+      ]
     },
-    "first_actions": [
-      "resync main, open PRs/issues, active branches and CI before branching",
-      "verify the current MailStore Cloud API endpoint/authentication model and supported automation surface from MailStore/OpenText primary documentation or support material",
-      "prove a dedicated least-privilege read identity can be restricted to the required health/archive-search observations",
-      "do not map MailStore Server Administration API or SPE Management API contracts onto MailStore Cloud unless the vendor explicitly documents compatibility",
-      "if supported, freeze typed bounded health, archive-status and search-metadata projections before adapter implementation",
-      "default to metadata/count/status results; never expose unrestricted archive export, full-mailbox extraction, arbitrary message bodies or attachment streams",
-      "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and aggregate-before-fan-out protections",
-      "keep tenant URLs, credentials, archive identities, retention policy and compliance policy deployment-owned"
+    "implemented": [
+      "fixed GET-only operation allowlist; no generic API proxy or filter DSL",
+      "fail-closed UNIFI_BACKEND_READ_ONLY attestation for a deployment-managed read-only identity/API key",
+      "bounded offset/limit pagination, query budgets, rate/concurrency/timeout/response limits and no automatic retry amplification",
+      "typed projections omitting device/client IP and MAC addresses, client names and configuration identifiers",
+      "application/site/device/client observations and latest device statistics",
+      "aggregate-first site diagnostic bundle without per-device fan-out",
+      "audit/correlation integration, tests, documentation, hardened non-root container and dedicated CI"
     ]
   },
   "next_after_current": {
-    "work_item": "codetwo-mcp",
+    "work_item": "veeam-mcp",
+    "branch": "feat/veeam-mcp-observe-v1",
     "status": "queued",
-    "goal": "Verify the supported CodeTwo cloud/service API and implement bounded read-only signature/configuration/health diagnostics using a dedicated least-privilege identity; keep signature changes and tenant administration outside Observe v1."
+    "goal": "Verify the current supported Veeam REST API/authentication and least-privilege read role, then implement bounded backup infrastructure, job/session/repository/restore-point health diagnostics without exposing restore or configuration writes in Observe v1."
   },
   "continuation_rule": "Before every run resync main, open PRs/issues, CI and parallel branches; protect foreign work; skip blocked items and continue the first non-blocked queued item. Merge only after relevant PR CI is green and verify main CI after merge."
 }

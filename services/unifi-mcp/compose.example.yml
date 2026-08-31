@@ -1,0 +1,16 @@
+services:
+  mcp-unifi:
+    build:
+      context: ../..
+      dockerfile: services/unifi-mcp/Dockerfile
+    env_file:
+      - .env
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:8097:8097"
