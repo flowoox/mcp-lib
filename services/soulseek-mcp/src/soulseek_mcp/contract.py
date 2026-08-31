@@ -31,6 +31,7 @@ def capabilities() -> dict[str, Any]:
             "bounded_auto_reconnect": True,
             "recoverable_retry_archive": True,
             "verified_library_cleanup": True,
+            "bounded_retry_archive_cleanup": True,
         },
         "audio_formats": {
             "lossless": ["flac", "wav", "alac", "aiff", "aif", "ape", "wv"],
@@ -47,6 +48,7 @@ def capabilities() -> dict[str, Any]:
             "cancel_download_batch",
             "archive_download_folder",
             "cleanup_download_folder",
+            "cleanup_retry_archive",
             "list_downloads",
             "get_download_batch",
             "wait_for_download",

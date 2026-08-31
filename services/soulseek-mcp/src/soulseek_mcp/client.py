@@ -230,6 +230,75 @@ class SlskdClient:
         shutil.rmtree(source)
         return {"removed": True, "path": str(source)}
 
+    def cleanup_retry_archive(
+        self, *, retention_hours: int = 72, limit: int = 100
+    ) -> dict[str, Any]:
+        """Remove bounded, expired retry attempts from the private archive.
+
+        The caller cannot provide a path. Only individual attempt directories
+        below ``.radar-retry-archive/<recommendation>/`` are considered, and a
+        directory is retained while any file in it is newer than the cutoff.
+        Active library, repair and incomplete directories are outside this
+        boundary and therefore cannot be removed by this operation.
+        """
+        retention_hours = max(1, int(retention_hours))
+        limit = max(1, min(int(limit), 1000))
+        archive_root = self.downloads_dir.resolve() / ".radar-retry-archive"
+        if not archive_root.is_dir() or archive_root.is_symlink():
+            return {
+                "removed": [],
+                "freed_bytes": 0,
+                "retained_recent": 0,
+                "errors": {},
+                "retention_hours": retention_hours,
+            }
+
+        cutoff = datetime.now(UTC).timestamp() - retention_hours * 3600
+        candidates: list[tuple[float, int, Path, Path]] = []
+        retained_recent = 0
+        errors: dict[str, str] = {}
+        for namespace in sorted(archive_root.iterdir(), key=lambda item: item.name):
+            if not namespace.is_dir() or namespace.is_symlink():
+                continue
+            for attempt in sorted(namespace.iterdir(), key=lambda item: item.name):
+                if not attempt.is_dir() or attempt.is_symlink():
+                    continue
+                newest = attempt.stat().st_mtime
+                size = 0
+                try:
+                    for item in attempt.rglob("*"):
+                        stat = item.lstat()
+                        newest = max(newest, stat.st_mtime)
+                        if item.is_file() and not item.is_symlink():
+                            size += stat.st_size
+                except OSError as exc:
+                    errors[attempt.relative_to(archive_root).as_posix()] = str(exc)
+                    continue
+                if newest > cutoff:
+                    retained_recent += 1
+                    continue
+                candidates.append((newest, size, namespace, attempt))
+
+        removed: list[str] = []
+        freed_bytes = 0
+        for _newest, size, namespace, attempt in sorted(candidates)[:limit]:
+            relative = attempt.relative_to(archive_root).as_posix()
+            try:
+                shutil.rmtree(attempt)
+                removed.append(relative)
+                freed_bytes += size
+                with suppress(OSError):
+                    namespace.rmdir()
+            except OSError as exc:
+                errors[relative] = str(exc)
+        return {
+            "removed": removed,
+            "freed_bytes": freed_bytes,
+            "retained_recent": retained_recent,
+            "errors": errors,
+            "retention_hours": retention_hours,
+        }
+
     async def request(
         self,
         method: str,
@@ -627,6 +696,19 @@ class SlskdClient:
         ]
         if not payload:
             raise SlskdError(f"Candidate {candidate.candidate_id} has no files to queue")
+        usage = shutil.disk_usage(self.downloads_dir)
+        requested_bytes = sum(max(0, int(file.size or 0)) for file in candidate.files)
+        reserved_bytes = max(
+            self.config.minimum_free_space_gib * 1024**3,
+            math.ceil(usage.total * self.config.minimum_free_space_percent / 100),
+        )
+        if usage.free - requested_bytes < reserved_bytes:
+            raise SlskdError(
+                "Download wegen Speicherreserve blockiert: "
+                f"{usage.free / 1024**3:.1f} GiB frei, "
+                f"{requested_bytes / 1024**3:.1f} GiB angefordert, "
+                f"{reserved_bytes / 1024**3:.1f} GiB Reserve erforderlich"
+            )
         await self.request(
             "POST",
             f"/api/v0/transfers/downloads/{quote(candidate.username, safe='')}",

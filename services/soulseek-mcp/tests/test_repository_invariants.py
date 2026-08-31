@@ -28,7 +28,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
 
 def test_both_service_images_are_versioned_and_health_checked() -> None:
     for service, port, version in (
-        ("soulseek-mcp", "8081", "0.3.7"),
+        ("soulseek-mcp", "8081", "0.3.8"),
         ("traxx-mcp", "8082", "0.3.14"),
     ):
         dockerfile = (ROOT / "services" / service / "Dockerfile").read_text(

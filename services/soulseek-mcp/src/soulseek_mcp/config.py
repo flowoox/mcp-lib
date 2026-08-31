@@ -23,6 +23,8 @@ class RuntimeConfig(BaseModel):
     auto_reconnect: bool = True
     reconnect_wait_seconds: int = Field(default=12, ge=1, le=60)
     reconnect_cooldown_seconds: int = Field(default=30, ge=1, le=300)
+    minimum_free_space_gib: int = Field(default=20, ge=0, le=1024)
+    minimum_free_space_percent: int = Field(default=15, ge=0, le=95)
 
     @field_validator("base_url")
     @classmethod
@@ -70,6 +72,8 @@ class Settings(BaseSettings):
     slskd_auto_reconnect: bool = True
     slskd_reconnect_wait_seconds: int = 12
     slskd_reconnect_cooldown_seconds: int = 30
+    slskd_minimum_free_space_gib: int = 20
+    slskd_minimum_free_space_percent: int = 15
 
     def initial_runtime_config(self) -> RuntimeConfig:
         return RuntimeConfig(
@@ -84,6 +88,8 @@ class Settings(BaseSettings):
             auto_reconnect=self.slskd_auto_reconnect,
             reconnect_wait_seconds=self.slskd_reconnect_wait_seconds,
             reconnect_cooldown_seconds=self.slskd_reconnect_cooldown_seconds,
+            minimum_free_space_gib=self.slskd_minimum_free_space_gib,
+            minimum_free_space_percent=self.slskd_minimum_free_space_percent,
         )
 
 

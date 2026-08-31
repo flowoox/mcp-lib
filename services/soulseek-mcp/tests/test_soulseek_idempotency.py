@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from soulseek_mcp.client import SlskdClient, deterministic_batch_id
+from soulseek_mcp.client import SlskdClient, SlskdError, deterministic_batch_id
 from soulseek_mcp.config import RuntimeConfig
 from soulseek_mcp.models import AlbumCandidate, DownloadBatch, RemoteFile
 from soulseek_mcp.repository import BatchRepository
@@ -28,8 +30,13 @@ def candidate() -> AlbumCandidate:
 
 
 def build(tmp_path: Path) -> SlskdClient:
+    (tmp_path / "downloads").mkdir(parents=True, exist_ok=True)
     return SlskdClient(
-        RuntimeConfig(base_url="http://slskd"),
+        RuntimeConfig(
+            base_url="http://slskd",
+            minimum_free_space_gib=0,
+            minimum_free_space_percent=0,
+        ),
         batches=BatchRepository(tmp_path / "batches.json"),
         downloads_dir=tmp_path / "downloads",
     )
@@ -45,9 +52,7 @@ def test_rejected_album_folder_is_archived_inside_download_root(tmp_path: Path) 
 
     archived = Path(result["archived_path"])
     assert result["archived"] is True
-    assert archived.parent == (
-        tmp_path / "downloads" / ".radar-retry-archive" / "recommendation-1"
-    )
+    assert archived.parent == (tmp_path / "downloads" / ".radar-retry-archive" / "recommendation-1")
     assert (archived / "01.flac").read_bytes() == b"audio"
     assert not source.exists()
 
@@ -84,9 +89,7 @@ def test_verified_library_album_can_be_cleaned(tmp_path: Path) -> None:
         ".radar-retry-archive/job/Album",
     ],
 )
-def test_cleanup_is_confined_to_a_library_album(
-    tmp_path: Path, relative: str
-) -> None:
+def test_cleanup_is_confined_to_a_library_album(tmp_path: Path, relative: str) -> None:
     client = build(tmp_path)
     root = tmp_path / "downloads"
     root.mkdir(parents=True, exist_ok=True)
@@ -96,6 +99,45 @@ def test_cleanup_is_confined_to_a_library_album(
 
     with pytest.raises(ValueError, match="below library"):
         client.cleanup_download_folder(str(target))
+
+
+def test_retry_archive_cleanup_removes_only_expired_attempts(tmp_path: Path) -> None:
+    client = build(tmp_path)
+    archive = tmp_path / "downloads" / ".radar-retry-archive" / "recommendation-1"
+    old = archive / "Album-old"
+    recent = archive / "Album-recent"
+    old.mkdir(parents=True)
+    recent.mkdir(parents=True)
+    (old / "01.flac").write_bytes(b"old audio")
+    (recent / "01.flac").write_bytes(b"new audio")
+    old_time = 1_700_000_000
+    os.utime(old / "01.flac", (old_time, old_time))
+    os.utime(old, (old_time, old_time))
+
+    result = client.cleanup_retry_archive(retention_hours=72, limit=100)
+
+    assert result["removed"] == ["recommendation-1/Album-old"]
+    assert result["freed_bytes"] == len(b"old audio")
+    assert result["retained_recent"] == 1
+    assert not old.exists()
+    assert (recent / "01.flac").is_file()
+
+
+@pytest.mark.asyncio
+async def test_queue_refuses_to_consume_the_disk_reserve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = build(tmp_path)
+    client.config = client.config.model_copy(
+        update={"minimum_free_space_gib": 1, "minimum_free_space_percent": 0}
+    )
+    monkeypatch.setattr(
+        "soulseek_mcp.client.shutil.disk_usage",
+        lambda _path: SimpleNamespace(total=10 * 1024**3, used=9 * 1024**3, free=1024**3),
+    )
+
+    with pytest.raises(SlskdError, match="Speicherreserve"):
+        await client.queue_candidate(candidate())
 
 
 @pytest.mark.asyncio
@@ -391,9 +433,7 @@ async def test_failed_sidecar_does_not_fail_complete_audio_batch(tmp_path: Path)
     album = candidate().model_copy(
         update={
             "files": [
-                RemoteFile(
-                    filename="Music\\Artist\\Album\\01 Deep.flac", size=123
-                ),
+                RemoteFile(filename="Music\\Artist\\Album\\01 Deep.flac", size=123),
                 RemoteFile(filename="Music\\Artist\\Album\\album.nfo", size=12),
             ],
             "audio_file_count": 1,
@@ -447,6 +487,4 @@ async def test_failed_sidecar_does_not_fail_complete_audio_batch(tmp_path: Path)
     assert status["audio_files_seen"] == 1
     assert status["collected"]["moved"] == 1
     assert len(posts) == 1
-    assert [item["filename"] for item in collected[0]] == [
-        "Music\\Artist\\Album\\01 Deep.flac"
-    ]
+    assert [item["filename"] for item in collected[0]] == ["Music\\Artist\\Album\\01 Deep.flac"]
