@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import json
 import time
 from typing import Any
+
+import httpx
 
 from .client import WazuhServerReadOnlyTransport
 from .config import Settings
@@ -25,7 +28,7 @@ def _jwt_expiration_epoch(token: str) -> float | None:
     try:
         padding = "=" * (-len(payload_segment) % 4)
         payload = json.loads(base64.urlsafe_b64decode(payload_segment + padding))
-    except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+    except (binascii.Error, json.JSONDecodeError, UnicodeDecodeError, ValueError):
         return None
     if not isinstance(payload, dict):
         return None
@@ -39,8 +42,13 @@ def _jwt_expiration_epoch(token: str) -> float | None:
 class ExpiringWazuhServerReadOnlyTransport(WazuhServerReadOnlyTransport):
     """Server transport that refreshes Wazuh JWTs before their advertised expiry."""
 
-    def __init__(self, settings: Settings, **kwargs: Any) -> None:
-        super().__init__(settings, **kwargs)
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        super().__init__(settings, transport=transport)
         self._jwt_valid_until_epoch = 0.0
         self._jwt_refresh_lock = asyncio.Lock()
 
