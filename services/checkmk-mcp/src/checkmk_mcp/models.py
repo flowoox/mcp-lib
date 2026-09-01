@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field
-
 from mcp_common.operations import StrictModel
-
+from pydantic import Field
 
 HostStateLabel = Literal["UP", "DOWN", "UNREACHABLE", "PENDING", "OTHER"]
 ServiceStateLabel = Literal["OK", "WARN", "CRIT", "UNKNOWN", "PENDING", "OTHER"]
