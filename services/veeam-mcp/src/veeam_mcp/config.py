@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal, Self
 from urllib.parse import urlsplit, urlunsplit
+from typing import Literal, Self
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
