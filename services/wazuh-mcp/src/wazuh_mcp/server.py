@@ -22,9 +22,10 @@ from mcp_common.read_only_connector import (
     SampleRequest,
 )
 
-from .client import WazuhIndexerReadOnlyTransport, WazuhServerReadOnlyTransport
+from .client import WazuhIndexerReadOnlyTransport
 from .config import Settings
 from .contract import capabilities
+from .token_refresh import ExpiringWazuhServerReadOnlyTransport
 
 _SERVER_OPERATIONS = frozenset(
     {
@@ -181,7 +182,7 @@ def create_server(
     budget_limits = _budget_limits(settings)
     server_connector = server_connector or ReadOnlyConnector(
         server_policy,
-        WazuhServerReadOnlyTransport(settings),
+        ExpiringWazuhServerReadOnlyTransport(settings),
     )
     indexer_connector = indexer_connector or ReadOnlyConnector(
         indexer_policy,
