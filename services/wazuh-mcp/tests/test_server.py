@@ -41,7 +41,7 @@ def test_contract_is_read_only_and_excludes_high_risk_surfaces() -> None:
 
 
 def test_operation_surface_contains_only_fixed_observations() -> None:
-    assert _SERVER_OPERATIONS == frozenset(
+    assert frozenset(
         {
             "wazuh.api.info",
             "wazuh.agents.summary",
@@ -49,10 +49,10 @@ def test_operation_surface_contains_only_fixed_observations() -> None:
             "wazuh.manager.status",
             "wazuh.manager.logs.summary",
         }
-    )
-    assert _INDEXER_OPERATIONS == frozenset(
+    ) == _SERVER_OPERATIONS
+    assert frozenset(
         {
             "wazuh.alerts.summary",
             "wazuh.vulnerabilities.summary",
         }
-    )
+    ) == _INDEXER_OPERATIONS
