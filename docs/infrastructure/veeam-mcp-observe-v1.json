@@ -1,15 +1,17 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "service": "veeam-mcp",
-  "status": "observe_complete",
+  "status": "observe_complete_runtime_build_attestation_required",
   "contract": "flowoox.veeam-backup-diagnostics/1.0",
   "vendor_contract": {
     "product": "Veeam Backup & Replication 13",
     "rest_api_version": "1.3-rev2",
-    "verified_on": "2026-08-31",
+    "verified_on": "2026-09-01",
     "authentication": "POST /api/oauth2/token password grant; bearer token for resource requests",
     "least_privilege_role": "Backup Viewer",
-    "role_evidence": "Built-in Backup Viewer is read-only; the selected GET endpoints document Backup Viewer availability.",
+    "role_evidence": "Built-in Backup Viewer is read-only for the selected fixed GET endpoints.",
+    "backend_build_security_floor": "13.0.1.2067",
+    "backend_build_attestation": "Deployment must set VEEAM_BACKEND_BUILD to an administrator-verified VBR 13 build at or above the floor. The vendor serverInfo endpoint is not called by Observe v1 because it requires Backup Administrator and would violate the runtime least-privilege boundary.",
     "selected_get_endpoints": [
       "/api/v1/jobs/states",
       "/api/v1/sessions",
@@ -19,6 +21,7 @@
     ],
     "primary_docs": [
       "https://helpcenter.veeam.com/references/vbr/13/rest/1.3-rev2/tag/Login/index.html",
+      "https://helpcenter.veeam.com/references/vbr/13/rest/1.3-rev2/tag/Service/index.html",
       "https://helpcenter.veeam.com/references/vbr/13/rest/1.3-rev2/tag/Jobs/index.html",
       "https://helpcenter.veeam.com/references/vbr/13/rest/1.3-rev2/tag/Sessions/index.html",
       "https://helpcenter.veeam.com/references/vbr/13/rest/1.3-rev2/tag/Repositories/index.html",
@@ -34,12 +37,15 @@
     "pr_service_ci_run": 33374040156,
     "main_ci_run": 33374131568,
     "main_service_ci_run": 33374131583,
-    "result": "success"
+    "result": "success",
+    "sec_042_runtime_backend_build": "pending deployment-owned attestation"
   },
   "safety": {
     "default_mode": "read_only",
     "backend_attestation_required": true,
     "required_backend_role": "Backup Viewer",
+    "backend_build_floor_enforced": true,
+    "minimum_backend_build": "13.0.1.2067",
     "fixed_resource_methods": ["GET"],
     "authentication_post_is_internal_only": true,
     "generic_api_proxy": false,
