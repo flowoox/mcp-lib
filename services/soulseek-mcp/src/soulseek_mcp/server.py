@@ -69,6 +69,8 @@ def create_server() -> FastMCP:
         auto_reconnect: bool = True,
         reconnect_wait_seconds: int = 12,
         reconnect_cooldown_seconds: int = 30,
+        minimum_free_space_gib: int = 20,
+        minimum_free_space_percent: int = 20,
     ) -> dict[str, Any]:
         """Persist API, search, quality and optional account settings.
 
@@ -89,12 +91,12 @@ def create_server() -> FastMCP:
             auto_reconnect=auto_reconnect,
             reconnect_wait_seconds=reconnect_wait_seconds,
             reconnect_cooldown_seconds=reconnect_cooldown_seconds,
+            minimum_free_space_gib=minimum_free_space_gib,
+            minimum_free_space_percent=minimum_free_space_percent,
         )
         configs.save(config)
 
-        account_requested = any(
-            (soulseek_username, soulseek_password, web_username, web_password)
-        )
+        account_requested = any((soulseek_username, soulseek_password, web_username, web_password))
         if account_requested:
             slskd_config.write(
                 soulseek_username=soulseek_username,
@@ -247,6 +249,11 @@ def create_server() -> FastMCP:
     async def cleanup_download_folder(path: str) -> dict[str, Any]:
         """Delete one imported album folder confined below /downloads/library."""
         return client().cleanup_download_folder(path)
+
+    @mcp.tool()
+    async def cleanup_retry_archive(retention_hours: int = 72, limit: int = 100) -> dict[str, Any]:
+        """Delete only expired retry attempts from the private retry archive."""
+        return client().cleanup_retry_archive(retention_hours=retention_hours, limit=limit)
 
     @mcp.tool()
     async def list_downloads() -> Any:
