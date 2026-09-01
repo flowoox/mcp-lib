@@ -7,6 +7,20 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+MINIMUM_SECURE_VBR_BUILD = (13, 0, 1, 2067)
+
+
+def _parse_vbr_build(value: str) -> tuple[int, int, int, int]:
+    normalized = value.strip()
+    parts = normalized.split(".")
+    if len(parts) != 4 or any(not part.isdecimal() for part in parts):
+        raise ValueError("VEEAM_BACKEND_BUILD must be a four-part numeric VBR build such as 13.1.1.18")
+    build = tuple(int(part) for part in parts)
+    if build[0] != 13:
+        raise ValueError("Observe v1 supports Veeam Backup & Replication 13 only")
+    return build  # type: ignore[return-value]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=None, case_sensitive=False, extra="ignore")
 
@@ -24,6 +38,7 @@ class Settings(BaseSettings):
     veeam_password: SecretStr = SecretStr("")
     veeam_backend_read_only: bool = False
     veeam_backend_role: str = ""
+    veeam_backend_build: str = ""
     veeam_api_version: str = "1.3-rev2"
     veeam_allow_insecure_http: bool = False
     veeam_tls_verify: bool = True
@@ -61,6 +76,15 @@ class Settings(BaseSettings):
             self.veeam_api_base_url = urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
         if self.veeam_api_version != "1.3-rev2":
             raise ValueError("Observe v1 is pinned to the documented VBR 13 REST API 1.3-rev2 contract")
+
+        backend_build = self.veeam_backend_build.strip()
+        if backend_build:
+            parsed_build = _parse_vbr_build(backend_build)
+            if parsed_build < MINIMUM_SECURE_VBR_BUILD:
+                raise ValueError(
+                    "VEEAM_BACKEND_BUILD is below the minimum secure VBR 13 build 13.0.1.2067"
+                )
+            self.veeam_backend_build = ".".join(str(part) for part in parsed_build)
         return self
 
     @property
@@ -74,3 +98,7 @@ class Settings(BaseSettings):
     @property
     def read_only_attested(self) -> bool:
         return self.veeam_backend_read_only and self.veeam_backend_role.strip().casefold() == "backup viewer"
+
+    @property
+    def backend_build_attested(self) -> bool:
+        return bool(self.veeam_backend_build.strip())
