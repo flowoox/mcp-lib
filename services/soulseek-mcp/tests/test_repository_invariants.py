@@ -16,6 +16,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
         "hyperv-mcp.yml",
         "manageengine-mdm-mcp.yml",
         "n8n-mcp.yml",
+        "pki-mcp.yml",
         "prtg-mcp.yml",
         "publish-archive.yml",
         "publish-soulseek.yml",
