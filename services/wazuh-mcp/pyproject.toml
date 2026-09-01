@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flowoox-mcp-wazuh"
+version = "0.1.0"
+description = "Product-neutral, bounded read-only MCP diagnostics for Wazuh 4.14."
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+dependencies = [
+  "flowoox-mcp-common>=0.2.0",
+  "httpx>=0.28,<1",
+  "mcp>=1.28.1,<2",
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.7,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.1,<10", "pytest-asyncio>=1.4,<2", "ruff>=0.9,<1"]
+
+[project.scripts]
+mcp-wazuh = "wazuh_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wazuh_mcp"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "../../packages/mcp-common/src"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]

@@ -22,6 +22,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
         "security-audit-mcp.yml",
         "unifi-mcp.yml",
         "veeam-mcp.yml",
+        "wazuh-mcp.yml",
         "windows-mcp.yml",
     }
 
