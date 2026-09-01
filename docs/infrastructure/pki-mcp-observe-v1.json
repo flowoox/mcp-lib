@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "service": "pki-mcp",
+  "status": "observe_v1_candidate",
+  "contract": "flowoox.pki-diagnostics/1.0",
+  "vendor_contract": {
+    "verified_on": "2026-09-01",
+    "platform": "Microsoft Active Directory Certificate Services on supported Windows Server releases",
+    "database_observation": "ICertView through CertificateAuthority.View COM",
+    "least_privilege": "dedicated identity explicitly granted View CA database plus only deployment-required local read rights, accessed through constrained Kerberos WinRM/JEA",
+    "production_tooling": "repository-owned static PowerShell probes; certutil deliberately excluded",
+    "primary_docs": [
+      "https://learn.microsoft.com/en-us/windows/win32/seccrypto/viewing-the-certificate-services-database",
+      "https://learn.microsoft.com/en-us/windows/win32/api/certview/nn-certview-icertview",
+      "https://learn.microsoft.com/en-us/windows/win32/api/certview/nf-certview-icertview-setrestriction",
+      "https://learn.microsoft.com/en-us/windows/win32/api/certcli/nn-certcli-icertconfig",
+      "https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/manage-certificate-templates",
+      "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/certutil"
+    ]
+  },
+  "safety": {
+    "default_mode": "read_only",
+    "backend_attestation_required": true,
+    "view_ca_database_attestation_required": true,
+    "fixed_operation_allowlist": true,
+    "logical_target_aliases": true,
+    "constrained_jea_required": true,
+    "generic_powershell": false,
+    "generic_database_query": false,
+    "certutil": false,
+    "private_keys": false,
+    "certificate_bodies": false,
+    "requester_pii": false,
+    "certificate_subjects": false,
+    "serial_numbers": false,
+    "publication_urls": false,
+    "template_object_administration": false,
+    "writes": false,
+    "query_budget": true,
+    "audit_correlation": true
+  },
+  "load_protection": {
+    "max_concurrency_default": 1,
+    "rate_limit_per_second_default": 0.5,
+    "bounded_expiry_window": true,
+    "bounded_first_page_only": true,
+    "continuation_cursor_exposed": false,
+    "aggregate_first_diagnostics": true,
+    "request_item_response_timeout_fanout_budgets": true
+  },
+  "verification": {
+    "pr_ci_run": null,
+    "pr_service_ci_run": null,
+    "main_ci_run": null,
+    "main_service_ci_run": null,
+    "result": "pending"
+  }
+}
