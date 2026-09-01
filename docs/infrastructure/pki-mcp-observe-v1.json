@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "service": "pki-mcp",
-  "status": "observe_v1_candidate",
+  "status": "observe_complete",
   "contract": "flowoox.pki-diagnostics/1.0",
   "vendor_contract": {
     "verified_on": "2026-09-01",
@@ -49,10 +49,12 @@
     "request_item_response_timeout_fanout_budgets": true
   },
   "verification": {
-    "pr_ci_run": null,
-    "pr_service_ci_run": null,
-    "main_ci_run": null,
-    "main_service_ci_run": null,
-    "result": "pending"
+    "merged_pr": 65,
+    "merge_sha": "ce2af854125277e04e801ac73f813401540d0116",
+    "pr_ci_run": 33492437525,
+    "pr_service_ci_run": 33492437520,
+    "main_ci_run": 33492554146,
+    "main_service_ci_run": 33492553954,
+    "result": "success"
   }
 }
