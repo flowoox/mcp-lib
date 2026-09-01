@@ -85,6 +85,11 @@ class Settings(BaseSettings):
                     "VEEAM_BACKEND_BUILD is below the minimum secure VBR 13 build 13.0.1.2067"
                 )
             self.veeam_backend_build = ".".join(str(part) for part in parsed_build)
+        elif self.configured:
+            raise ValueError(
+                "VEEAM_BACKEND_BUILD is required when the Veeam backend is configured; "
+                "attest a patched VBR 13 build >= 13.0.1.2067"
+            )
         return self
 
     @property
