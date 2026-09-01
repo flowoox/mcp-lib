@@ -1,29 +1,29 @@
 {
-  "schema_version": 9,
-  "updated_at": "2026-09-01T08:46:00Z",
+  "schema_version": 10,
+  "updated_at": "2026-09-01T09:31:00Z",
   "repository": "flowoox/mcp-lib",
-  "base_main_sha": "8ef466c0a68daefe55030aa7178018cf9024a4cc",
+  "base_main_sha": "ce2af854125277e04e801ac73f813401540d0116",
   "last_completed": {
-    "work_item": "checkmk-mcp",
+    "work_item": "pki-mcp",
     "status": "observe_complete",
-    "merged_pr": 63,
-    "merge_sha": "8ef466c0a68daefe55030aa7178018cf9024a4cc",
+    "merged_pr": 65,
+    "merge_sha": "ce2af854125277e04e801ac73f813401540d0116",
     "verification": {
-      "pr_ci_run": 33488500173,
-      "pr_service_ci_run": 33488500237,
-      "main_ci_run": 33488601009,
-      "main_service_ci_run": 33488600987,
+      "pr_ci_run": 33492437525,
+      "pr_service_ci_run": 33492437520,
+      "main_ci_run": 33492554146,
+      "main_service_ci_run": 33492553954,
       "result": "success"
     },
     "capabilities": [
-      "stable Checkmk REST API /check_mk/api/1.0 with automation-user Bearer authentication",
-      "explicit read-only backend and deployment-owned least-privilege role attestations",
-      "fixed server-side problem-host and problem-service POST queries with fixed columns",
-      "bounded validated single-host problem-service drill-down and version observation",
-      "typed privacy-minimized projections excluding addresses, contacts, plugin output, performance data and comments",
+      "Microsoft AD CS observation through supported ICertView/CertificateAuthority.View plus repository-owned static probes",
+      "dedicated constrained Kerberos WinRM/JEA target aliases with explicit read-only and View CA database deployment attestations",
+      "bounded CA service/certificate/CRL-period health, expiring-certificate database view, revocation-publication summary and CA event metadata",
+      "privacy-minimized typed projections excluding requester identities, certificate subjects, serials, bodies, private keys, message bodies and publication URLs",
+      "bounded first-page-only Certificate Services database observation without agent-visible continuation cursor",
       "shared ReadOnlyConnector and QueryBudget request/item/response/concurrency/rate/fan-out protections",
-      "aggregate-first diagnostic bundle without automatic per-host fan-out",
-      "audit/correlation integration, tests, documentation, hardened non-root container and dedicated CI"
+      "audit/correlation integration and aggregate-first diagnostic bundle",
+      "certutil, arbitrary PowerShell/database queries, issuance, revocation and CA/template mutations deliberately excluded"
     ]
   },
   "blocked_work_items": [
@@ -84,24 +84,23 @@
     }
   ],
   "current": {
-    "work_item": "pki-mcp",
-    "branch": "feat/pki-mcp-observe-v1",
-    "status": "queued",
-    "goal": "Implement bounded read-only PKI/AD CS diagnostics only after verifying current Microsoft-supported Windows PKI interfaces and a dedicated least-privilege observation identity.",
-    "first_actions": [
-      "resync main, open PRs/issues, CI and parallel branches before branching",
-      "verify current Microsoft-supported AD CS/PKI observation interfaces and exact least-privilege read permissions from primary documentation",
-      "freeze typed privacy-minimized CA health, certificate-template metadata, issuance/expiry/revocation health, chain/AIA/CDP/CRL and endpoint/store diagnostic projections",
-      "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and server-load protections",
-      "aggregate CA and revocation health before narrowly bounded template or certificate drill-down",
-      "keep private keys, secret material, certificate issuance/revocation, CA/template mutation, arbitrary PowerShell and unrestricted certificate-store export out of Observe v1"
-    ]
-  },
-  "next_after_current": {
     "work_item": "exchange-m365-mcp",
     "branch": "feat/exchange-m365-mcp-observe-v1",
     "status": "queued",
-    "goal": "Implement bounded Exchange Online/Microsoft 365 diagnostics only after verifying current supported Graph/Exchange interfaces and exact least-privilege read roles; exclude message-body/export access and all mutations from Observe v1."
+    "goal": "Implement bounded Exchange Online/Microsoft 365 diagnostics only after verifying current supported Graph/Exchange interfaces and exact least-privilege read roles; exclude message-body/export access and all mutations from Observe v1.",
+    "first_actions": [
+      "resync main, open PRs/issues, CI and parallel branches before branching",
+      "verify current Microsoft-supported Exchange Online, Microsoft Graph and related Microsoft 365 observation interfaces plus exact least-privilege read permissions from primary documentation",
+      "freeze typed privacy-minimized organization, accepted-domain, connector, mail-flow configuration and service-health diagnostic projections without mailbox content",
+      "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and server-load protections",
+      "aggregate tenant and mail-flow health before narrowly bounded connector or configuration drill-down",
+      "keep message bodies, attachments, mailbox export, eDiscovery/content search, unrestricted recipient enumeration and all configuration/user/message mutations out of Observe v1"
+    ]
+  },
+  "next_after_current": {
+    "work_item": "windows-admincenter-mcp",
+    "status": "decision_gate",
+    "goal": "Implement only if a current supported stable Windows Admin Center gateway API and least-privilege read-only role materially reduce adapter duplication without creating a generic PowerShell/admin proxy."
   },
   "continuation_rule": "Before every run resync main, open PRs/issues, CI and parallel branches; protect foreign work; skip blocked items and continue the first non-blocked queued item. Merge only after relevant PR CI is green and verify main CI after merge."
 }
