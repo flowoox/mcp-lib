@@ -121,7 +121,7 @@ async def test_expiring_projection_hides_backend_continuation() -> None:
 def test_target_alias_does_not_accept_caller_supplied_ca_config() -> None:
     settings = _settings()
     transport = PKIReadOnlyTransport(settings, runner=_PayloadOnlyRunner())
-    with pytest.raises(ValueError, match="unsupported parameters"):
+    with pytest.raises(ValueError, match="no extra parameters"):
         transport._payload(
             ReadOnlyQuery(
                 operation="pki.ca.observe",
