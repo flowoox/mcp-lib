@@ -18,6 +18,7 @@ def _settings(**overrides: object) -> Settings:
         "veeam_password": "secret",
         "veeam_backend_read_only": True,
         "veeam_backend_role": "Backup Viewer",
+        "veeam_backend_build": "13.1.1.18",
     }
     values.update(overrides)
     return Settings(**values)
