@@ -7,6 +7,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
     workflows = {path.name for path in (ROOT / ".github" / "workflows").glob("*.yml")}
     assert workflows == {
         "ad-mcp.yml",
+        "checkmk-mcp.yml",
         "ci.yml",
         "entra-mcp.yml",
         "failovercluster-mcp.yml",
