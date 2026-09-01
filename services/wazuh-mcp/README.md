@@ -17,6 +17,8 @@ The server-side reader requires all of:
 
 Authentication is the one fixed internal write-shaped request required by Wazuh: `POST /security/user/authenticate?raw=true` with Basic Auth obtains a JWT. Every observation after that is a fixed GET operation. The MCP never exposes the authentication call as a tool.
 
+Wazuh access tokens are time-limited. The transport reads the JWT `exp` claim only to **shorten its local cache lifetime** and refreshes 30 seconds before the advertised expiration. The claim is never used for authorization; Wazuh remains the authorization authority. If `exp` is absent or malformed, the token is used only for the current request and is not cached, avoiding an invented lifetime. The current Wazuh default token lifetime is 900 seconds unless the server administrator changes `auth_token_exp_timeout`.
+
 The indexer-side reader requires:
 
 - `WAZUH_INDEXER_BACKEND_READ_ONLY=true`
@@ -49,6 +51,7 @@ The older Wazuh server vulnerability endpoints are not used. Current vulnerabili
 
 - Wazuh server API reference 4.14.7: https://documentation.wazuh.com/current/user-manual/api/reference.html
 - Wazuh server API RBAC: https://documentation.wazuh.com/current/user-manual/api/rbac/reference.html
+- Wazuh API security configuration: https://documentation.wazuh.com/current/user-manual/api/configuration.html
 - Wazuh indexer API use cases: https://documentation.wazuh.com/current/user-manual/indexer-api/use-case.html
 - Wazuh indexer user/role administration: https://documentation.wazuh.com/current/user-manual/user-administration/wazuh-indexer.html
 - Wazuh indexer indices: https://documentation.wazuh.com/current/user-manual/wazuh-indexer/wazuh-indexer-indices.html
