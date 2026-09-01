@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "service": "wazuh-mcp",
+  "status": "observe_v1_candidate",
+  "contract": "flowoox.wazuh-diagnostics/1.0",
+  "vendor_contract": {
+    "verified_on": "2026-09-01",
+    "wazuh_server_api": "4.14.7",
+    "wazuh_release": "4.14.7",
+    "release_date": "2026-07-29",
+    "authentication": "POST /security/user/authenticate?raw=true with Basic Auth returns JWT; observation calls use Bearer JWT",
+    "server_least_privilege_role": "built-in readonly",
+    "indexer_least_privilege": "deployment-owned role with cluster_composite_ops_ro and read only on wazuh-alerts-* plus wazuh-states-vulnerabilities-*",
+    "server_operations": [
+      "GET /",
+      "GET /agents/summary",
+      "GET /agents",
+      "GET /manager/status",
+      "GET /manager/logs/summary"
+    ],
+    "indexer_operations": [
+      "POST /wazuh-alerts*/_search with internally generated size:0 aggregation body",
+      "POST /wazuh-states-vulnerabilities-*/_search with internally generated size:0 aggregation body"
+    ],
+    "primary_docs": [
+      "https://documentation.wazuh.com/current/release-notes/index.html",
+      "https://documentation.wazuh.com/current/user-manual/api/reference.html",
+      "https://documentation.wazuh.com/current/user-manual/api/rbac/reference.html",
+      "https://documentation.wazuh.com/current/user-manual/api/use-cases.html",
+      "https://documentation.wazuh.com/current/user-manual/indexer-api/use-case.html",
+      "https://documentation.wazuh.com/current/user-manual/user-administration/wazuh-indexer.html",
+      "https://documentation.wazuh.com/current/user-manual/wazuh-indexer/wazuh-indexer-indices.html"
+    ]
+  },
+  "safety": {
+    "default_mode": "read_only",
+    "server_backend_attestation_required": true,
+    "indexer_backend_attestation_required": true,
+    "fixed_server_get_allowlist": true,
+    "authentication_post_internal_only": true,
+    "fixed_index_patterns": true,
+    "generated_aggregation_only_indexer_queries": true,
+    "generic_server_api_proxy": false,
+    "generic_wql": false,
+    "generic_indexer_dsl": false,
+    "raw_alert_documents": false,
+    "raw_vulnerability_documents": false,
+    "agent_ip_or_enrollment_data": false,
+    "active_response": false,
+    "agent_lifecycle_writes": false,
+    "manager_restart": false,
+    "configuration_writes": false,
+    "index_writes": false,
+    "query_budget": true,
+    "audit_correlation": true,
+    "aggregate_before_fan_out": true
+  },
+  "privacy_minimization": [
+    "agent list excludes IP/registerIP, groups and enrollment material",
+    "manager log observation returns counters only, never log messages",
+    "alert observation returns total and rule-level buckets only",
+    "vulnerability observation returns severity counts and max CVSS only, not CVE/package/agent documents"
+  ],
+  "verification": {
+    "local_static_compile": "success",
+    "pr_ci_run": null,
+    "pr_service_ci_run": null,
+    "main_ci_run": null,
+    "main_service_ci_run": null,
+    "result": "pending"
+  }
+}
