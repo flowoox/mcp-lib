@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from urllib.parse import urlsplit, urlunsplit
 from typing import Literal, Self
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 MINIMUM_SECURE_VBR_BUILD = (13, 0, 1, 2067)
 
