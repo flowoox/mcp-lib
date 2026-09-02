@@ -25,6 +25,11 @@ from mcp_common.read_only_connector import (
 from .client import WazuhIndexerReadOnlyTransport, WazuhServerReadOnlyTransport
 from .config import Settings
 from .contract import capabilities
+from .version_gate import (
+    VersionGatedWazuhIndexerTransport,
+    VersionGatedWazuhServerTransport,
+    WazuhRuntimeVersionGate,
+)
 
 _SERVER_OPERATIONS = frozenset(
     {
@@ -179,14 +184,24 @@ def create_server(
         operations=_INDEXER_OPERATIONS,
     )
     budget_limits = _budget_limits(settings)
-    server_connector = server_connector or ReadOnlyConnector(
-        server_policy,
-        WazuhServerReadOnlyTransport(settings),
-    )
-    indexer_connector = indexer_connector or ReadOnlyConnector(
-        indexer_policy,
-        WazuhIndexerReadOnlyTransport(settings),
-    )
+
+    if server_connector is None or indexer_connector is None:
+        raw_server_transport = WazuhServerReadOnlyTransport(settings)
+        runtime_gate = WazuhRuntimeVersionGate(raw_server_transport)
+    if server_connector is None:
+        server_connector = ReadOnlyConnector(
+            server_policy,
+            VersionGatedWazuhServerTransport(raw_server_transport, runtime_gate),
+        )
+    if indexer_connector is None:
+        indexer_connector = ReadOnlyConnector(
+            indexer_policy,
+            VersionGatedWazuhIndexerTransport(
+                WazuhIndexerReadOnlyTransport(settings),
+                runtime_gate,
+            ),
+        )
+
     security = build_mcp_server_security(settings, service_hosts=("mcp-wazuh",))
     mcp = FastMCP(
         "Flowoox Wazuh Diagnostics MCP",
