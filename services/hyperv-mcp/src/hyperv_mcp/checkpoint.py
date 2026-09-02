@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -239,9 +239,12 @@ def build_checkpoint_plan(
     preflight: CheckpointPreflight,
     correlation_id: str,
     actor: str,
+    max_existing: int,
 ) -> dict[str, Any]:
     checkpoint_name = deterministic_checkpoint_name(request, preflight.vmId)
     matches = matching_checkpoints(preflight, checkpoint_name)
+    if not matches and preflight.checkpointCount >= max_existing:
+        raise ValueError("existing checkpoint count reached the configured safety limit")
     target = checkpoint_target(request.target_id, preflight.vmId, checkpoint_name)
     context = operation_context(
         actor,
@@ -416,7 +419,7 @@ class CheckpointReceiptStore:
             "preCheckpointIds": normalized_pre_ids,
             "checkpointId": None,
             "observedCreationTime": None,
-            "preparedAt": datetime.now(timezone.utc).isoformat(),
+            "preparedAt": datetime.now(UTC).isoformat(),
         }
         receipts[key] = receipt
         self.store.write(document)
@@ -432,6 +435,8 @@ class CheckpointReceiptStore:
         checkpoint_id: str,
         creation_time: datetime,
     ) -> dict[str, Any]:
+        if creation_time.tzinfo is None or creation_time.utcoffset() is None:
+            raise ValueError("checkpoint creation_time must be timezone-aware")
         document = self._read()
         receipts = document["receipts"]
         existing = receipts.get(idempotency_key)
@@ -447,7 +452,7 @@ class CheckpointReceiptStore:
         receipt = dict(existing)
         receipt["status"] = "verified"
         receipt["checkpointId"] = clean_uuid(checkpoint_id, "checkpoint_id")
-        receipt["observedCreationTime"] = creation_time.astimezone(timezone.utc).isoformat()
+        receipt["observedCreationTime"] = creation_time.astimezone(UTC).isoformat()
         receipts[idempotency_key] = receipt
         self.store.write(document)
         return dict(receipt)
