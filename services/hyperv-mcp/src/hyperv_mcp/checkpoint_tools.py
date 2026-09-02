@@ -12,6 +12,7 @@ from .checkpoint import (
     CheckpointReceiptStore,
     authorize_checkpoint_change,
     build_checkpoint_plan,
+    change_response,
     checkpoint_verification,
     clean_checkpoint_name,
     clean_uuid,
@@ -19,7 +20,6 @@ from .checkpoint import (
     matching_checkpoints,
     parse_preflight,
     verify_response,
-    change_response,
 )
 from .checkpoint_runner import CheckpointPowerShellRunner
 from .checkpoint_scripts import CheckpointScriptId
