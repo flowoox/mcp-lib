@@ -4,7 +4,6 @@ import asyncio
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
-from mcp_common.operations import Verification
 
 from .checkpoint import (
     CheckpointChangeRequest,
@@ -13,12 +12,14 @@ from .checkpoint import (
     CheckpointReceiptStore,
     authorize_checkpoint_change,
     build_checkpoint_plan,
-    change_response,
     checkpoint_verification,
+    clean_checkpoint_name,
+    clean_uuid,
     deterministic_checkpoint_name,
     matching_checkpoints,
     parse_preflight,
     verify_response,
+    change_response,
 )
 from .checkpoint_runner import CheckpointPowerShellRunner
 from .checkpoint_scripts import CheckpointScriptId
@@ -78,9 +79,11 @@ def _verified_receipt_matches(
         return False
     return (
         str(receipt.get("targetId", "")) == target_id
-        and str(receipt.get("vmId", "")) == vm_id
-        and str(receipt.get("checkpointName", "")) == checkpoint_name
-        and str(receipt.get("checkpointId", "")) == checkpoint_id
+        and str(receipt.get("vmId", "")) == clean_uuid(vm_id, "vm_id")
+        and str(receipt.get("checkpointName", ""))
+        == clean_checkpoint_name(checkpoint_name)
+        and str(receipt.get("checkpointId", ""))
+        == clean_uuid(checkpoint_id, "checkpoint_id")
     )
 
 
@@ -139,6 +142,7 @@ def register_checkpoint_tools(
             preflight=preflight,
             correlation_id=correlation_id,
             actor=actor,
+            max_existing=settings.hyperv_checkpoint_max_existing,
         )
         result["alreadySatisfied"] = bool(matches)
         result["clusterRouting"] = {
@@ -198,6 +202,8 @@ def register_checkpoint_tools(
             raise ValueError("checkpoint name changed after planning/approval")
 
         matches = matching_checkpoints(preflight, request.checkpoint_name)
+        if not matches and preflight.checkpointCount >= settings.hyperv_checkpoint_max_existing:
+            raise ValueError("existing checkpoint count reached the configured safety limit")
         store = _store(settings)
         existing_receipt = store.get(request.idempotency_key)
         if matches and existing_receipt is None:
@@ -357,6 +363,8 @@ def register_checkpoint_tools(
         """Verify checkpoint existence, VM identity, ProductionOnly state and receipt binding."""
 
         reason = _reason(reason)
+        canonical_vm_id = clean_uuid(expected_vm_id, "expected_vm_id")
+        canonical_checkpoint_name = clean_checkpoint_name(checkpoint_name)
         request = CheckpointPlanRequest(
             target_id=target_id,
             vm_name=vm_name,
@@ -367,21 +375,26 @@ def register_checkpoint_tools(
         receipt = _store(settings).get(request.idempotency_key)
         if receipt is None or receipt.get("status") != "verified":
             raise RuntimeError("no verified checkpoint receipt exists for this idempotency key")
-        if str(receipt.get("vmId", "")) != expected_vm_id:
+        if str(receipt.get("targetId", "")) != request.target_id:
+            raise PermissionError("checkpoint receipt is bound to a different target")
+        if str(receipt.get("vmId", "")) != canonical_vm_id:
             raise PermissionError("checkpoint receipt is bound to a different VM")
-        if str(receipt.get("checkpointName", "")) != checkpoint_name:
+        if str(receipt.get("checkpointName", "")) != canonical_checkpoint_name:
             raise PermissionError("checkpoint receipt is bound to a different checkpoint name")
-        checkpoint_id = str(receipt.get("checkpointId") or "")
+        checkpoint_id = clean_uuid(
+            str(receipt.get("checkpointId") or ""),
+            "checkpoint_id",
+        )
         raw = await _run_preflight(runner, settings, target, request.vm_name)
         preflight = parse_preflight(
             raw,
             max_existing=settings.hyperv_checkpoint_max_existing,
-            expected_vm_id=expected_vm_id,
+            expected_vm_id=canonical_vm_id,
         )
         verification = checkpoint_verification(
             preflight=preflight,
-            expected_vm_id=expected_vm_id,
-            checkpoint_name=checkpoint_name,
+            expected_vm_id=canonical_vm_id,
+            checkpoint_name=canonical_checkpoint_name,
             expected_checkpoint_id=checkpoint_id,
         )
         return verify_response(
@@ -389,7 +402,7 @@ def register_checkpoint_tools(
             reason=reason,
             correlation_id=correlation_id,
             target_id=request.target_id,
-            expected_vm_id=expected_vm_id,
-            checkpoint_name=checkpoint_name,
+            expected_vm_id=canonical_vm_id,
+            checkpoint_name=canonical_checkpoint_name,
             verification=verification,
         )
