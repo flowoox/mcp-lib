@@ -1,33 +1,36 @@
 {
-  "schema_version": 13,
-  "updated_at": "2026-09-02T09:16:00Z",
+  "schema_version": 14,
+  "updated_at": "2026-09-02T22:15:30Z",
   "repository": "flowoox/mcp-lib",
-  "base_main_sha": "47f4b99fb9237319efbf20736a93f67f633329c6",
+  "base_main_sha": "1f70ee43e52fd55118111388a4653cd09372d3c6",
   "last_completed": {
-    "work_item": "infrastructure-toolbox-production-readiness",
-    "status": "production_readiness_gate_complete",
-    "merged_pr": 74,
-    "merge_sha": "47f4b99fb9237319efbf20736a93f67f633329c6",
+    "work_item": "hyperv-mcp-production-checkpoint-lifecycle",
+    "status": "production_checkpoint_write_slice_complete",
+    "merged_pr": 76,
+    "merge_sha": "1f70ee43e52fd55118111388a4653cd09372d3c6",
     "verification": {
-      "pr_ci_run": 33612813703,
-      "pr_network_ci_run": 33612813686,
-      "pr_docker_ci_run": 33612813708,
-      "pr_ad_ci_run": 33612813725,
-      "main_ci_run": 33613017249,
-      "main_network_ci_run": 33613017281,
-      "main_docker_ci_run": 33613017329,
+      "pr_ci_run": 33689235345,
+      "pr_hyperv_ci_run": 33689235408,
+      "pr_failovercluster_ci_run": 33689235433,
+      "main_ci_run": 33689385851,
+      "main_hyperv_ci_run": 33689385771,
+      "main_failovercluster_ci_run": 33689385845,
       "result": "success"
     },
     "capabilities": [
-      "machine-readable production-readiness manifest plus repository validator for every production-bound infrastructure MCP",
-      "root locked-dependency CI matrix now covers all currently supported infrastructure MCP services",
-      "dedicated locked CI and non-root runtime images added for network-mcp and docker-mcp",
-      "network-mcp now has a fail-closed deployment example with loopback-only CIDR authorization and path tracing disabled by default",
-      "ad-mcp dedicated CI now follows the repository lock and immutable Action pin policy",
-      "repository workflow invariants include the new permanent Network and Docker workflows",
-      "organization-specific topology, credentials and policy remain deployment-owned and vendor-blocked adapters remain blocked rather than using undocumented interfaces"
+      "optional Hyper-V checkpoint creation write boundary for controlled pre-update workflows",
+      "plan approval change verify lifecycle with exact signed approval binding",
+      "ProductionOnly is mandatory so automation never falls back to a Standard checkpoint",
+      "checkpoint write traffic uses a dedicated constrained WinRM/JEA endpoint separate from the read-only backend",
+      "immutable VM ID target alias VM name deterministic checkpoint name and idempotency key are bound before mutation",
+      "pending and verified non-secret receipts make retries deterministic and reject intent rebinding",
+      "provider mutation is serialized per supplied single-process service to prevent concurrent duplicate Checkpoint-VM races",
+      "existing checkpoint-count safety limit is enforced during both planning and mutation",
+      "independent checkpoint readback verifies exact VM checkpoint ID name and ProductionOnly state before success",
+      "checkpoint restore delete rename VM power-state storage switch replication and guest-command writes remain unavailable",
+      "clustered VM workflow resolves current owner through failovercluster-mcp and then uses a deployment-owned Hyper-V owner-node alias without duplicating Hyper-V write privilege into the cluster MCP"
     ],
-    "ci_note": "The first PR CI exposed a repository tooling import-path issue in the Soulseek invariant job. The invocation was corrected to run pytest as a Python module from the repository root; the complete PR CI and post-merge main checks then passed."
+    "ci_note": "Initial CI found Ruff-only modernization/import ordering issues. Those were corrected together with stricter capacity, timestamp, UUID and concurrency guards; the final PR and post-merge Main Hyper-V, FailoverCluster and repository-wide CI runs all passed."
   },
   "completed_decisions": [
     {
