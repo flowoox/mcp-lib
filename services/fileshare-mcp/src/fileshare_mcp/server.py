@@ -20,7 +20,21 @@ from mcp_common.query_budget import QueryBudget, QueryBudgetLimits
 from .backend import FileShareBackend, PowerShellFileShareBackend
 from .config import Settings
 from .contract import capabilities
-from .models import AccessExplanation, AclObservation, DirectoryEntry, PathInfo, ShareAce, ShareRoot
+from .models import (
+    AccessExplanation,
+    AclObservation,
+    DirectoryEntry,
+    FileHashObservation,
+    PathInfo,
+    ShareAce,
+    ShareRoot,
+    TextPreviewObservation,
+    TextSearchObservation,
+)
+
+_RESERVED_WINDOWS_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+)
 
 
 def _budget_limits(settings: Settings) -> QueryBudgetLimits:
@@ -59,14 +73,58 @@ def _root(settings: Settings, alias: str) -> ShareRoot:
     raise ValueError("unknown root alias")
 
 
+def _validate_relative_segment(part: str) -> None:
+    if "\x00" in part or ":" in part:
+        raise ValueError("relative_path contains an invalid segment")
+    if part.endswith((" ", ".")):
+        raise ValueError("relative_path contains a Windows-canonicalization-ambiguous segment")
+    basename = part.split(".", 1)[0].upper()
+    if basename in _RESERVED_WINDOWS_NAMES:
+        raise ValueError("relative_path contains a reserved Windows device name")
+
+
 def _full_path(root: ShareRoot, relative_path: str) -> str:
     value = relative_path.strip().replace("/", "\\")
     relative = PureWindowsPath(value or ".")
     if relative.is_absolute() or relative.drive or ".." in relative.parts:
         raise ValueError("relative_path must stay within the configured root")
-    if any("\x00" in part or ":" in part for part in relative.parts):
-        raise ValueError("relative_path contains an invalid segment")
+    for part in relative.parts:
+        if part not in {"."}:
+            _validate_relative_segment(part)
     return str(PureWindowsPath(root.path).joinpath(relative))
+
+
+def _content_target(
+    settings: Settings,
+    root_alias: str,
+    relative_path: str,
+    *,
+    require_text_extension: bool,
+) -> tuple[ShareRoot, str]:
+    if not settings.fileshare_content_read_enabled:
+        raise ValueError("bounded content analysis is disabled")
+    root = _root(settings, root_alias)
+    if not root.content_read:
+        raise ValueError("content analysis is not enabled for this root alias")
+    if not relative_path.strip():
+        raise ValueError("relative_path must identify a file for content analysis")
+    path = _full_path(root, relative_path)
+    if require_text_extension:
+        extension = PureWindowsPath(relative_path).suffix.lower()
+        if extension not in settings.safe_text_extensions:
+            raise ValueError("file extension is not allowlisted for text analysis")
+    return root, path
+
+
+def _search_query(settings: Settings, query: str) -> str:
+    value = query.strip()
+    if not value:
+        raise ValueError("query must not be empty")
+    if len(value) > settings.fileshare_max_search_query_characters:
+        raise ValueError("query exceeds configured character limit")
+    if any(ord(character) < 32 for character in value):
+        raise ValueError("query must not contain control characters")
+    return value
 
 
 def _response(
@@ -156,7 +214,7 @@ def create_server(settings: Settings | None = None, backend: FileShareBackend | 
     mcp = FastMCP(
         "Flowoox FileShare Diagnostics MCP",
         instructions=(
-            "Bounded read-only Windows file-share diagnostics. Every filesystem target is resolved from a configured root alias; arbitrary paths, recursive walks, file content reads and write commands are not exposed. Reparse points are blocked by default."
+            "Bounded read-only Windows file-share diagnostics. Every filesystem target is resolved from a configured root alias; arbitrary paths, recursive walks and write commands are not exposed. Reparse points are blocked by default. Optional content analysis is double opt-in per deployment and root and is limited to bounded SHA-256 hashing or allowlisted UTF-8 text preview/substring search."
         ),
         host=settings.mcp_host,
         port=settings.mcp_port,
@@ -172,6 +230,13 @@ def create_server(settings: Settings | None = None, backend: FileShareBackend | 
         return capabilities(
             budget_limits,
             allow_reparse_points=settings.fileshare_allow_reparse_points,
+            content_read_enabled=settings.fileshare_content_read_enabled,
+            safe_text_extensions=settings.safe_text_extensions,
+            max_text_read_bytes=settings.fileshare_max_text_read_bytes,
+            max_text_characters=settings.fileshare_max_text_characters,
+            max_text_lines=settings.fileshare_max_text_lines,
+            max_text_matches=settings.fileshare_max_text_matches,
+            max_hash_bytes=settings.fileshare_max_hash_bytes,
         )
 
     @mcp.tool()
@@ -186,6 +251,8 @@ def create_server(settings: Settings | None = None, backend: FileShareBackend | 
                 "alias": root.alias,
                 "shareName": root.share_name,
                 "description": root.description,
+                "contentAnalysisEnabled": settings.fileshare_content_read_enabled
+                and root.content_read,
             }
             for root in settings.roots
         ]
@@ -324,6 +391,147 @@ def create_server(settings: Settings | None = None, backend: FileShareBackend | 
             budget=budget,
             target=f"{root.alias}:{relative_path or '.'}",
         )
+
+    if settings.fileshare_content_read_enabled:
+
+        @mcp.tool()
+        async def fileshare_hash_file(
+            actor: str,
+            reason: str,
+            root_alias: str,
+            relative_path: str,
+            correlation_id: str = "",
+        ) -> dict[str, Any]:
+            root, path = _content_target(
+                settings,
+                root_alias,
+                relative_path,
+                require_text_extension=False,
+            )
+            budget = QueryBudget(budget_limits)
+            raw = await _backend_call(
+                backend,
+                budget,
+                settings,
+                "file_hash",
+                path=path,
+                max_bytes=settings.fileshare_max_hash_bytes,
+            )
+            observation = FileHashObservation.model_validate(raw)
+            if (
+                observation.length > settings.fileshare_max_hash_bytes
+                or observation.bytes_read > settings.fileshare_max_hash_bytes
+                or observation.bytes_read != observation.length
+            ):
+                raise RuntimeError("backend returned an invalid bounded hash observation")
+            return _response(
+                "fileshare.file.hash",
+                actor=actor,
+                reason=reason,
+                correlation_id=correlation_id,
+                output={"hash": observation.model_dump(mode="json")},
+                budget=budget,
+                target=f"{root.alias}:{relative_path}",
+            )
+
+        @mcp.tool()
+        async def fileshare_preview_text(
+            actor: str,
+            reason: str,
+            root_alias: str,
+            relative_path: str,
+            correlation_id: str = "",
+        ) -> dict[str, Any]:
+            root, path = _content_target(
+                settings,
+                root_alias,
+                relative_path,
+                require_text_extension=True,
+            )
+            budget = QueryBudget(budget_limits)
+            raw = await _backend_call(
+                backend,
+                budget,
+                settings,
+                "text_preview",
+                path=path,
+                max_bytes=settings.fileshare_max_text_read_bytes,
+                max_chars=settings.fileshare_max_text_characters,
+                max_lines=settings.fileshare_max_text_lines,
+            )
+            observation = TextPreviewObservation.model_validate(raw)
+            if (
+                observation.bytes_read > settings.fileshare_max_text_read_bytes
+                or observation.decoded_characters > settings.fileshare_max_text_characters
+                or observation.lines_returned > settings.fileshare_max_text_lines
+            ):
+                raise RuntimeError("backend returned an invalid bounded text preview")
+            return _response(
+                "fileshare.text.preview",
+                actor=actor,
+                reason=reason,
+                correlation_id=correlation_id,
+                output={"text": observation.model_dump(mode="json")},
+                budget=budget,
+                target=f"{root.alias}:{relative_path}",
+            )
+
+        @mcp.tool()
+        async def fileshare_search_text(
+            actor: str,
+            reason: str,
+            root_alias: str,
+            relative_path: str,
+            query: str,
+            case_sensitive: bool = False,
+            correlation_id: str = "",
+        ) -> dict[str, Any]:
+            query = _search_query(settings, query)
+            root, path = _content_target(
+                settings,
+                root_alias,
+                relative_path,
+                require_text_extension=True,
+            )
+            budget = QueryBudget(budget_limits)
+            raw = await _backend_call(
+                backend,
+                budget,
+                settings,
+                "text_search",
+                path=path,
+                max_bytes=settings.fileshare_max_text_read_bytes,
+                max_chars=settings.fileshare_max_text_characters,
+                max_lines=settings.fileshare_max_text_lines,
+                max_matches=settings.fileshare_max_text_matches,
+                max_snippet_chars=settings.fileshare_max_text_snippet_characters,
+                query=query,
+                case_sensitive=case_sensitive,
+            )
+            observation = TextSearchObservation.model_validate(raw)
+            if (
+                observation.bytes_read > settings.fileshare_max_text_read_bytes
+                or observation.decoded_characters > settings.fileshare_max_text_characters
+                or observation.lines_scanned > settings.fileshare_max_text_lines
+                or len(observation.matches) > settings.fileshare_max_text_matches
+                or any(
+                    len(match.snippet) > settings.fileshare_max_text_snippet_characters
+                    for match in observation.matches
+                )
+            ):
+                raise RuntimeError("backend returned an invalid bounded text search")
+            return _response(
+                "fileshare.text.search",
+                actor=actor,
+                reason=reason,
+                correlation_id=correlation_id,
+                output={
+                    "search": observation.model_dump(mode="json"),
+                    "caseSensitive": case_sensitive,
+                },
+                budget=budget,
+                target=f"{root.alias}:{relative_path}",
+            )
 
     return mcp
 
