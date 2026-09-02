@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "work_item": "fileshare-mcp-content-analysis-v1",
+  "status": "complete",
+  "completed_at": "2026-09-02T08:47:00Z",
+  "feature_pr": 71,
+  "feature_merge_sha": "9e2daac89baeca5f97bbada23600642ea9cf3b45",
+  "ci_repair_pr": 72,
+  "ci_repair_merge_sha": "805ec5b88b98247f2de4a14a30e865e6462e61c2",
+  "verification": {
+    "feature_pr_service_ci_run": 33609800297,
+    "feature_main_service_ci_run": 33610079451,
+    "feature_post_merge_full_ci_run": 33610079457,
+    "feature_post_merge_full_ci_result": "failure_missing_permanent_workflow_invariant_entry",
+    "ci_repair_pr_full_ci_run": 33610231345,
+    "final_main_full_ci_run": 33610407468,
+    "final_result": "success"
+  },
+  "security_boundary": {
+    "default_enabled": false,
+    "required_backend_attestation": "FILESHARE_BACKEND_READ_ONLY=true",
+    "required_global_gate": "FILESHARE_CONTENT_READ_ENABLED=true",
+    "required_root_gate": "content_read=true",
+    "targeting": "configured root alias plus relative path only",
+    "reparse_points_default": "blocked",
+    "text_encoding": "strict UTF-8 only",
+    "text_extensions": "deployment-configured explicit allowlist",
+    "text_search": "literal substring only; regex disabled",
+    "hash_algorithm": "SHA-256",
+    "write_surface": false
+  },
+  "default_limits": {
+    "text_source_bytes": 65536,
+    "decoded_characters": 32768,
+    "lines": 400,
+    "matches": 20,
+    "snippet_characters": 240,
+    "search_query_characters": 128,
+    "hash_source_bytes": 33554432
+  },
+  "path_guards": [
+    "no absolute caller paths",
+    "no parent traversal",
+    "no alternate data streams",
+    "no reserved Windows device names",
+    "no trailing-dot or trailing-space canonicalization ambiguity",
+    "no reparse traversal by default"
+  ],
+  "explicitly_not_implemented": [
+    "recursive content enumeration",
+    "multi-file fan-out search",
+    "binary preview",
+    "arbitrary text encoding",
+    "regular-expression search",
+    "unrestricted whole-file streaming",
+    "generic PowerShell execution",
+    "file create/write/delete/rename",
+    "ACL or share mutation"
+  ],
+  "ci_incident": {
+    "cause": "The dedicated FileShare workflow was added without updating the repository-wide exact permanent-workflow invariant used by Soulseek tests.",
+    "detection": "Post-merge full main CI run 33610079457",
+    "repair": "PR #72 added only fileshare-mcp.yml to the permanent workflow allowlist.",
+    "final_validation": "Full main CI run 33610407468 succeeded."
+  }
+}

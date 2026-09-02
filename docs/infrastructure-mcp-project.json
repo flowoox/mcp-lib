@@ -1,12 +1,12 @@
 {
-  "schema_version": 12,
+  "schema_version": 13,
   "project": "infrastructure-mcp-toolbox",
   "goal": "Production-ready, product-neutral infrastructure MCP services plus safe agent/n8n reference orchestration.",
-  "updated_at": "2026-09-02T08:21:00Z",
-  "current_work_item": "fileshare-mcp-content-analysis-v1",
-  "active_branch": "feat/fileshare-mcp-content-analysis-v1",
+  "updated_at": "2026-09-02T08:47:00Z",
+  "current_work_item": "infrastructure-toolbox-production-readiness",
+  "active_branch": "chore/infrastructure-toolbox-production-readiness",
   "active_pr": null,
-  "next_branch": "chore/infrastructure-toolbox-production-readiness",
+  "next_branch": null,
   "execution_rule": "At every run re-read current main, open PRs/issues/CI and preserve parallel work before taking the next non-blocked work item. Discovery-gated items must prove a current vendor-supported API and least-privilege read role before contract freeze or code implementation.",
   "principles": [
     "observe-plan-change-verify",
@@ -85,7 +85,7 @@
     {"id": "security-audit-mcp", "priority": 60, "status": "complete", "depends_on": ["ad-mcp", "network-mcp", "fortigate-mcp", "entra-mcp", "windows-mcp"], "history": ["PR #34", "PR #35"]},
     {"id": "docker-mcp", "priority": 70, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "network-mcp"], "history": ["PR #28", "PR #37", "PR #38", "PR #39"], "remaining": ["production authorization-proxy deployment example", "optional approved write layer only after a concrete operational need"]},
     {"id": "prtg-mcp", "priority": 80, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "network-mcp"], "history": ["PR #40"], "remaining": ["optional approved acknowledge/pause/maintenance write layer only if required"]},
-    {"id": "fileshare-mcp", "priority": 90, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "ad-mcp"], "history": ["PR #41"], "remaining": ["bounded allowlisted file-content/hash/text diagnostics tracked separately as fileshare-mcp-content-analysis-v1"]},
+    {"id": "fileshare-mcp", "priority": 90, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "ad-mcp"], "history": ["PR #41", "PR #71", "PR #72"], "remaining": ["optional approved write layer only if a concrete file-operation workflow is required; unrestricted file access stays prohibited"]},
     {"id": "hyperv-mcp", "priority": 100, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "network-mcp"], "history": ["PR #43"], "verification": {"main_ci_run": 33053788338, "main_service_ci_run": 33053788288, "result": "success"}, "remaining": ["optional approved write layer only for concrete operational needs"]},
     {"id": "failovercluster-mcp", "priority": 110, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "network-mcp"], "history": ["PR #44"], "verification": {"pr_ci_run": 33054667922, "pr_service_ci_run": 33054667960, "main_ci_run": 33054736696, "main_service_ci_run": 33054736786, "merge_sha": "da948eeca371bcedabce3e8b7df00b69467c9b7b", "result": "success"}, "remaining": ["optional approved failover/maintenance write layer only after a concrete operational need and separate least-privilege identity"]},
     {"id": "n8n-mcp", "priority": 120, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation"], "history": ["PR #47"], "verification": {"merge_sha": "dee12ec7212dfdf32c22cc4d0311dcb068fd1282", "main_ci_run": 33155176174, "main_service_ci_run": 33155176162, "result": "success"}, "remaining": ["keep triggers, retries, activation and mutation out of Observe v1"]},
@@ -103,18 +103,19 @@
     {"id": "pki-mcp", "priority": 240, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "windows-mcp", "ad-mcp"], "default_mode": "read_only", "history": ["PR #65"], "verification": {"merge_sha": "ce2af854125277e04e801ac73f813401540d0116", "pr_ci_run": 33492437525, "pr_service_ci_run": 33492437520, "main_ci_run": 33492554146, "main_service_ci_run": 33492553954, "result": "success"}, "capabilities": ["supported Microsoft AD CS ICertView database observation", "dedicated constrained Kerberos WinRM/JEA target aliases", "explicit read-only and View CA database attestations", "bounded CA health, expiry, revocation-publication and event observations", "privacy-minimized typed projections with no agent-visible database cursor", "shared QueryBudget/ReadOnlyConnector and audit/correlation controls"], "remaining": ["keep issuance, revocation, private-key access, CA/template mutation, certutil and arbitrary PowerShell/database queries out of Observe v1"]},
     {"id": "exchange-m365-mcp", "priority": 250, "status": "observe_complete", "depends_on": ["agent-diagnostics-foundation", "entra-mcp"], "default_mode": "read_only", "history": ["PR #69"], "verification": {"merge_sha": "0dc042912e05e2d60433e567ad65c334999502e9", "pr_ci_run": 33607958759, "pr_service_ci_run": 33607958847, "main_ci_run": 33608064350, "main_service_ci_run": 33608064338, "result": "success"}, "capabilities": ["certificate app-only Exchange Online PowerShell with view-only Exchange RBAC attestation", "fixed Get-only cmdlet import allowlist", "separate Microsoft Graph ServiceHealth.Read.All identity", "privacy-minimized organization/domain/connector/transport and service-health observations", "shared QueryBudget/ReadOnlyConnector and audit/correlation controls", "aggregate-first diagnostic bundle"], "remaining": ["keep mailbox/message content, message trace, eDiscovery/export, unrestricted recipients, arbitrary PowerShell/Graph and all mutations out of Observe v1"]},
     {"id": "windows-admincenter-mcp", "priority": 260, "status": "decision_complete_no_adapter", "depends_on": ["windows-mcp", "hyperv-mcp", "failovercluster-mcp"], "decision_file": "docs/infrastructure/windows-admincenter-mcp-decision.json", "decision": "Do not implement on the current contract surface because the modernized gateway lacks a stable supported external least-privilege automation API that improves on the specialized MCPs without generic PowerShell/WMI proxy risk."},
-    {"id": "fileshare-mcp-content-analysis-v1", "priority": 270, "status": "queued", "depends_on": ["fileshare-mcp", "agent-diagnostics-foundation"], "default_mode": "read_only", "branch": "feat/fileshare-mcp-content-analysis-v1", "goal": "bounded allowlisted file hash/text preview/search diagnostics under existing root/path confinement with strict byte/line/match budgets and no recursive or binary content exfiltration"},
+    {"id": "fileshare-mcp-content-analysis-v1", "priority": 270, "status": "complete", "depends_on": ["fileshare-mcp", "agent-diagnostics-foundation"], "default_mode": "read_only", "history": ["PR #71", "PR #72"], "verification": {"merge_sha": "9e2daac89baeca5f97bbada23600642ea9cf3b45", "pr_service_ci_run": 33609800297, "main_service_ci_run": 33610079451, "post_merge_main_ci_run": 33610079457, "post_merge_main_ci_result": "failure_missing_workflow_invariant_entry", "ci_repair_pr": 72, "ci_repair_merge_sha": "805ec5b88b98247f2de4a14a30e865e6462e61c2", "ci_repair_pr_ci_run": 33610231345, "final_main_ci_run": 33610407468, "result": "success"}, "capabilities": ["double-opt-in global plus per-root content-read authorization", "bounded single-file SHA-256 with source-byte accounting", "allowlisted UTF-8 text preview and literal substring search", "hard byte, decoded-character, line, query, match, snippet and hash ceilings", "existing root alias, QueryBudget, audit/correlation and reparse protections", "ADS, reserved-device, traversal and Windows canonicalization path guards"], "prohibited": ["recursive content enumeration", "binary preview", "arbitrary encoding or regex search", "unrestricted whole-file streaming", "arbitrary path or PowerShell execution", "file, share or ACL mutation"]},
     {"id": "infrastructure-toolbox-production-readiness", "priority": 280, "status": "queued", "depends_on": ["fileshare-mcp-content-analysis-v1"], "branch": "chore/infrastructure-toolbox-production-readiness", "goal": "cross-service release gate for deployment docs, fail-closed backend attestations, CI/runtime packaging, secret handling, supported-version floors and shared contract consistency"}
   ],
   "next_run": {
-    "work_item": "fileshare-mcp-content-analysis-v1",
-    "branch": "feat/fileshare-mcp-content-analysis-v1",
+    "work_item": "infrastructure-toolbox-production-readiness",
+    "branch": "chore/infrastructure-toolbox-production-readiness",
     "first_actions": [
       "resync main, open PRs/issues, CI and parallel branches before branching",
-      "reuse the existing fileshare-mcp root alias, path confinement, reparse/DFS and ACL safety boundary",
-      "freeze typed metadata/hash plus bounded text preview/search tools with hard bytes, decoded-character, line and match limits",
-      "allow only deployment-configured roots and explicit safe text extensions/content types; reject binary/device/alternate-data-stream/traversal/reparse escapes",
-      "account backend bytes before sampling and keep recursive content enumeration and all writes out of the contract"
+      "inventory every production-bound infrastructure service for dedicated CI, locked dependencies, package entrypoint/container/runtime documentation and fail-closed startup behavior",
+      "validate deployment examples keep credentials, real topology, OUs, hostnames and policies external and fail closed rather than normalize insecure development defaults",
+      "check typed capability metadata, explicit tool allowlists, audit/correlation envelopes and QueryBudget or equivalent load protection for common contract consistency",
+      "verify supported-version floors and vendor-contract evidence where APIs vary by release",
+      "fix concrete gaps in small reviewable commits while leaving unsupported vendor adapters blocked"
     ]
   }
 }

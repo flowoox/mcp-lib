@@ -1,29 +1,35 @@
 {
-  "schema_version": 11,
-  "updated_at": "2026-09-02T08:21:00Z",
+  "schema_version": 12,
+  "updated_at": "2026-09-02T08:47:00Z",
   "repository": "flowoox/mcp-lib",
-  "base_main_sha": "0dc042912e05e2d60433e567ad65c334999502e9",
+  "base_main_sha": "805ec5b88b98247f2de4a14a30e865e6462e61c2",
   "last_completed": {
-    "work_item": "exchange-m365-mcp",
+    "work_item": "fileshare-mcp-content-analysis-v1",
     "status": "observe_complete",
-    "merged_pr": 69,
-    "merge_sha": "0dc042912e05e2d60433e567ad65c334999502e9",
+    "merged_pr": 71,
+    "merge_sha": "9e2daac89baeca5f97bbada23600642ea9cf3b45",
+    "ci_repair_pr": 72,
+    "ci_repair_merge_sha": "805ec5b88b98247f2de4a14a30e865e6462e61c2",
     "verification": {
-      "pr_ci_run": 33607958759,
-      "pr_service_ci_run": 33607958847,
-      "main_ci_run": 33608064350,
-      "main_service_ci_run": 33608064338,
+      "pr_service_ci_run": 33609800297,
+      "feature_main_service_ci_run": 33610079451,
+      "feature_main_ci_run": 33610079457,
+      "feature_main_ci_result": "failure_due_to_missing_permanent_workflow_invariant_entry",
+      "ci_repair_pr_ci_run": 33610231345,
+      "final_main_ci_run": 33610407468,
       "result": "success"
     },
     "capabilities": [
-      "certificate app-only Exchange Online PowerShell with deployment-attested view-only Exchange RBAC",
-      "static Connect-ExchangeOnline -CommandName imports for fixed Get-only organization, domain, connector and transport observations",
-      "separate Microsoft Graph client-credentials identity restricted to ServiceHealth.Read.All",
-      "bounded Microsoft 365 service-health and Exchange Online issue metadata with server-side projection minimization",
-      "privacy-minimized typed projections hashing connector identities and domain names by default while reducing topology lists to counts",
-      "shared ReadOnlyConnector, QueryBudget, audit/correlation and aggregate-first diagnostic controls",
-      "mailboxes, unrestricted recipients, message content, attachments, message trace, eDiscovery/export, arbitrary PowerShell/Graph and all mutations deliberately excluded"
-    ]
+      "double-opt-in bounded content analysis requiring global enablement plus per-root content_read=true",
+      "fixed SHA-256 hashing for one regular file with a hard configured source-byte ceiling and byte accounting",
+      "fixed UTF-8 text preview with safe-extension allowlist plus byte, decoded-character and line ceilings",
+      "fixed literal substring text search with byte, character, line, match, query and snippet ceilings and no regex",
+      "existing deployment-owned root aliases, QueryBudget, audit/correlation IDs and read-only backend attestation retained",
+      "relative-path hardening rejects traversal, absolute paths, alternate data streams, reserved Windows device names and canonicalization-ambiguous trailing spaces or dots",
+      "reparse points remain blocked by default and content tools are not registered or advertised while disabled",
+      "recursive content enumeration, binary preview, arbitrary encodings, unrestricted whole-file streaming, generic PowerShell and all file/share/ACL writes remain excluded"
+    ],
+    "ci_note": "The feature-specific FileShare CI was green before merge. Post-merge full CI correctly exposed that the new permanent FileShare workflow had not been added to the repository-wide workflow invariant. PR #72 fixed only that invariant and final full main CI is green."
   },
   "completed_decisions": [
     {
@@ -53,7 +59,7 @@
     {
       "work_item": "mailstore-cloud-mcp",
       "status": "blocked_vendor_contract",
-      "reason": "MailStore Cloud 26.3 is current, but current primary vendor material does not expose a MailStore Cloud-specific public management/search API and least-privilege read role. MailStore 26.3 documentation explicitly scopes management-API improvements to MailStore Server and SPE, so those contracts must not be reused for Cloud by assumption.",
+      "reason": "MailStore Cloud 26.3 is current, but current primary vendor material does not expose a MailStore Cloud-specific public management/search API and least-privilege read role. MailStore Server/SPE contracts must not be reused for Cloud by assumption.",
       "required_to_resume": [
         "obtain MailStore/OpenText-supported MailStore Cloud API documentation for the target tenant",
         "prove authentication and a dedicated least-privilege read role for bounded health/archive/search metadata"
@@ -92,23 +98,23 @@
     }
   ],
   "current": {
-    "work_item": "fileshare-mcp-content-analysis-v1",
-    "branch": "feat/fileshare-mcp-content-analysis-v1",
+    "work_item": "infrastructure-toolbox-production-readiness",
+    "branch": "chore/infrastructure-toolbox-production-readiness",
     "status": "queued",
-    "goal": "Extend fileshare-mcp with explicitly bounded allowlisted file retrieval and text/hash analysis for administrator diagnostics without turning the MCP into an unrestricted file exfiltration or recursive search surface.",
+    "goal": "Run a cross-service production-readiness gate over deployment documentation, fail-closed backend attestations, CI coverage, runtime packaging, secret handling, supported-version floors and common contract consistency, then fix concrete gaps without weakening service-specific least privilege.",
     "first_actions": [
       "resync main, open PRs/issues, CI and parallel branches before branching",
-      "review the existing fileshare-mcp root alias, path confinement, reparse/DFS and ACL protections and reuse them rather than adding a second path resolver",
-      "freeze typed operations for metadata/hash and bounded text preview/search with hard per-file bytes, decoded characters, line and match limits",
-      "allow only deployment-configured root aliases and an explicit safe text-extension/content-type policy; reject binaries, device paths, alternate data streams, traversal, reparse escapes and recursive content enumeration",
-      "account bytes read before sampling, use QueryBudget and timeouts, and never stream entire files or directory trees to agents",
-      "keep all file creation/modification/deletion, ACL writes and share mutations out of this read-only extension"
+      "inventory every production-bound infrastructure service for dedicated CI, locked dependencies, package entrypoint/container/runtime documentation and fail-closed startup behavior",
+      "validate that deployment examples keep credentials, real topology, OUs, hostnames and policies external and do not normalize insecure development defaults into production",
+      "check common contract consistency for typed capability metadata, explicit tool allowlists, audit/correlation envelopes and QueryBudget or equivalent load protection",
+      "verify supported-version floors and vendor-contract evidence are explicit for services whose APIs change by release",
+      "fix concrete gaps in small reviewable commits and keep vendor-blocked integrations blocked rather than substituting undocumented interfaces"
     ]
   },
   "next_after_current": {
-    "work_item": "infrastructure-toolbox-production-readiness",
-    "status": "queued",
-    "goal": "Run a cross-service production-readiness gate over deployment documentation, fail-closed backend attestations, CI coverage, runtime packaging, secret handling, version floors and common contract consistency, then fix concrete gaps without weakening service-specific least privilege."
+    "work_item": "vendor-contract-rechecks-and-controlled-write-layers",
+    "status": "conditional",
+    "goal": "Only revisit blocked vendors when supported contracts become available; only add write layers for concrete approved operational workflows with separate least-privilege identities and plan/approval/change/verify."
   },
   "continuation_rule": "Before every run resync main, open PRs/issues, CI and parallel branches; protect foreign work; skip blocked items and continue the first non-blocked queued item. Merge only after relevant PR CI is green and verify main CI after merge."
 }
