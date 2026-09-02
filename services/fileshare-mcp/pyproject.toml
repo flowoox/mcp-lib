@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "flowoox-mcp-fileshare"
-version = "0.1.0"
-description = "Product-neutral MCP service for bounded read-only Windows file-share diagnostics."
+version = "0.2.0"
+description = "Product-neutral MCP service for bounded read-only Windows file-share and content diagnostics."
 readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}
