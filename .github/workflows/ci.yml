@@ -163,6 +163,22 @@ jobs:
             distribution: flowoox-mcp-failovercluster
           - service: n8n-mcp
             distribution: flowoox-mcp-n8n
+          - service: manageengine-mdm-mcp
+            distribution: flowoox-mcp-manageengine-mdm
+          - service: freshdesk-mcp
+            distribution: flowoox-mcp-freshdesk
+          - service: unifi-mcp
+            distribution: flowoox-mcp-unifi
+          - service: veeam-mcp
+            distribution: flowoox-mcp-veeam
+          - service: wazuh-mcp
+            distribution: flowoox-mcp-wazuh
+          - service: checkmk-mcp
+            distribution: flowoox-mcp-checkmk
+          - service: pki-mcp
+            distribution: flowoox-mcp-pki
+          - service: exchange-m365-mcp
+            distribution: flowoox-mcp-exchange-m365
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -193,7 +209,7 @@ jobs:
         run: pytest -q "services/${{ matrix.service }}/tests"
       - name: Tooling tests
         if: matrix.service == 'soulseek-mcp'
-        run: pytest -q tests
+        run: python -m pytest -q tests
       - name: Compile
         run: python -m compileall -q packages/mcp-common/src scripts "services/${{ matrix.service }}/src"
 

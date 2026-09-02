@@ -1,25 +1,25 @@
-name: AD MCP
+name: Docker MCP
 
 on:
   pull_request:
     paths:
-      - "services/ad-mcp/**"
+      - "services/docker-mcp/**"
       - "packages/mcp-common/**"
       - "constraints/python312.lock"
-      - ".github/workflows/ad-mcp.yml"
+      - ".github/workflows/docker-mcp.yml"
   push:
     branches: [main]
     paths:
-      - "services/ad-mcp/**"
+      - "services/docker-mcp/**"
       - "packages/mcp-common/**"
       - "constraints/python312.lock"
-      - ".github/workflows/ad-mcp.yml"
+      - ".github/workflows/docker-mcp.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: ad-mcp-${{ github.workflow }}-${{ github.ref }}
+  group: docker-mcp-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -39,14 +39,14 @@ jobs:
         run: |
           python -m pip install --constraint constraints/python312.lock --upgrade pip
           python -m pip install --constraint constraints/python312.lock ./packages/mcp-common
-          python -m pip install --constraint constraints/python312.lock -e "./services/ad-mcp[dev]"
+          python -m pip install --constraint constraints/python312.lock -e "./services/docker-mcp[dev]"
           python -m pip check
-          python scripts/check_python_lock.py flowoox-mcp-common flowoox-mcp-ad pytest pytest-asyncio ruff
+          python scripts/check_python_lock.py flowoox-mcp-common flowoox-mcp-docker pytest pytest-asyncio ruff
       - name: Lint
-        run: ruff check packages/mcp-common/src services/ad-mcp/src services/ad-mcp/tests
+        run: ruff check packages/mcp-common/src services/docker-mcp/src services/docker-mcp/tests
       - name: Test
-        run: pytest -q services/ad-mcp/tests
+        run: pytest -q services/docker-mcp/tests
       - name: Compile
-        run: python -m compileall -q packages/mcp-common/src services/ad-mcp/src
+        run: python -m compileall -q packages/mcp-common/src services/docker-mcp/src
       - name: Build container
-        run: docker build --file services/ad-mcp/Dockerfile --tag mcp-ad:test .
+        run: docker build --file services/docker-mcp/Dockerfile --tag mcp-docker:test .
