@@ -3,8 +3,15 @@ from uuid import uuid4
 import pytest
 from mcp_common.query_budget import QueryBudget, QueryBudgetLimits
 
+from fileshare_mcp.config import Settings
 from fileshare_mcp.models import AclObservation, FileAce, ShareAce, ShareRoot
-from fileshare_mcp.server import _full_path, _response, explain_access
+from fileshare_mcp.server import (
+    _content_target,
+    _full_path,
+    _response,
+    _search_query,
+    explain_access,
+)
 
 
 def test_path_resolution_cannot_escape_configured_root() -> None:
@@ -14,6 +21,51 @@ def test_path_resolution_cannot_escape_configured_root() -> None:
         _full_path(root, r"..\Secrets")
     with pytest.raises(ValueError, match="configured root"):
         _full_path(root, r"C:\Windows")
+
+
+def test_path_resolution_rejects_ads_devices_and_ambiguous_segments() -> None:
+    root = ShareRoot(alias="data", path=r"D:\Shares\Data")
+    with pytest.raises(ValueError, match="invalid segment"):
+        _full_path(root, r"Team\report.txt:secret")
+    with pytest.raises(ValueError, match="device name"):
+        _full_path(root, r"Team\NUL.txt")
+    with pytest.raises(ValueError, match="canonicalization-ambiguous"):
+        _full_path(root, "Team\\report.txt. ")
+
+
+def test_content_target_requires_global_and_per_root_opt_in_and_safe_extension() -> None:
+    disabled = Settings(
+        fileshare_roots_json='[{"alias":"data","path":"D:\\\\Shares","content_read":true}]',
+        fileshare_backend_read_only=True,
+    )
+    with pytest.raises(ValueError, match="disabled"):
+        _content_target(disabled, "data", "report.txt", require_text_extension=True)
+
+    enabled = Settings(
+        fileshare_roots_json=(
+            '[{"alias":"data","path":"D:\\\\Shares","content_read":true},'
+            '{"alias":"archive","path":"D:\\\\Archive"}]'
+        ),
+        fileshare_backend_read_only=True,
+        fileshare_content_read_enabled=True,
+        fileshare_safe_text_extensions=".txt,.log",
+    )
+    root, path = _content_target(enabled, "data", "Team\\report.TXT", require_text_extension=True)
+    assert root.alias == "data"
+    assert path == r"D:\Shares\Team\report.TXT"
+    with pytest.raises(ValueError, match="not enabled for this root"):
+        _content_target(enabled, "archive", "report.txt", require_text_extension=True)
+    with pytest.raises(ValueError, match="extension"):
+        _content_target(enabled, "data", "payload.exe", require_text_extension=True)
+
+
+def test_search_query_is_literal_bounded_and_rejects_control_characters() -> None:
+    settings = Settings(fileshare_max_search_query_characters=8)
+    assert _search_query(settings, " error ") == "error"
+    with pytest.raises(ValueError, match="character limit"):
+        _search_query(settings, "123456789")
+    with pytest.raises(ValueError, match="control"):
+        _search_query(settings, "a\nb")
 
 
 def test_access_explanation_is_conservative_and_never_authoritative() -> None:
