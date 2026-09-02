@@ -1,31 +1,39 @@
 {
-  "schema_version": 10,
-  "updated_at": "2026-09-01T09:31:00Z",
+  "schema_version": 11,
+  "updated_at": "2026-09-02T08:21:00Z",
   "repository": "flowoox/mcp-lib",
-  "base_main_sha": "ce2af854125277e04e801ac73f813401540d0116",
+  "base_main_sha": "0dc042912e05e2d60433e567ad65c334999502e9",
   "last_completed": {
-    "work_item": "pki-mcp",
+    "work_item": "exchange-m365-mcp",
     "status": "observe_complete",
-    "merged_pr": 65,
-    "merge_sha": "ce2af854125277e04e801ac73f813401540d0116",
+    "merged_pr": 69,
+    "merge_sha": "0dc042912e05e2d60433e567ad65c334999502e9",
     "verification": {
-      "pr_ci_run": 33492437525,
-      "pr_service_ci_run": 33492437520,
-      "main_ci_run": 33492554146,
-      "main_service_ci_run": 33492553954,
+      "pr_ci_run": 33607958759,
+      "pr_service_ci_run": 33607958847,
+      "main_ci_run": 33608064350,
+      "main_service_ci_run": 33608064338,
       "result": "success"
     },
     "capabilities": [
-      "Microsoft AD CS observation through supported ICertView/CertificateAuthority.View plus repository-owned static probes",
-      "dedicated constrained Kerberos WinRM/JEA target aliases with explicit read-only and View CA database deployment attestations",
-      "bounded CA service/certificate/CRL-period health, expiring-certificate database view, revocation-publication summary and CA event metadata",
-      "privacy-minimized typed projections excluding requester identities, certificate subjects, serials, bodies, private keys, message bodies and publication URLs",
-      "bounded first-page-only Certificate Services database observation without agent-visible continuation cursor",
-      "shared ReadOnlyConnector and QueryBudget request/item/response/concurrency/rate/fan-out protections",
-      "audit/correlation integration and aggregate-first diagnostic bundle",
-      "certutil, arbitrary PowerShell/database queries, issuance, revocation and CA/template mutations deliberately excluded"
+      "certificate app-only Exchange Online PowerShell with deployment-attested view-only Exchange RBAC",
+      "static Connect-ExchangeOnline -CommandName imports for fixed Get-only organization, domain, connector and transport observations",
+      "separate Microsoft Graph client-credentials identity restricted to ServiceHealth.Read.All",
+      "bounded Microsoft 365 service-health and Exchange Online issue metadata with server-side projection minimization",
+      "privacy-minimized typed projections hashing connector identities and domain names by default while reducing topology lists to counts",
+      "shared ReadOnlyConnector, QueryBudget, audit/correlation and aggregate-first diagnostic controls",
+      "mailboxes, unrestricted recipients, message content, attachments, message trace, eDiscovery/export, arbitrary PowerShell/Graph and all mutations deliberately excluded"
     ]
   },
+  "completed_decisions": [
+    {
+      "work_item": "windows-admincenter-mcp",
+      "status": "decision_complete_no_adapter",
+      "reason": "Current Windows Admin Center is not a safer stable replacement for the specialized Windows/Hyper-V/FailoverCluster MCPs: Microsoft documents a PowerShell/WMI management gateway, most tools require administrative target permissions, target RBAC is not supported for cluster management, and the gateway-plugin SDK is not yet updated for the modernized .NET 8 gateway.",
+      "decision_file": "docs/infrastructure/windows-admincenter-mcp-decision.json",
+      "reconsider_only_if": "Microsoft publishes a stable external automation API with a documented least-privilege read-only authorization model covering required target types without generic PowerShell/WMI proxying."
+    }
+  ],
   "blocked_work_items": [
     {
       "work_item": "acmp-mcp",
@@ -84,23 +92,23 @@
     }
   ],
   "current": {
-    "work_item": "exchange-m365-mcp",
-    "branch": "feat/exchange-m365-mcp-observe-v1",
+    "work_item": "fileshare-mcp-content-analysis-v1",
+    "branch": "feat/fileshare-mcp-content-analysis-v1",
     "status": "queued",
-    "goal": "Implement bounded Exchange Online/Microsoft 365 diagnostics only after verifying current supported Graph/Exchange interfaces and exact least-privilege read roles; exclude message-body/export access and all mutations from Observe v1.",
+    "goal": "Extend fileshare-mcp with explicitly bounded allowlisted file retrieval and text/hash analysis for administrator diagnostics without turning the MCP into an unrestricted file exfiltration or recursive search surface.",
     "first_actions": [
       "resync main, open PRs/issues, CI and parallel branches before branching",
-      "verify current Microsoft-supported Exchange Online, Microsoft Graph and related Microsoft 365 observation interfaces plus exact least-privilege read permissions from primary documentation",
-      "freeze typed privacy-minimized organization, accepted-domain, connector, mail-flow configuration and service-health diagnostic projections without mailbox content",
-      "reuse mcp-common ReadOnlyConnector, QueryBudget, audit/correlation and server-load protections",
-      "aggregate tenant and mail-flow health before narrowly bounded connector or configuration drill-down",
-      "keep message bodies, attachments, mailbox export, eDiscovery/content search, unrestricted recipient enumeration and all configuration/user/message mutations out of Observe v1"
+      "review the existing fileshare-mcp root alias, path confinement, reparse/DFS and ACL protections and reuse them rather than adding a second path resolver",
+      "freeze typed operations for metadata/hash and bounded text preview/search with hard per-file bytes, decoded characters, line and match limits",
+      "allow only deployment-configured root aliases and an explicit safe text-extension/content-type policy; reject binaries, device paths, alternate data streams, traversal, reparse escapes and recursive content enumeration",
+      "account bytes read before sampling, use QueryBudget and timeouts, and never stream entire files or directory trees to agents",
+      "keep all file creation/modification/deletion, ACL writes and share mutations out of this read-only extension"
     ]
   },
   "next_after_current": {
-    "work_item": "windows-admincenter-mcp",
-    "status": "decision_gate",
-    "goal": "Implement only if a current supported stable Windows Admin Center gateway API and least-privilege read-only role materially reduce adapter duplication without creating a generic PowerShell/admin proxy."
+    "work_item": "infrastructure-toolbox-production-readiness",
+    "status": "queued",
+    "goal": "Run a cross-service production-readiness gate over deployment documentation, fail-closed backend attestations, CI coverage, runtime packaging, secret handling, version floors and common contract consistency, then fix concrete gaps without weakening service-specific least privilege."
   },
   "continuation_rule": "Before every run resync main, open PRs/issues, CI and parallel branches; protect foreign work; skip blocked items and continue the first non-blocked queued item. Merge only after relevant PR CI is green and verify main CI after merge."
 }
