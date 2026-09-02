@@ -43,10 +43,6 @@ def _target(settings: Settings, target_id: str) -> HyperVTarget:
         ) from exc
 
 
-def _store(settings: Settings) -> CheckpointReceiptStore:
-    return CheckpointReceiptStore(settings.hyperv_checkpoint_receipt_store)
-
-
 async def _run_preflight(
     runner: CheckpointPowerShellRunner,
     settings: Settings,
@@ -96,6 +92,19 @@ def register_checkpoint_tools(
     """Register the separately gated ProductionOnly checkpoint lifecycle."""
 
     runner = runner or CheckpointPowerShellRunner(settings.hyperv_powershell_executable)
+    receipt_store = (
+        CheckpointReceiptStore(settings.hyperv_checkpoint_receipt_store)
+        if settings.hyperv_checkpoint_receipt_store.strip()
+        else None
+    )
+    change_lock = asyncio.Lock()
+
+    def require_store() -> CheckpointReceiptStore:
+        if receipt_store is None:
+            raise PermissionError(
+                "checkpoint lifecycle requires HYPERV_CHECKPOINT_RECEIPT_STORE"
+            )
+        return receipt_store
 
     @mcp.tool()
     async def hyperv_plan_checkpoint(
@@ -124,9 +133,11 @@ def register_checkpoint_tools(
         )
         checkpoint_name = deterministic_checkpoint_name(request, preflight.vmId)
         matches = matching_checkpoints(preflight, checkpoint_name)
-        receipt = None
-        if settings.hyperv_checkpoint_receipt_store.strip():
-            receipt = _store(settings).get(request.idempotency_key)
+        receipt = (
+            receipt_store.get(request.idempotency_key)
+            if receipt_store is not None
+            else None
+        )
         if matches and not _verified_receipt_matches(
             receipt,
             target_id=request.target_id,
@@ -191,163 +202,185 @@ def register_checkpoint_tools(
             request=request,
             approval_secret=settings.hyperv_checkpoint_approval_secret,
         )
-        raw = await _run_preflight(runner, settings, target, request.vm_name)
-        preflight = parse_preflight(
-            raw,
-            max_existing=settings.hyperv_checkpoint_max_existing,
-            expected_vm_id=request.expected_vm_id,
-        )
-        expected_name = deterministic_checkpoint_name(request, preflight.vmId)
-        if expected_name != request.checkpoint_name:
-            raise ValueError("checkpoint name changed after planning/approval")
+        store = require_store()
 
-        matches = matching_checkpoints(preflight, request.checkpoint_name)
-        if not matches and preflight.checkpointCount >= settings.hyperv_checkpoint_max_existing:
-            raise ValueError("existing checkpoint count reached the configured safety limit")
-        store = _store(settings)
-        existing_receipt = store.get(request.idempotency_key)
-        if matches and existing_receipt is None:
-            raise RuntimeError(
-                "checkpoint exists without a matching idempotency receipt; refusing implicit recovery"
+        # The supplied deployment is intentionally single-process. Serialize the
+        # complete provider mutation window so concurrent retries cannot both
+        # observe an absent deterministic checkpoint and race Checkpoint-VM.
+        async with change_lock:
+            raw = await _run_preflight(runner, settings, target, request.vm_name)
+            preflight = parse_preflight(
+                raw,
+                max_existing=settings.hyperv_checkpoint_max_existing,
+                expected_vm_id=request.expected_vm_id,
             )
-        receipt = store.prepare(
-            idempotency_key=request.idempotency_key,
-            target_id=request.target_id,
-            vm_id=request.expected_vm_id,
-            checkpoint_name=request.checkpoint_name,
-            pre_checkpoint_ids=[item.id for item in preflight.checkpoints],
-        )
+            expected_name = deterministic_checkpoint_name(request, preflight.vmId)
+            if expected_name != request.checkpoint_name:
+                raise ValueError("checkpoint name changed after planning/approval")
 
-        if receipt.get("status") == "verified":
-            checkpoint_id = str(receipt.get("checkpointId") or "")
+            matches = matching_checkpoints(preflight, request.checkpoint_name)
+            if (
+                not matches
+                and preflight.checkpointCount
+                >= settings.hyperv_checkpoint_max_existing
+            ):
+                raise ValueError(
+                    "existing checkpoint count reached the configured safety limit"
+                )
+            existing_receipt = store.get(request.idempotency_key)
+            if matches and existing_receipt is None:
+                raise RuntimeError(
+                    "checkpoint exists without a matching idempotency receipt; refusing implicit recovery"
+                )
+            receipt = store.prepare(
+                idempotency_key=request.idempotency_key,
+                target_id=request.target_id,
+                vm_id=request.expected_vm_id,
+                checkpoint_name=request.checkpoint_name,
+                pre_checkpoint_ids=[item.id for item in preflight.checkpoints],
+            )
+
+            if receipt.get("status") == "verified":
+                checkpoint_id = str(receipt.get("checkpointId") or "")
+                verification = checkpoint_verification(
+                    preflight=preflight,
+                    expected_vm_id=request.expected_vm_id,
+                    checkpoint_name=request.checkpoint_name,
+                    expected_checkpoint_id=checkpoint_id,
+                )
+                if not verification.passed:
+                    raise RuntimeError(
+                        "verified checkpoint receipt conflicts with current Hyper-V state"
+                    )
+                return change_response(
+                    actor=actor,
+                    reason=reason,
+                    correlation_id=correlation_id,
+                    request=request,
+                    changed=False,
+                    output={
+                        "vmId": request.expected_vm_id,
+                        "checkpointId": checkpoint_id,
+                        "checkpointName": request.checkpoint_name,
+                        "idempotentReceipt": True,
+                    },
+                    approval=approval,
+                    verification=verification,
+                )
+
+            if matches:
+                pre_ids = receipt.get("preCheckpointIds")
+                if not isinstance(pre_ids, list):
+                    raise RuntimeError("pending checkpoint receipt is malformed")
+                if matches[0].id in {str(item) for item in pre_ids}:
+                    raise RuntimeError(
+                        "pending receipt refers to a checkpoint that already existed before mutation"
+                    )
+                verification = checkpoint_verification(
+                    preflight=preflight,
+                    expected_vm_id=request.expected_vm_id,
+                    checkpoint_name=request.checkpoint_name,
+                    expected_checkpoint_id=matches[0].id,
+                )
+                if not verification.passed:
+                    raise RuntimeError(
+                        "pending checkpoint receipt could not be recovered safely"
+                    )
+                store.mark_verified(
+                    idempotency_key=request.idempotency_key,
+                    target_id=request.target_id,
+                    vm_id=request.expected_vm_id,
+                    checkpoint_name=request.checkpoint_name,
+                    checkpoint_id=matches[0].id,
+                    creation_time=matches[0].creationTime,
+                )
+                return change_response(
+                    actor=actor,
+                    reason=reason,
+                    correlation_id=correlation_id,
+                    request=request,
+                    changed=False,
+                    output={
+                        "vmId": request.expected_vm_id,
+                        "checkpointId": matches[0].id,
+                        "checkpointName": request.checkpoint_name,
+                        "recoveredPendingReceipt": True,
+                    },
+                    approval=approval,
+                    verification=verification,
+                )
+
+            raw_create, _ = await asyncio.to_thread(
+                runner.run,
+                CheckpointScriptId.CREATE,
+                target,
+                {
+                    "vmName": request.vm_name,
+                    "expectedVmId": request.expected_vm_id,
+                    "snapshotName": request.checkpoint_name,
+                    "maxExisting": settings.hyperv_checkpoint_max_existing,
+                },
+                timeout_seconds=settings.hyperv_checkpoint_timeout_seconds,
+                max_response_bytes=settings.hyperv_checkpoint_max_response_bytes,
+            )
+            create_items = raw_create.get("items")
+            if not isinstance(create_items, list) or len(create_items) != 1:
+                raise RuntimeError("checkpoint create operation returned invalid evidence")
+            created = CheckpointCreateEvidence.model_validate(create_items[0])
+            if created.vmId != request.expected_vm_id:
+                raise RuntimeError("checkpoint create evidence returned a different VM id")
+            if created.checkpointName != request.checkpoint_name:
+                raise RuntimeError(
+                    "checkpoint create evidence returned a different checkpoint name"
+                )
+            if created.checkpointType != "ProductionOnly":
+                raise RuntimeError(
+                    "checkpoint create evidence lost the ProductionOnly boundary"
+                )
+
+            readback_raw = await _run_preflight(
+                runner,
+                settings,
+                target,
+                request.vm_name,
+            )
+            readback = parse_preflight(
+                readback_raw,
+                max_existing=settings.hyperv_checkpoint_max_existing,
+                expected_vm_id=request.expected_vm_id,
+            )
             verification = checkpoint_verification(
-                preflight=preflight,
+                preflight=readback,
                 expected_vm_id=request.expected_vm_id,
                 checkpoint_name=request.checkpoint_name,
-                expected_checkpoint_id=checkpoint_id,
+                expected_checkpoint_id=created.checkpointId,
             )
-            if not verification.passed:
-                raise RuntimeError(
-                    "verified checkpoint receipt conflicts with current Hyper-V state"
+            if verification.passed:
+                store.mark_verified(
+                    idempotency_key=request.idempotency_key,
+                    target_id=request.target_id,
+                    vm_id=request.expected_vm_id,
+                    checkpoint_name=request.checkpoint_name,
+                    checkpoint_id=created.checkpointId,
+                    creation_time=created.creationTime,
                 )
             return change_response(
                 actor=actor,
                 reason=reason,
                 correlation_id=correlation_id,
                 request=request,
-                changed=False,
+                changed=created.changed,
                 output={
-                    "vmId": request.expected_vm_id,
-                    "checkpointId": checkpoint_id,
-                    "checkpointName": request.checkpoint_name,
-                    "idempotentReceipt": True,
+                    "vmId": created.vmId,
+                    "checkpointId": created.checkpointId,
+                    "checkpointName": created.checkpointName,
+                    "snapshotType": created.snapshotType,
+                    "creationTime": created.creationTime.isoformat(),
+                    "clustered": created.clustered,
                 },
                 approval=approval,
                 verification=verification,
             )
-
-        if matches:
-            pre_ids = receipt.get("preCheckpointIds")
-            if not isinstance(pre_ids, list):
-                raise RuntimeError("pending checkpoint receipt is malformed")
-            if matches[0].id in {str(item) for item in pre_ids}:
-                raise RuntimeError(
-                    "pending receipt refers to a checkpoint that already existed before mutation"
-                )
-            verification = checkpoint_verification(
-                preflight=preflight,
-                expected_vm_id=request.expected_vm_id,
-                checkpoint_name=request.checkpoint_name,
-                expected_checkpoint_id=matches[0].id,
-            )
-            if not verification.passed:
-                raise RuntimeError("pending checkpoint receipt could not be recovered safely")
-            store.mark_verified(
-                idempotency_key=request.idempotency_key,
-                target_id=request.target_id,
-                vm_id=request.expected_vm_id,
-                checkpoint_name=request.checkpoint_name,
-                checkpoint_id=matches[0].id,
-                creation_time=matches[0].creationTime,
-            )
-            return change_response(
-                actor=actor,
-                reason=reason,
-                correlation_id=correlation_id,
-                request=request,
-                changed=False,
-                output={
-                    "vmId": request.expected_vm_id,
-                    "checkpointId": matches[0].id,
-                    "checkpointName": request.checkpoint_name,
-                    "recoveredPendingReceipt": True,
-                },
-                approval=approval,
-                verification=verification,
-            )
-
-        raw_create, _ = await asyncio.to_thread(
-            runner.run,
-            CheckpointScriptId.CREATE,
-            target,
-            {
-                "vmName": request.vm_name,
-                "expectedVmId": request.expected_vm_id,
-                "snapshotName": request.checkpoint_name,
-                "maxExisting": settings.hyperv_checkpoint_max_existing,
-            },
-            timeout_seconds=settings.hyperv_checkpoint_timeout_seconds,
-            max_response_bytes=settings.hyperv_checkpoint_max_response_bytes,
-        )
-        create_items = raw_create.get("items")
-        if not isinstance(create_items, list) or len(create_items) != 1:
-            raise RuntimeError("checkpoint create operation returned invalid evidence")
-        created = CheckpointCreateEvidence.model_validate(create_items[0])
-        if created.vmId != request.expected_vm_id:
-            raise RuntimeError("checkpoint create evidence returned a different VM id")
-        if created.checkpointName != request.checkpoint_name:
-            raise RuntimeError("checkpoint create evidence returned a different checkpoint name")
-        if created.checkpointType != "ProductionOnly":
-            raise RuntimeError("checkpoint create evidence lost the ProductionOnly boundary")
-
-        readback_raw = await _run_preflight(runner, settings, target, request.vm_name)
-        readback = parse_preflight(
-            readback_raw,
-            max_existing=settings.hyperv_checkpoint_max_existing,
-            expected_vm_id=request.expected_vm_id,
-        )
-        verification = checkpoint_verification(
-            preflight=readback,
-            expected_vm_id=request.expected_vm_id,
-            checkpoint_name=request.checkpoint_name,
-            expected_checkpoint_id=created.checkpointId,
-        )
-        if verification.passed:
-            store.mark_verified(
-                idempotency_key=request.idempotency_key,
-                target_id=request.target_id,
-                vm_id=request.expected_vm_id,
-                checkpoint_name=request.checkpoint_name,
-                checkpoint_id=created.checkpointId,
-                creation_time=created.creationTime,
-            )
-        return change_response(
-            actor=actor,
-            reason=reason,
-            correlation_id=correlation_id,
-            request=request,
-            changed=created.changed,
-            output={
-                "vmId": created.vmId,
-                "checkpointId": created.checkpointId,
-                "checkpointName": created.checkpointName,
-                "snapshotType": created.snapshotType,
-                "creationTime": created.creationTime.isoformat(),
-                "clustered": created.clustered,
-            },
-            approval=approval,
-            verification=verification,
-        )
 
     @mcp.tool()
     async def hyperv_verify_checkpoint(
@@ -372,7 +405,8 @@ def register_checkpoint_tools(
             idempotency_key=idempotency_key,
         )
         target = _target(settings, request.target_id)
-        receipt = _store(settings).get(request.idempotency_key)
+        store = require_store()
+        receipt = store.get(request.idempotency_key)
         if receipt is None or receipt.get("status") != "verified":
             raise RuntimeError("no verified checkpoint receipt exists for this idempotency key")
         if str(receipt.get("targetId", "")) != request.target_id:
@@ -380,7 +414,9 @@ def register_checkpoint_tools(
         if str(receipt.get("vmId", "")) != canonical_vm_id:
             raise PermissionError("checkpoint receipt is bound to a different VM")
         if str(receipt.get("checkpointName", "")) != canonical_checkpoint_name:
-            raise PermissionError("checkpoint receipt is bound to a different checkpoint name")
+            raise PermissionError(
+                "checkpoint receipt is bound to a different checkpoint name"
+            )
         checkpoint_id = clean_uuid(
             str(receipt.get("checkpointId") or ""),
             "checkpoint_id",
