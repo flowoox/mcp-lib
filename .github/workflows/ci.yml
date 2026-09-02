@@ -12,6 +12,9 @@ concurrency:
   group: mcp-lib-ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  SBOM_GENERATOR: docker.io/docker/buildkit-syft-scanner:stable-1@sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9
+
 jobs:
   actions-policy:
     name: GitHub Actions pin policy
@@ -23,12 +26,19 @@ jobs:
           persist-credentials: false
       - name: Reject mutable third-party Action references
         run: python scripts/check_actions_pins.py
-      - name: Reject transitive Buildx bootstrap regression
+      - name: Reject transitive publisher bootstrap regression
         shell: bash
         run: |
           set -euo pipefail
           if grep -R -nE 'docker/setup-(buildx|qemu)-action@' .github/workflows; then
             echo 'setup-buildx/setup-qemu Actions reintroduce transitive executable bootstrap' >&2
+            exit 1
+          fi
+          if grep -R -nE '^[[:space:]]+sbom:[[:space:]]+(true|yes)[[:space:]]*$' \
+            .github/workflows/publish-archive.yml \
+            .github/workflows/publish-soulseek.yml \
+            .github/workflows/publish-traxx.yml; then
+            echo 'boolean SBOM shorthand would restore the mutable default scanner alias' >&2
             exit 1
           fi
           grep -Fq 'BUILDX_LINUX_AMD64_SHA256="48af8a397ebd60178778bf63611dbcebe5f5e7a9be90eb9147b24b9587455778"' scripts/bootstrap-buildx-secure.sh
@@ -39,12 +49,15 @@ jobs:
             grep -Fq "github-token: ''" "$workflow"
             grep -Fq 'builder:' "$workflow"
             grep -Fq 'steps.buildx.outputs.builder' "$workflow"
+            grep -Fq 'SBOM_GENERATOR: docker.io/docker/buildkit-syft-scanner:stable-1@sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9' "$workflow"
+            grep -Fq 'type=provenance,mode=max' "$workflow"
+            grep -Fq 'type=sbom,generator=' "$workflow"
           done
 
   publisher-bootstrap:
     name: Verified publisher bootstrap
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -61,6 +74,21 @@ jobs:
           set -euo pipefail
           test -n "$BUILDER"
           docker buildx inspect "$BUILDER" --bootstrap
+      - name: Generate SBOM with immutable scanner
+        shell: bash
+        env:
+          BUILDER: ${{ steps.buildx.outputs.builder }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/mcp-lib-sbom
+          docker buildx build \
+            --builder "$BUILDER" \
+            --file services/archive-mcp/Dockerfile \
+            --attest "type=sbom,generator=${SBOM_GENERATOR}" \
+            --output type=local,dest=/tmp/mcp-lib-sbom \
+            .
+          test -s /tmp/mcp-lib-sbom/sbom.spdx.json
+          grep -Fq 'SPDX' /tmp/mcp-lib-sbom/sbom.spdx.json
       - name: Remove ephemeral Buildx builder
         if: always()
         shell: bash
