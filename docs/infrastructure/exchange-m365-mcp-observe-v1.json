@@ -1,8 +1,17 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "work_item": "exchange-m365-mcp",
-  "status": "implemented_pending_ci",
+  "status": "observe_complete",
   "contract": "flowoox.exchange-m365-diagnostics/1.0",
+  "merged_pr": 69,
+  "merge_sha": "0dc042912e05e2d60433e567ad65c334999502e9",
+  "verification": {
+    "pr_ci_run": 33607958759,
+    "pr_service_ci_run": 33607958847,
+    "main_ci_run": 33608064350,
+    "main_service_ci_run": 33608064338,
+    "result": "success"
+  },
   "security_model": {
     "phase": "observe",
     "least_privilege": true,
