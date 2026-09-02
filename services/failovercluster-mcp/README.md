@@ -38,6 +38,28 @@ The public contract is `flowoox.failovercluster-diagnostics` v1.0.0 and exposes:
 
 All tools require `actor` and `reason`; a caller may also supply a UUID `correlation_id` so evidence can be joined across MCP services.
 
+## Hyper-V checkpoint handoff for clustered VMs
+
+Clustered VM checkpoints are intentionally **not** implemented as a second Hyper-V write surface in this service. The safe workflow is:
+
+```text
+failovercluster.group.observe
+        |
+        +--> resolve current ownerNode
+        v
+map ownerNode -> deployment-owned hyperv-mcp target alias
+        v
+hyperv_plan_checkpoint
+        v
+approval
+        v
+hyperv_change_checkpoint
+        v
+hyperv_verify_checkpoint
+```
+
+This keeps cluster observation and Hyper-V mutation in separate least-privilege backends. `hyperv-mcp` rechecks the immutable VM ID and `CheckpointType=ProductionOnly` on its dedicated checkpoint JEA endpoint immediately before creation, so a VM move between plan and change fails closed. The caller never supplies an arbitrary computer name.
+
 ## JEA deployment
 
 Use a dedicated endpoint such as `Flowoox.FailoverCluster.ReadOnly`. Do not bind the MCP service to an endpoint that also permits administrative cluster commands.
@@ -78,4 +100,6 @@ For agent workflows, call `cluster.observe` first. Only expand to exact roles/re
 
 ## Writes
 
-Observe v1 contains no write layer. If a future concrete operational workflow requires failover, role movement, maintenance/drain or resource restart, implement it as a separate opt-in identity and contract using the repository's `plan -> approval -> change -> verify` lifecycle, exact-target approvals, idempotency keys, pre-state capture, rollback declaration where feasible and independent read-back verification. Do not add generic PowerShell or generic cluster mutation to this service.
+Observe v1 contains no cluster-state write layer. If a future concrete operational workflow requires failover, role movement, maintenance/drain or resource restart, implement it as a separate opt-in identity and contract using the repository's `plan -> approval -> change -> verify` lifecycle, exact-target approvals, idempotency keys, pre-state capture, rollback declaration where feasible and independent read-back verification. Do not add generic PowerShell or generic cluster mutation to this service.
+
+VM checkpoint creation is the exception only in the sense that clustered VMs can participate in the cross-service handoff above; the mutation itself remains owned by the separately constrained `hyperv-mcp` checkpoint endpoint.

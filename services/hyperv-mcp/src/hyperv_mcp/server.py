@@ -22,6 +22,7 @@ from mcp_common.read_only_connector import (
     ReadOnlyQuery,
 )
 
+from .checkpoint_tools import register_checkpoint_tools
 from .config import Settings
 from .contract import capabilities
 from .transport import HyperVReadOnlyTransport
@@ -158,6 +159,7 @@ def create_server(
     connector: ReadOnlyConnector | None = None,
 ) -> FastMCP:
     settings = settings or Settings()
+    settings.validate_checkpoint_write_boundary()
     budget_limits = _budget_limits(settings)
     connector_policy = _connector_policy(settings)
     if connector is None:
@@ -168,10 +170,11 @@ def create_server(
     mcp = FastMCP(
         "Flowoox Hyper-V Diagnostics MCP",
         instructions=(
-            "Bounded read-only Hyper-V diagnostics over configured target aliases. "
-            "The production default requires constrained JEA/WinRM endpoints. "
-            "No arbitrary PowerShell/CIM/WMI, guest command, VM state change, checkpoint change, "
-            "storage mutation or networking mutation is exposed."
+            "Bounded Hyper-V diagnostics over configured target aliases. The observe backend remains "
+            "strictly read-only. Optional pre-change checkpoint creation is separately gated through "
+            "a dedicated constrained JEA endpoint, signed approval, idempotency receipts and "
+            "ProductionOnly verification. No arbitrary PowerShell/CIM/WMI, guest command, VM power "
+            "state change, checkpoint restore/delete, storage mutation or networking mutation is exposed."
         ),
         host=settings.mcp_host,
         port=settings.mcp_port,
@@ -188,6 +191,8 @@ def create_server(
             budget_limits,
             connector_policy,
             require_jea=settings.hyperv_require_jea,
+            checkpoint_writes_enabled=settings.hyperv_checkpoint_writes_enabled,
+            checkpoint_max_existing=settings.hyperv_checkpoint_max_existing,
         )
 
     @mcp.tool()
@@ -436,8 +441,6 @@ def create_server(
     ) -> dict[str, Any]:
         budget = QueryBudget(budget_limits)
 
-        # Aggregate-first: confirm the exact VM and collect its bounded summary before
-        # any relationship fan-out.
         vm_page = await _query(
             connector,
             budget,
@@ -495,6 +498,7 @@ def create_server(
             target=f"{target_id}:{vm_name}",
         )
 
+    register_checkpoint_tools(mcp, settings=settings)
     return mcp
 
 

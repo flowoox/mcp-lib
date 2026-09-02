@@ -55,6 +55,31 @@ class HyperVTarget(StrictModel):
         return self
 
 
+def _parse_target_map(
+    raw_json: str,
+    *,
+    setting_name: str,
+    allow_empty: bool,
+) -> dict[str, HyperVTarget]:
+    try:
+        raw = json.loads(raw_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{setting_name} must be valid JSON") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"{setting_name} must be a JSON object")
+    if not raw and not allow_empty:
+        raise ValueError(f"{setting_name} must be a non-empty object")
+    if len(raw) > 128:
+        raise ValueError(f"{setting_name} may contain at most 128 targets")
+
+    targets: dict[str, HyperVTarget] = {}
+    for target_id, value in raw.items():
+        if not isinstance(target_id, str) or not _TARGET_ID_RE.fullmatch(target_id):
+            raise ValueError("Hyper-V target IDs must match ^[a-z][a-z0-9_.-]{1,63}$")
+        targets[target_id] = HyperVTarget.model_validate(value)
+    return targets
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=None, case_sensitive=False, extra="ignore")
 
@@ -88,22 +113,28 @@ class Settings(BaseSettings):
     hyperv_budget_max_fan_out: int = Field(default=8, ge=1, le=30)
     hyperv_budget_timeout_seconds: float = Field(default=45.0, ge=1.0, le=180.0)
 
+    # Separately gated write boundary for pre-change ProductionOnly checkpoints.
+    hyperv_checkpoint_writes_enabled: bool = False
+    hyperv_checkpoint_backend_constrained: bool = False
+    hyperv_checkpoint_targets_json: str = "{}"
+    hyperv_checkpoint_approval_secret: str = ""
+    hyperv_checkpoint_receipt_store: str = ""
+    hyperv_checkpoint_max_existing: int = Field(default=8, ge=1, le=32)
+    hyperv_checkpoint_timeout_seconds: float = Field(default=120.0, ge=5.0, le=300.0)
+    hyperv_checkpoint_max_response_bytes: int = Field(
+        default=262_144,
+        ge=16_384,
+        le=1_048_576,
+    )
+
     @property
     def targets(self) -> dict[str, HyperVTarget]:
-        try:
-            raw = json.loads(self.hyperv_targets_json)
-        except json.JSONDecodeError as exc:
-            raise ValueError("HYPERV_TARGETS_JSON must be valid JSON") from exc
-        if not isinstance(raw, dict) or not raw:
-            raise ValueError("HYPERV_TARGETS_JSON must be a non-empty object")
-        if len(raw) > 128:
-            raise ValueError("HYPERV_TARGETS_JSON may contain at most 128 targets")
-
-        targets: dict[str, HyperVTarget] = {}
-        for target_id, value in raw.items():
-            if not isinstance(target_id, str) or not _TARGET_ID_RE.fullmatch(target_id):
-                raise ValueError("Hyper-V target IDs must match ^[a-z][a-z0-9_.-]{1,63}$")
-            target = HyperVTarget.model_validate(value)
+        targets = _parse_target_map(
+            self.hyperv_targets_json,
+            setting_name="HYPERV_TARGETS_JSON",
+            allow_empty=False,
+        )
+        for target in targets.values():
             if self.hyperv_require_jea:
                 if target.transport != "winrm":
                     raise ValueError(
@@ -114,5 +145,67 @@ class Settings(BaseSettings):
                     raise ValueError(
                         "Hyper-V targets require a dedicated constrained JEA configuration"
                     )
-            targets[target_id] = target
         return targets
+
+    @property
+    def checkpoint_targets(self) -> dict[str, HyperVTarget]:
+        targets = _parse_target_map(
+            self.hyperv_checkpoint_targets_json,
+            setting_name="HYPERV_CHECKPOINT_TARGETS_JSON",
+            allow_empty=True,
+        )
+        for target in targets.values():
+            if target.transport != "winrm" or target.configuration_name is None:
+                raise ValueError(
+                    "checkpoint targets must use a dedicated constrained WinRM/JEA endpoint"
+                )
+            if target.configuration_name.casefold() in _UNRESTRICTED_ENDPOINTS:
+                raise ValueError(
+                    "checkpoint targets may not use an unrestricted PowerShell endpoint"
+                )
+        return targets
+
+    def validate_checkpoint_write_boundary(self) -> None:
+        """Fail closed unless checkpoint writes use a separate constrained endpoint and approval."""
+
+        if not self.hyperv_checkpoint_writes_enabled:
+            return
+        if not self.hyperv_checkpoint_backend_constrained:
+            raise ValueError(
+                "HYPERV_CHECKPOINT_WRITES_ENABLED requires HYPERV_CHECKPOINT_BACKEND_CONSTRAINED=true"
+            )
+        if len(self.hyperv_checkpoint_approval_secret.encode()) < 32:
+            raise ValueError(
+                "HYPERV_CHECKPOINT_WRITES_ENABLED requires HYPERV_CHECKPOINT_APPROVAL_SECRET with at least 32 bytes"
+            )
+        if not self.hyperv_checkpoint_receipt_store.strip():
+            raise ValueError(
+                "HYPERV_CHECKPOINT_WRITES_ENABLED requires HYPERV_CHECKPOINT_RECEIPT_STORE"
+            )
+        checkpoint_targets = self.checkpoint_targets
+        if not checkpoint_targets:
+            raise ValueError(
+                "HYPERV_CHECKPOINT_WRITES_ENABLED requires HYPERV_CHECKPOINT_TARGETS_JSON"
+            )
+        read_targets = self.targets
+        for target_id, checkpoint_target in checkpoint_targets.items():
+            read_target = read_targets.get(target_id)
+            if read_target is None:
+                raise ValueError(
+                    f"checkpoint target {target_id!r} must also exist in HYPERV_TARGETS_JSON"
+                )
+            if read_target.computer_name.casefold() != checkpoint_target.computer_name.casefold():
+                raise ValueError(
+                    f"checkpoint target {target_id!r} must resolve to the same host as its read-only target"
+                )
+            if read_target.transport != "winrm" or read_target.configuration_name is None:
+                raise ValueError(
+                    "checkpoint writes require a WinRM/JEA read target for the same host alias"
+                )
+            if (
+                read_target.configuration_name.casefold()
+                == checkpoint_target.configuration_name.casefold()
+            ):
+                raise ValueError(
+                    "checkpoint writes require a separate JEA configuration from the read-only endpoint"
+                )
