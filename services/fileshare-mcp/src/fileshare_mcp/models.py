@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import PureWindowsPath
+from typing import Literal
 
 from mcp_common.operations import StrictModel
 from pydantic import Field, field_validator, model_validator
@@ -14,6 +15,7 @@ class ShareRoot(StrictModel):
     path: str = Field(min_length=3, max_length=1024)
     share_name: str | None = Field(default=None, min_length=1, max_length=80)
     description: str = Field(default="", max_length=240)
+    content_read: bool = False
 
     @field_validator("alias")
     @classmethod
@@ -95,3 +97,33 @@ class AccessExplanation(StrictModel):
         if self.authoritative:
             raise ValueError("fileshare access explanations are advisory, never authoritative")
         return self
+
+
+class FileHashObservation(StrictModel):
+    algorithm: Literal["sha256"] = "sha256"
+    digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    length: int = Field(ge=0)
+    bytes_read: int = Field(ge=0)
+
+
+class TextPreviewObservation(StrictModel):
+    encoding: Literal["utf-8"] = "utf-8"
+    bytes_read: int = Field(ge=0)
+    decoded_characters: int = Field(ge=0)
+    lines_returned: int = Field(ge=0)
+    truncated: bool
+    preview: str
+
+
+class TextSearchMatch(StrictModel):
+    line_number: int = Field(ge=1)
+    snippet: str = Field(max_length=512)
+
+
+class TextSearchObservation(StrictModel):
+    encoding: Literal["utf-8"] = "utf-8"
+    bytes_read: int = Field(ge=0)
+    decoded_characters: int = Field(ge=0)
+    lines_scanned: int = Field(ge=0)
+    truncated: bool
+    matches: list[TextSearchMatch] = Field(default_factory=list)
