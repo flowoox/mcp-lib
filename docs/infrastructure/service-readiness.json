@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "scope": "production-bound infrastructure MCP services",
+  "policy": {
+    "root_ci_required": true,
+    "locked_python_dependencies_required": true,
+    "readme_required": true,
+    "environment_example_required": true,
+    "tests_required": true,
+    "package_entrypoint_required": true,
+    "dedicated_ci_when_declared": true,
+    "company_specific_topology_or_credentials_allowed": false
+  },
+  "services": [
+    {"service": "ad-mcp", "distribution": "flowoox-mcp-ad", "dedicated_workflow": "ad-mcp.yml", "security_profile": "controlled-lifecycle"},
+    {"service": "network-mcp", "distribution": "flowoox-mcp-network", "dedicated_workflow": null, "security_profile": "controlled-lifecycle"},
+    {"service": "fortigate-mcp", "distribution": "flowoox-mcp-fortigate", "dedicated_workflow": "fortigate-mcp.yml", "security_profile": "read-only"},
+    {"service": "entra-mcp", "distribution": "flowoox-mcp-entra", "dedicated_workflow": "entra-mcp.yml", "security_profile": "read-only"},
+    {"service": "windows-mcp", "distribution": "flowoox-mcp-windows", "dedicated_workflow": "windows-mcp.yml", "security_profile": "read-only"},
+    {"service": "security-audit-mcp", "distribution": "flowoox-mcp-security-audit", "dedicated_workflow": "security-audit-mcp.yml", "security_profile": "read-only"},
+    {"service": "docker-mcp", "distribution": "flowoox-mcp-docker", "dedicated_workflow": null, "security_profile": "read-only"},
+    {"service": "prtg-mcp", "distribution": "flowoox-mcp-prtg", "dedicated_workflow": "prtg-mcp.yml", "security_profile": "read-only"},
+    {"service": "fileshare-mcp", "distribution": "flowoox-mcp-fileshare", "dedicated_workflow": "fileshare-mcp.yml", "security_profile": "read-only"},
+    {"service": "hyperv-mcp", "distribution": "flowoox-mcp-hyperv", "dedicated_workflow": "hyperv-mcp.yml", "security_profile": "read-only"},
+    {"service": "failovercluster-mcp", "distribution": "flowoox-mcp-failovercluster", "dedicated_workflow": "failovercluster-mcp.yml", "security_profile": "read-only"},
+    {"service": "n8n-mcp", "distribution": "flowoox-mcp-n8n", "dedicated_workflow": "n8n-mcp.yml", "security_profile": "read-only"},
+    {"service": "manageengine-mdm-mcp", "distribution": "flowoox-mcp-manageengine-mdm", "dedicated_workflow": "manageengine-mdm-mcp.yml", "security_profile": "read-only"},
+    {"service": "freshdesk-mcp", "distribution": "flowoox-mcp-freshdesk", "dedicated_workflow": "freshdesk-mcp.yml", "security_profile": "read-only"},
+    {"service": "unifi-mcp", "distribution": "flowoox-mcp-unifi", "dedicated_workflow": "unifi-mcp.yml", "security_profile": "read-only"},
+    {"service": "veeam-mcp", "distribution": "flowoox-mcp-veeam", "dedicated_workflow": "veeam-mcp.yml", "security_profile": "read-only"},
+    {"service": "wazuh-mcp", "distribution": "flowoox-mcp-wazuh", "dedicated_workflow": "wazuh-mcp.yml", "security_profile": "read-only"},
+    {"service": "checkmk-mcp", "distribution": "flowoox-mcp-checkmk", "dedicated_workflow": "checkmk-mcp.yml", "security_profile": "read-only"},
+    {"service": "pki-mcp", "distribution": "flowoox-mcp-pki", "dedicated_workflow": "pki-mcp.yml", "security_profile": "read-only"},
+    {"service": "exchange-m365-mcp", "distribution": "flowoox-mcp-exchange-m365", "dedicated_workflow": "exchange-m365-mcp.yml", "security_profile": "read-only"}
+  ]
+}
