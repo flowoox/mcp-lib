@@ -1,35 +1,33 @@
 {
-  "schema_version": 12,
-  "updated_at": "2026-09-02T08:47:00Z",
+  "schema_version": 13,
+  "updated_at": "2026-09-02T09:16:00Z",
   "repository": "flowoox/mcp-lib",
-  "base_main_sha": "805ec5b88b98247f2de4a14a30e865e6462e61c2",
+  "base_main_sha": "47f4b99fb9237319efbf20736a93f67f633329c6",
   "last_completed": {
-    "work_item": "fileshare-mcp-content-analysis-v1",
-    "status": "observe_complete",
-    "merged_pr": 71,
-    "merge_sha": "9e2daac89baeca5f97bbada23600642ea9cf3b45",
-    "ci_repair_pr": 72,
-    "ci_repair_merge_sha": "805ec5b88b98247f2de4a14a30e865e6462e61c2",
+    "work_item": "infrastructure-toolbox-production-readiness",
+    "status": "production_readiness_gate_complete",
+    "merged_pr": 74,
+    "merge_sha": "47f4b99fb9237319efbf20736a93f67f633329c6",
     "verification": {
-      "pr_service_ci_run": 33609800297,
-      "feature_main_service_ci_run": 33610079451,
-      "feature_main_ci_run": 33610079457,
-      "feature_main_ci_result": "failure_due_to_missing_permanent_workflow_invariant_entry",
-      "ci_repair_pr_ci_run": 33610231345,
-      "final_main_ci_run": 33610407468,
+      "pr_ci_run": 33612813703,
+      "pr_network_ci_run": 33612813686,
+      "pr_docker_ci_run": 33612813708,
+      "pr_ad_ci_run": 33612813725,
+      "main_ci_run": 33613017249,
+      "main_network_ci_run": 33613017281,
+      "main_docker_ci_run": 33613017329,
       "result": "success"
     },
     "capabilities": [
-      "double-opt-in bounded content analysis requiring global enablement plus per-root content_read=true",
-      "fixed SHA-256 hashing for one regular file with a hard configured source-byte ceiling and byte accounting",
-      "fixed UTF-8 text preview with safe-extension allowlist plus byte, decoded-character and line ceilings",
-      "fixed literal substring text search with byte, character, line, match, query and snippet ceilings and no regex",
-      "existing deployment-owned root aliases, QueryBudget, audit/correlation IDs and read-only backend attestation retained",
-      "relative-path hardening rejects traversal, absolute paths, alternate data streams, reserved Windows device names and canonicalization-ambiguous trailing spaces or dots",
-      "reparse points remain blocked by default and content tools are not registered or advertised while disabled",
-      "recursive content enumeration, binary preview, arbitrary encodings, unrestricted whole-file streaming, generic PowerShell and all file/share/ACL writes remain excluded"
+      "machine-readable production-readiness manifest plus repository validator for every production-bound infrastructure MCP",
+      "root locked-dependency CI matrix now covers all currently supported infrastructure MCP services",
+      "dedicated locked CI and non-root runtime images added for network-mcp and docker-mcp",
+      "network-mcp now has a fail-closed deployment example with loopback-only CIDR authorization and path tracing disabled by default",
+      "ad-mcp dedicated CI now follows the repository lock and immutable Action pin policy",
+      "repository workflow invariants include the new permanent Network and Docker workflows",
+      "organization-specific topology, credentials and policy remain deployment-owned and vendor-blocked adapters remain blocked rather than using undocumented interfaces"
     ],
-    "ci_note": "The feature-specific FileShare CI was green before merge. Post-merge full CI correctly exposed that the new permanent FileShare workflow had not been added to the repository-wide workflow invariant. PR #72 fixed only that invariant and final full main CI is green."
+    "ci_note": "The first PR CI exposed a repository tooling import-path issue in the Soulseek invariant job. The invocation was corrected to run pytest as a Python module from the repository root; the complete PR CI and post-merge main checks then passed."
   },
   "completed_decisions": [
     {
@@ -98,17 +96,17 @@
     }
   ],
   "current": {
-    "work_item": "infrastructure-toolbox-production-readiness",
-    "branch": "chore/infrastructure-toolbox-production-readiness",
+    "work_item": "docker-mcp-production-authorization-proxy-example",
+    "branch": "chore/docker-mcp-readonly-proxy-example",
     "status": "queued",
-    "goal": "Run a cross-service production-readiness gate over deployment documentation, fail-closed backend attestations, CI coverage, runtime packaging, secret handling, supported-version floors and common contract consistency, then fix concrete gaps without weakening service-specific least privilege.",
+    "goal": "Close the remaining concrete Docker production deployment gap with a product-neutral, deployable read-only Engine authorization-proxy example that exposes only the Docker MCP observe surface while keeping credentials, host topology and policy external.",
     "first_actions": [
       "resync main, open PRs/issues, CI and parallel branches before branching",
-      "inventory every production-bound infrastructure service for dedicated CI, locked dependencies, package entrypoint/container/runtime documentation and fail-closed startup behavior",
-      "validate that deployment examples keep credentials, real topology, OUs, hostnames and policies external and do not normalize insecure development defaults into production",
-      "check common contract consistency for typed capability metadata, explicit tool allowlists, audit/correlation envelopes and QueryBudget or equivalent load protection",
-      "verify supported-version floors and vendor-contract evidence are explicit for services whose APIs change by release",
-      "fix concrete gaps in small reviewable commits and keep vendor-blocked integrations blocked rather than substituting undocumented interfaces"
+      "verify the current Docker Engine authorization and proxy guidance before freezing the example",
+      "implement a fail-closed proxy configuration with GET-only fixed endpoint allowlisting and bounded query behavior; do not expose a generic Docker API proxy",
+      "keep direct Docker socket access isolated to the proxy boundary and document its residual privilege clearly",
+      "add automated configuration/invariant tests and CI coverage, then update docker-mcp documentation and project backlog",
+      "merge only after relevant PR CI is green and verify main CI after merge"
     ]
   },
   "next_after_current": {
