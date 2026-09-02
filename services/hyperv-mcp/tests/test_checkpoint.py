@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -58,6 +58,15 @@ def _raw_preflight(
     }
 
 
+def _checkpoint(index: int, name: str | None = None) -> dict[str, object]:
+    return {
+        "id": f"00000000-0000-0000-0000-{index:012d}",
+        "name": name or f"old-{index}",
+        "snapshotType": "Production",
+        "creationTime": "2026-09-02T21:00:00+00:00",
+    }
+
+
 def test_checkpoint_name_is_deterministic_and_bound_to_idempotency() -> None:
     request = _request()
     name = deterministic_checkpoint_name(request, _VM_ID)
@@ -89,6 +98,7 @@ def test_plan_is_high_risk_approval_bound_and_cluster_aware() -> None:
         preflight=preflight,
         correlation_id="",
         actor="patch-agent",
+        max_existing=8,
     )
     assert result["plan"]["risk"] == "high"
     assert result["plan"]["approval"]["state"] == "required"
@@ -96,6 +106,22 @@ def test_plan_is_high_risk_approval_bound_and_cluster_aware() -> None:
     assert result["approvalBinding"]["intent"]["checkpointType"] == "ProductionOnly"
     assert result["approvalBinding"]["intent"]["vmId"] == _VM_ID
     assert result["checkpointName"].startswith("pre-update--mcp-")
+
+
+def test_plan_rejects_new_checkpoint_when_safety_limit_is_reached() -> None:
+    request = _request()
+    preflight = parse_preflight(
+        _raw_preflight(checkpoints=[_checkpoint(index) for index in range(1, 9)]),
+        max_existing=8,
+    )
+    with pytest.raises(ValueError, match="reached the configured safety limit"):
+        build_checkpoint_plan(
+            request=request,
+            preflight=preflight,
+            correlation_id="",
+            actor="patch-agent",
+            max_existing=8,
+        )
 
 
 def test_verification_requires_exact_checkpoint_and_vm_identity() -> None:
@@ -161,10 +187,33 @@ def test_receipt_store_binds_idempotency_to_exact_checkpoint_intent(tmp_path) ->
         vm_id=_VM_ID,
         checkpoint_name=name,
         checkpoint_id=_CHECKPOINT_ID,
-        creation_time=datetime.now(timezone.utc),
+        creation_time=datetime.now(UTC),
     )
     assert verified["status"] == "verified"
     assert verified["checkpointId"] == _CHECKPOINT_ID
+
+
+def test_receipt_store_rejects_naive_provider_timestamp(tmp_path) -> None:
+    path = tmp_path / "checkpoint-receipts.json"
+    store = CheckpointReceiptStore(path)
+    request = _request()
+    name = deterministic_checkpoint_name(request, _VM_ID)
+    store.prepare(
+        idempotency_key=request.idempotency_key,
+        target_id=request.target_id,
+        vm_id=_VM_ID,
+        checkpoint_name=name,
+        pre_checkpoint_ids=[],
+    )
+    with pytest.raises(ValueError, match="timezone-aware"):
+        store.mark_verified(
+            idempotency_key=request.idempotency_key,
+            target_id=request.target_id,
+            vm_id=_VM_ID,
+            checkpoint_name=name,
+            checkpoint_id=_CHECKPOINT_ID,
+            creation_time=datetime(2026, 9, 2, 21, 0, 0),
+        )
 
 
 def test_malformed_receipt_store_fails_closed(tmp_path) -> None:
