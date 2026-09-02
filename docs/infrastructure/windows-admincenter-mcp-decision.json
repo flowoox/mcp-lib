@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "work_item": "windows-admincenter-mcp",
+  "status": "decision_complete_no_adapter",
+  "decision_date": "2026-09-02",
+  "decision": "Do not add a Windows Admin Center MCP adapter on the current supported contract surface. Continue using the specialized windows-mcp, hyperv-mcp and failovercluster-mcp backends.",
+  "reasons": [
+    "Current Microsoft documentation presents Windows Admin Center primarily as a gateway that manages targets through remote PowerShell and WMI/WinRM rather than as a stable external automation API for third-party agents.",
+    "The Windows Admin Center gateway-plugin SDK documentation states that the developer tooling has not yet been updated for plug-ins compatible with the modernized .NET 8 gateway, so it is not a stable production contract for a new generic MCP backend.",
+    "Gateway access does not grant least-privilege target access; Microsoft documents that most Windows Admin Center tools require administrative permissions on managed targets.",
+    "Windows Admin Center target RBAC offers a Readers role for individual machines, but Microsoft documents that this RBAC model is not supported for cluster management, which makes it unsuitable as a uniform least-privilege replacement for the existing specialized Hyper-V and Failover Cluster MCPs.",
+    "A wrapper around the built-in PowerShell/WMI gateway would duplicate existing specialized adapters and risk becoming the generic PowerShell/admin proxy explicitly prohibited by the mcp-lib security model."
+  ],
+  "safe_existing_path": [
+    "windows-mcp for bounded Windows host diagnostics",
+    "hyperv-mcp for bounded Hyper-V host/VM diagnostics",
+    "failovercluster-mcp for bounded failover-cluster diagnostics"
+  ],
+  "reconsider_only_if": [
+    "Microsoft publishes a stable supported external Windows Admin Center gateway API for automation clients",
+    "the API has a documented least-privilege read-only authorization model covering required target types including clusters",
+    "the adapter materially reduces duplication without exposing arbitrary PowerShell, WMI, REST or administrative execution"
+  ],
+  "prohibited": [
+    "browser automation against Windows Admin Center",
+    "reverse-engineered or undocumented internal gateway endpoints",
+    "generic PowerShell or WMI proxying",
+    "using gateway-user access as proof of least-privilege target authorization"
+  ]
+}
