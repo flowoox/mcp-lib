@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "work_item": "exchange-m365-mcp",
+  "status": "implemented_pending_ci",
+  "contract": "flowoox.exchange-m365-diagnostics/1.0",
+  "security_model": {
+    "phase": "observe",
+    "least_privilege": true,
+    "exchange_backend": {
+      "interface": "Exchange Online PowerShell",
+      "authentication": "certificate app-only",
+      "auth_gate": "Exchange.ManageAsApp",
+      "authorization": "Exchange service principal restricted by deployment-attested view-only Exchange RBAC",
+      "command_import": "explicit Connect-ExchangeOnline -CommandName allowlist",
+      "preview_exchange_admin_api_used": false
+    },
+    "graph_backend": {
+      "interface": "Microsoft Graph v1.0 service communications",
+      "authentication": "OAuth2 client credentials",
+      "application_permission": "ServiceHealth.Read.All"
+    },
+    "read_only_connector": true,
+    "query_budget": true,
+    "audit_correlation_ids": true,
+    "aggregate_before_fan_out": true
+  },
+  "operations": [
+    "exchange.organization.get",
+    "exchange.accepted_domains.list",
+    "exchange.remote_domains.list",
+    "exchange.inbound_connectors.list",
+    "exchange.outbound_connectors.list",
+    "exchange.transport_config.get",
+    "m365.service_health.list",
+    "m365.exchange_issues.list",
+    "exchange-m365.diagnostics.bundle"
+  ],
+  "privacy": {
+    "domain_names_default": "stable hashed references",
+    "connector_names": "stable hashed references",
+    "sender_ips": "count only",
+    "connector_domain_lists": "count only",
+    "certificate_subjects": "not returned",
+    "smart_hosts": "count only",
+    "service_issue_posts_and_descriptions": "not returned",
+    "mailbox_or_message_content": "not queried"
+  },
+  "prohibited": [
+    "arbitrary PowerShell or cmdlets",
+    "arbitrary Graph paths, filters or queries",
+    "mailbox or unrestricted recipient enumeration",
+    "message bodies or attachments",
+    "message trace",
+    "eDiscovery/content search or mailbox export",
+    "Exchange or Microsoft 365 mutations"
+  ],
+  "vendor_evidence": [
+    "Microsoft documents app-only Exchange Online PowerShell with certificate authentication and Exchange.ManageAsApp plus Exchange RBAC authorization.",
+    "Microsoft documents View-Only Organization Management as read access to Exchange Online object properties and feature configuration.",
+    "Microsoft Graph v1.0 documents ServiceHealth.Read.All as the least-privileged application permission for service-health overviews and issues."
+  ]
+}
