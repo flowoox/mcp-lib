@@ -10,6 +10,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
         "checkmk-mcp.yml",
         "ci.yml",
         "entra-mcp.yml",
+        "exchange-m365-mcp.yml",
         "failovercluster-mcp.yml",
         "fortigate-mcp.yml",
         "freshdesk-mcp.yml",
