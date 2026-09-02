@@ -8,6 +8,10 @@ from mcp_common.query_budget import QueryBudgetLimits
 CONTRACT = "flowoox.fileshare-diagnostics"
 CONTRACT_VERSION = "1.1.0"
 
+CONTENT_TOOL_NAMES = frozenset(
+    {"fileshare.file.hash", "fileshare.text.preview", "fileshare.text.search"}
+)
+
 TOOL_POLICIES = (
     ToolPolicy(name="fileshare.roots.list", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
     ToolPolicy(name="fileshare.path.observe", phase=OperationPhase.OBSERVE, risk=RiskLevel.READ_ONLY),
@@ -70,5 +74,6 @@ def capabilities(
                 "requires_approval": policy.requires_approval,
             }
             for policy in TOOL_POLICIES
+            if content_read_enabled or policy.name not in CONTENT_TOOL_NAMES
         ],
     }
