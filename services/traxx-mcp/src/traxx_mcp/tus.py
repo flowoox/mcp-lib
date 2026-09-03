@@ -60,6 +60,25 @@ def recursive_find(value: Any, names: set[str]) -> Any:
     return None
 
 
+def _http_origin(value: str) -> tuple[str, str, int]:
+    """Return a normalized HTTP origin or fail before credential-bearing egress."""
+
+    parsed = urlparse(value)
+    scheme = parsed.scheme.casefold()
+    if scheme not in {"http", "https"} or not parsed.hostname:
+        raise TusError("TUS URL must use an absolute HTTP(S) origin")
+    if parsed.username is not None or parsed.password is not None:
+        raise TusError("TUS URL userinfo is not allowed")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise TusError("TUS URL contains an invalid port") from exc
+    if parsed.fragment:
+        raise TusError("TUS URL fragments are not allowed")
+    effective_port = port or (443 if scheme == "https" else 80)
+    return scheme, parsed.hostname.casefold(), effective_port
+
+
 class TusUploader:
     def __init__(
         self,
@@ -69,12 +88,17 @@ class TusUploader:
         verify_tls: bool,
         chunk_size: int,
         timeout: float,
+        transport: httpx.AsyncBaseTransport | None = None,
     ):
         self.endpoint = endpoint
         self.headers = headers
         self.verify_tls = verify_tls
         self.chunk_size = chunk_size
         self.timeout = timeout
+        # Injection is only for deterministic negative tests. Production uses
+        # HTTPX's normal transport, but the same-origin policy applies before
+        # any credential-bearing PATCH/HEAD request is built.
+        self.transport = transport
 
     @staticmethod
     def encode_metadata(metadata: dict[str, str]) -> str:
@@ -91,17 +115,27 @@ class TusUploader:
         location: str,
         headers: dict[str, str],
     ) -> str:
-        """Keep a public TUS Location on the reachable internal origin.
+        """Resolve a TUS Location without crossing the credential origin.
 
         BeMusic uses the forwarded Host header when it creates an absolute
         Location. Internal clients still need to PATCH the same service via
         its Docker address; routing the public URL back through the edge can
-        fail on hosts without NAT hairpinning. Only the explicitly forwarded
-        host is rewritten, so genuine external upload targets remain intact.
+        fail on hosts without NAT hairpinning. That public-host alias is
+        rewritten to the configured endpoint origin.
+
+        Any other cross-origin Location fails closed. Traxx bearer tokens and
+        proxy/WAF headers are shared API credentials and must never be copied to
+        an arbitrary object-store, private-network or metadata destination. If
+        external TUS storage is needed later, it requires a separate explicit
+        storage-origin and credential policy rather than inheriting these
+        headers.
         """
+        endpoint_origin = _http_origin(endpoint)
+        _http_origin(created_url)
         resolved = urljoin(created_url, location)
-        endpoint_url = urlparse(endpoint)
         location_url = urlparse(resolved)
+        _http_origin(resolved)
+        endpoint_url = urlparse(endpoint)
         forwarded_host = next(
             (
                 value
@@ -120,10 +154,13 @@ class TusUploader:
             and location_url.hostname.casefold()
             != (endpoint_url.hostname or "").casefold()
         ):
-            return location_url._replace(
+            resolved = location_url._replace(
                 scheme=endpoint_url.scheme,
                 netloc=endpoint_url.netloc,
             ).geturl()
+
+        if _http_origin(resolved) != endpoint_origin:
+            raise TusError("TUS Location changed origin; cross-origin upload blocked")
         return resolved
 
     @staticmethod
@@ -230,9 +267,15 @@ class TusUploader:
         async with httpx.AsyncClient(
             verify=self.verify_tls,
             timeout=self.timeout,
-            follow_redirects=True,
+            follow_redirects=False,
+            transport=self.transport,
         ) as client:
             created = await client.post(self.endpoint, headers=create_headers)
+            if 300 <= created.status_code < 400:
+                raise TusError(
+                    f"TUS create redirect blocked ({created.status_code}); "
+                    "redirect targets are not trusted implicitly"
+                )
             # 404/405 mean the route is not a TUS server at all — BeMusic
             # without the TUS add-on answers its SPA catch-all here. That is a
             # different situation from an upload that was attempted and
@@ -278,11 +321,19 @@ class TusUploader:
                         content=chunk,
                     )
                     final_status = patch.status_code
+                    if 300 <= patch.status_code < 400:
+                        raise TusError(
+                            f"TUS PATCH redirect blocked ({patch.status_code}) at {offset}"
+                        )
                     if patch.status_code in {409, 412}:
                         head = await client.head(
                             upload_url,
                             headers={**self.headers, "Tus-Resumable": "1.0.0"},
                         )
+                        if 300 <= head.status_code < 400:
+                            raise TusError(
+                                f"TUS HEAD redirect blocked ({head.status_code})"
+                            )
                         if head.status_code >= 400:
                             raise TusError(
                                 f"TUS HEAD failed ({head.status_code}): {head.text[:800]}"
@@ -312,6 +363,8 @@ class TusUploader:
                 upload_url,
                 headers={**self.headers, "Tus-Resumable": "1.0.0"},
             )
+            if 300 <= head.status_code < 400:
+                raise TusError(f"TUS final HEAD redirect blocked ({head.status_code})")
             if head.status_code < 400:
                 head_headers = dict(head.headers)
                 response_headers.update(head_headers)
