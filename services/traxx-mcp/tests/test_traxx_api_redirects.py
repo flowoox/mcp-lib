@@ -1,6 +1,5 @@
 """SEC-048 regression tests for credential-bearing Traxx API redirects."""
 
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -11,10 +10,7 @@ from traxx_mcp.client import TraxxClient, TraxxError
 from traxx_mcp.config import RuntimeConfig
 
 
-Handler = Callable[[httpx.Request], httpx.Response]
-
-
-def make_client(handler: Handler) -> tuple[TraxxClient, httpx.MockTransport]:
+def make_client(handler: Any) -> tuple[TraxxClient, httpx.MockTransport]:
     config = RuntimeConfig(
         base_url="https://traxx.test",
         token="traxx-token",
