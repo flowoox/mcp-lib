@@ -1,7 +1,8 @@
 """SEC-048 regression tests for credential-bearing Traxx API redirects."""
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import httpx
 import pytest
