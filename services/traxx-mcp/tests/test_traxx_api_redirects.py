@@ -8,6 +8,7 @@ import pytest
 
 from traxx_mcp.client import TraxxClient, TraxxError
 from traxx_mcp.config import RuntimeConfig
+from traxx_mcp.tus import TusUnsupported
 
 
 def make_client(handler: Any) -> tuple[TraxxClient, httpx.MockTransport]:
@@ -114,6 +115,40 @@ async def test_mutating_api_redirect_is_ambiguous_and_never_replayed(
     assert captured.value.method == "POST"
     assert captured.value.mutation_ambiguous is True
     assert methods == ["POST"]
+
+
+@pytest.mark.asyncio
+async def test_tus_endpoint_discovery_never_follows_cross_origin_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[tuple[str, str, str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(
+            (
+                request.url.host or "",
+                request.method,
+                request.headers.get("authorization", ""),
+                request.headers.get("x-waf-key", ""),
+            )
+        )
+        if request.url.host != "traxx.test":
+            raise AssertionError(f"TUS discovery escaped to {request.url}")
+        return httpx.Response(
+            302,
+            headers={"Location": "https://attacker.test/tus"},
+        )
+
+    client, transport = make_client(handler)
+    follow_redirects = install_transport(transport, monkeypatch)
+
+    with pytest.raises(TusUnsupported, match="redirect refused"):
+        await client._resolve_tus_endpoint()
+
+    assert seen
+    assert all(host == "traxx.test" and method == "OPTIONS" for host, method, _, _ in seen)
+    assert all(auth == "Bearer traxx-token" and waf == "proxy-secret" for _, _, auth, waf in seen)
+    assert follow_redirects == [False]
 
 
 @pytest.mark.asyncio
