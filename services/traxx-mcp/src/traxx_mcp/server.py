@@ -9,11 +9,11 @@ from mcp_common.paths import resolve_contained_path
 from mcp_common.store import AtomicJsonStore
 from mcp_common.url_security import origin_for_url
 
-from .client import TraxxClient
 from .config import ActorRegistry, RuntimeConfig, RuntimeConfigStore, get_settings
 from .contract import capabilities
 from .malware import ClamAvScanner, MalwareScanError
 from .metadata import inspect_audio_file
+from .secure_client import SecureTraxxClient as TraxxClient
 
 
 def create_server() -> FastMCP:
