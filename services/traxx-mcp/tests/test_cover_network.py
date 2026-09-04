@@ -4,6 +4,8 @@ from typing import Any
 
 import pytest
 
+from traxx_mcp.client import TraxxError
+from traxx_mcp.config import RuntimeConfig
 from traxx_mcp.cover_network import (
     CoverFetchError,
     CoverPolicyError,
@@ -13,8 +15,6 @@ from traxx_mcp.cover_network import (
     validate_public_addresses,
 )
 from traxx_mcp.secure_client import SecureTraxxClient
-from traxx_mcp.client import TraxxError
-from traxx_mcp.config import RuntimeConfig
 
 
 def test_private_ipv4_is_blocked_before_request() -> None:
