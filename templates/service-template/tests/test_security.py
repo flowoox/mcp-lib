@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from mcp_common.mcp_security import build_mcp_server_security
 
 from example_mcp.config import Settings
 from example_mcp.server import create_server
-from mcp_common.mcp_security import build_mcp_server_security
 
 
 def _settings(**overrides: object) -> Settings:
