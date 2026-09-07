@@ -26,6 +26,7 @@ def test_repository_contains_only_permanent_workflows() -> None:
         "publish-soulseek.yml",
         "publish-traxx.yml",
         "security-audit-mcp.yml",
+        "template-security.yml",
         "unifi-mcp.yml",
         "veeam-mcp.yml",
         "wazuh-mcp.yml",
