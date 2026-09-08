@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ORG_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.onmicrosoft\.com$")
 _THUMBPRINT_RE = re.compile(r"^[A-Fa-f0-9]{40,128}$")
+_DOMAIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 
 
 class Settings(BaseSettings):
@@ -30,6 +31,14 @@ class Settings(BaseSettings):
     exchange_app_id: str = ""
     exchange_certificate_thumbprint: str = ""
     exchange_return_domain_names: bool = False
+    exchange_mailbox_debug_enabled: bool = False
+
+    exchange_writes_enabled: bool = False
+    exchange_recipient_write_rbac_attested: bool = False
+    exchange_management_app_id: str = ""
+    exchange_management_certificate_thumbprint: str = ""
+    exchange_mailbox_allowed_domains: str = ""
+    exchange_approval_secret: str = ""
 
     m365_graph_backend_read_only: bool = False
     m365_graph_service_health_permission_attested: bool = False
@@ -67,7 +76,12 @@ class Settings(BaseSettings):
             raise ValueError("EXCHANGE_ORGANIZATION must be the tenant .onmicrosoft.com domain")
         return value.lower()
 
-    @field_validator("exchange_app_id", "m365_graph_tenant_id", "m365_graph_client_id")
+    @field_validator(
+        "exchange_app_id",
+        "exchange_management_app_id",
+        "m365_graph_tenant_id",
+        "m365_graph_client_id",
+    )
     @classmethod
     def validate_uuid_if_present(cls, value: str) -> str:
         value = value.strip()
@@ -78,13 +92,31 @@ class Settings(BaseSettings):
         except ValueError as exc:
             raise ValueError("configured application and tenant identifiers must be UUIDs") from exc
 
-    @field_validator("exchange_certificate_thumbprint")
+    @field_validator(
+        "exchange_certificate_thumbprint",
+        "exchange_management_certificate_thumbprint",
+    )
     @classmethod
     def validate_thumbprint(cls, value: str) -> str:
         normalized = value.replace(" ", "").strip()
         if normalized and not _THUMBPRINT_RE.fullmatch(normalized):
-            raise ValueError("EXCHANGE_CERTIFICATE_THUMBPRINT must be a hexadecimal thumbprint")
+            raise ValueError("Exchange certificate thumbprints must be hexadecimal")
         return normalized.upper()
+
+    @field_validator("exchange_mailbox_allowed_domains")
+    @classmethod
+    def validate_mailbox_domains(cls, value: str) -> str:
+        normalized: list[str] = []
+        for raw in value.split(","):
+            domain = raw.strip().lower().rstrip(".")
+            if not domain:
+                continue
+            if "*" in domain or not _DOMAIN_RE.fullmatch(domain) or "." not in domain:
+                raise ValueError(
+                    "EXCHANGE_MAILBOX_ALLOWED_DOMAINS must contain exact DNS domains without wildcards"
+                )
+            normalized.append(domain)
+        return ",".join(dict.fromkeys(normalized))
 
     @property
     def exchange_configured(self) -> bool:
@@ -95,9 +127,45 @@ class Settings(BaseSettings):
         )
 
     @property
+    def exchange_management_configured(self) -> bool:
+        return bool(
+            self.exchange_organization
+            and self.exchange_management_app_id
+            and self.exchange_management_certificate_thumbprint
+        )
+
+    @property
     def graph_configured(self) -> bool:
         return bool(
             self.m365_graph_tenant_id
             and self.m365_graph_client_id
             and self.m365_graph_client_secret.get_secret_value()
         )
+
+    def validate_write_boundary(self) -> None:
+        if not self.exchange_writes_enabled:
+            return
+        if not self.exchange_recipient_write_rbac_attested:
+            raise ValueError(
+                "EXCHANGE_WRITES_ENABLED requires EXCHANGE_RECIPIENT_WRITE_RBAC_ATTESTED=true"
+            )
+        if not self.exchange_management_configured:
+            raise ValueError(
+                "EXCHANGE_WRITES_ENABLED requires the dedicated Exchange management app and certificate"
+            )
+        if not self.exchange_mailbox_allowed_domains:
+            raise ValueError(
+                "EXCHANGE_WRITES_ENABLED requires EXCHANGE_MAILBOX_ALLOWED_DOMAINS"
+            )
+        if len(self.exchange_approval_secret.encode("utf-8")) < 32:
+            raise ValueError(
+                "EXCHANGE_WRITES_ENABLED requires EXCHANGE_APPROVAL_SECRET with at least 32 bytes"
+            )
+        if (
+            self.exchange_management_app_id == self.exchange_app_id
+            or self.exchange_management_certificate_thumbprint
+            == self.exchange_certificate_thumbprint
+        ):
+            raise ValueError(
+                "Exchange read-only and management identities must use distinct app IDs and certificates"
+            )
