@@ -26,6 +26,8 @@ from .config import Settings
 from .contract import capabilities
 from .exchange_transport import ExchangeOnlineReadOnlyTransport
 from .graph_transport import MicrosoftGraphServiceHealthTransport
+from .mailbox_debug import register_mailbox_debug_tools
+from .mailbox_management import register_mailbox_management_tools
 
 _EXCHANGE_OPERATIONS = frozenset(
     {
@@ -177,6 +179,7 @@ def create_server(
     graph_connector: ReadOnlyConnector | None = None,
 ) -> FastMCP:
     settings = settings or Settings()
+    settings.validate_write_boundary()
     exchange_policy = _exchange_policy(settings)
     graph_policy = _graph_policy(settings)
     budget_limits = _budget_limits(settings)
@@ -190,14 +193,15 @@ def create_server(
     )
     security = build_mcp_server_security(settings, service_hosts=("mcp-exchange-m365",))
     mcp = FastMCP(
-        "Flowoox Exchange Online and Microsoft 365 Diagnostics MCP",
+        "Flowoox Exchange Online and Microsoft 365 MCP",
         instructions=(
-            "Bounded read-only Exchange Online configuration and Microsoft 365 service-health "
-            "diagnostics. Exchange Online uses certificate app-only authentication plus a "
-            "deployment-attested view-only Exchange RBAC assignment and imports only fixed Get-* "
-            "cmdlets. Microsoft Graph is limited to v1.0 ServiceHealth.Read.All. Mailbox contents, "
-            "message bodies, recipients, traces, eDiscovery, arbitrary PowerShell/API paths and all "
-            "mutations are not exposed."
+            "Bounded Exchange Online and Microsoft 365 diagnostics with optional exact-identity "
+            "mailbox debugging and an explicitly enabled, separately authenticated shared-mailbox "
+            "management boundary. The default remains read-only. Any registered mailbox mutation "
+            "requires a dedicated Exchange management identity, exact-domain allowlisting, "
+            "idempotency, signed out-of-band approval and post-change verification. Arbitrary "
+            "PowerShell/API paths, mailbox contents, message bodies, attachments, traces and "
+            "eDiscovery are never exposed."
         ),
         host=settings.mcp_host,
         port=settings.mcp_port,
@@ -215,70 +219,283 @@ def create_server(
             graph_connector.policy,
             budget_limits,
             return_domain_names=settings.exchange_return_domain_names,
+            mailbox_debug_enabled=settings.exchange_mailbox_debug_enabled,
+            writes_enabled=settings.exchange_writes_enabled,
         )
 
     @mcp.tool()
-    async def exchange_get_organization(actor: str, reason: str, correlation_id: str = "") -> dict[str, Any]:
+    async def exchange_get_organization(
+        actor: str,
+        reason: str,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
         budget = QueryBudget(budget_limits)
-        page = await _page(exchange_connector, budget, operation="exchange.organization.get", limit=1)
-        return _response("exchange.organization.get", actor=actor, reason=reason, correlation_id=correlation_id, output=page, budget=budget, target="exchange:organization")
+        page = await _page(
+            exchange_connector,
+            budget,
+            operation="exchange.organization.get",
+            limit=1,
+        )
+        return _response(
+            "exchange.organization.get",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=page,
+            budget=budget,
+            target="exchange:organization",
+        )
 
     @mcp.tool()
-    async def exchange_list_accepted_domains(actor: str, reason: str, limit: int = 50, sample_size: int | None = None, correlation_id: str = "") -> dict[str, Any]:
+    async def exchange_list_accepted_domains(
+        actor: str,
+        reason: str,
+        limit: int = 50,
+        sample_size: int | None = None,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
         budget = QueryBudget(budget_limits)
-        page = await _page(exchange_connector, budget, operation="exchange.accepted_domains.list", limit=limit, sample_size=sample_size)
-        return _response("exchange.accepted_domains.list", actor=actor, reason=reason, correlation_id=correlation_id, output=page, budget=budget, target="exchange:accepted-domains")
+        page = await _page(
+            exchange_connector,
+            budget,
+            operation="exchange.accepted_domains.list",
+            limit=limit,
+            sample_size=sample_size,
+        )
+        return _response(
+            "exchange.accepted_domains.list",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=page,
+            budget=budget,
+            target="exchange:accepted-domains",
+        )
 
     @mcp.tool()
-    async def exchange_list_remote_domains(actor: str, reason: str, limit: int = 50, sample_size: int | None = None, correlation_id: str = "") -> dict[str, Any]:
+    async def exchange_list_remote_domains(
+        actor: str,
+        reason: str,
+        limit: int = 50,
+        sample_size: int | None = None,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
         budget = QueryBudget(budget_limits)
-        page = await _page(exchange_connector, budget, operation="exchange.remote_domains.list", limit=limit, sample_size=sample_size)
-        return _response("exchange.remote_domains.list", actor=actor, reason=reason, correlation_id=correlation_id, output=page, budget=budget, target="exchange:remote-domains")
+        page = await _page(
+            exchange_connector,
+            budget,
+            operation="exchange.remote_domains.list",
+            limit=limit,
+            sample_size=sample_size,
+        )
+        return _response(
+            "exchange.remote_domains.list",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=page,
+            budget=budget,
+            target="exchange:remote-domains",
+        )
 
     @mcp.tool()
-    async def exchange_list_inbound_connectors(actor: str, reason: str, limit: int = 50, correlation_id: str = "") -> dict[str, Any]:
+    async def exchange_list_inbound_connectors(
+        actor: str,
+        reason: str,
+        limit: int = 50,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
         budget = QueryBudget(budget_limits)
-        page = await _page(exchange_connector, budget, operation="exchange.inbound_connectors.list", limit=limit)
-        return _response("exchange.inbound_connectors.list", actor=actor, reason=reason, correlation_id=correlation_id, output=page, budget=budget, target="exchange:inbound-connectors")
+        page = await _page(
+            exchange_connector,
+            budget,
+            operation="exchange.inbound_connectors.list",
+            limit=limit,
+        )
+        return _response(
+            "exchange.inbound_connectors.list",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=page,
+            budget=budget,
+            target="exchange:inbound-connectors",
+        )
 
     @mcp.tool()
-    async def exchange_list_outbound_connectors(actor: str, reason: str, limit: int = 50, correlation_id: str = "") -> dict[str, Any]:
+    async def exchange_list_outbound_connectors(
+        actor: str,
+        reason: str,
+        limit: int = 50,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
         budget = QueryBudget(budget_limits)
-        page = await _page(exchange_connector, budget, operation="exchange.outbound_connectors.list", limit=limit)
-        return _response("exchange.outbound_connectors.list", actor=actor, reason=reason, correlation_id=correlation_id, output=page, budget=budget, target="exchange:outbound-connectors")
+        page = await _page(
+            exchange_connector,
+            budget,
+            operation="exchange.outbound_connectors.list",
+            limit=limit,
+        )
+        return _response(
+            "exchange.outbound_connectors.list",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=page,
+            budget=budget,
+            target="exchange:outbound-connectors",
+        )
 
     @mcp.tool()
-    async def exchange_get_transport_config(actor: str, reason: str, correlation_id: str = "") -> dict[str, Any]:
+    async def exchange_get_transport_config(
+        actor: str,
+        reason: str,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
         budget = QueryBudget(budget_limits)
-        page = await _page(exchange_connector, budget, operation="exchange.transport_config.get", limit=1)
-        return _response("exchange.transport_config.get", actor=actor, reason=reason, correlation_id=correlation_id, output=page, budget=budget, target="exchange:transport-config")
+        page = await _page(
+            exchange_connector,
+            budget,
+            operation="exchange.transport_config.get",
+            limit=1,
+        )
+        return _response(
+            "exchange.transport_config.get",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=page,
+            budget=budget,
+            target="exchange:transport-config",
+        )
 
     @mcp.tool()
-    async def m365_list_service_health(actor: str, reason: str, limit: int = 50, correlation_id: str = "") -> dict[str, Any]:
+    async def m365_list_service_health(
+        actor: str,
+        reason: str,
+        limit: int = 50,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
         budget = QueryBudget(budget_limits)
-        page = await _page(graph_connector, budget, operation="m365.service_health.list", limit=limit)
-        return _response("m365.service_health.list", actor=actor, reason=reason, correlation_id=correlation_id, output=page, budget=budget, target="m365:service-health")
+        page = await _page(
+            graph_connector,
+            budget,
+            operation="m365.service_health.list",
+            limit=limit,
+        )
+        return _response(
+            "m365.service_health.list",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=page,
+            budget=budget,
+            target="m365:service-health",
+        )
 
     @mcp.tool()
-    async def m365_list_exchange_service_issues(actor: str, reason: str, limit: int = 50, correlation_id: str = "") -> dict[str, Any]:
+    async def m365_list_exchange_service_issues(
+        actor: str,
+        reason: str,
+        limit: int = 50,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
         budget = QueryBudget(budget_limits)
-        page = await _page(graph_connector, budget, operation="m365.exchange_issues.list", limit=limit)
-        return _response("m365.exchange_issues.list", actor=actor, reason=reason, correlation_id=correlation_id, output=page, budget=budget, target="m365:exchange-service-issues")
+        page = await _page(
+            graph_connector,
+            budget,
+            operation="m365.exchange_issues.list",
+            limit=limit,
+        )
+        return _response(
+            "m365.exchange_issues.list",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=page,
+            budget=budget,
+            target="m365:exchange-service-issues",
+        )
 
     @mcp.tool()
-    async def exchange_m365_diagnostic_bundle(actor: str, reason: str, connector_limit: int = 25, domain_limit: int = 25, issue_limit: int = 25, correlation_id: str = "") -> dict[str, Any]:
+    async def exchange_m365_diagnostic_bundle(
+        actor: str,
+        reason: str,
+        connector_limit: int = 25,
+        domain_limit: int = 25,
+        issue_limit: int = 25,
+        correlation_id: str = "",
+    ) -> dict[str, Any]:
         budget = QueryBudget(budget_limits)
-        organization = await _page(exchange_connector, budget, operation="exchange.organization.get", limit=1)
-        transport = await _page(exchange_connector, budget, operation="exchange.transport_config.get", limit=1)
-        health = await _page(graph_connector, budget, operation="m365.service_health.list", limit=min(50, settings.graph_max_page_size))
-        issues = await _page(graph_connector, budget, operation="m365.exchange_issues.list", limit=min(issue_limit, settings.graph_max_page_size))
-        inbound = await _page(exchange_connector, budget, operation="exchange.inbound_connectors.list", limit=min(connector_limit, settings.exchange_max_page_size))
-        outbound = await _page(exchange_connector, budget, operation="exchange.outbound_connectors.list", limit=min(connector_limit, settings.exchange_max_page_size))
-        accepted = await _page(exchange_connector, budget, operation="exchange.accepted_domains.list", limit=min(domain_limit, settings.exchange_max_page_size))
-        remote = await _page(exchange_connector, budget, operation="exchange.remote_domains.list", limit=min(domain_limit, settings.exchange_max_page_size))
-        output = {"organization": organization, "transportConfig": transport, "serviceHealth": health, "exchangeServiceIssues": issues, "inboundConnectors": inbound, "outboundConnectors": outbound, "acceptedDomains": accepted, "remoteDomains": remote}
-        return _response("exchange-m365.diagnostics.bundle", actor=actor, reason=reason, correlation_id=correlation_id, output=output, budget=budget)
+        organization = await _page(
+            exchange_connector,
+            budget,
+            operation="exchange.organization.get",
+            limit=1,
+        )
+        transport = await _page(
+            exchange_connector,
+            budget,
+            operation="exchange.transport_config.get",
+            limit=1,
+        )
+        health = await _page(
+            graph_connector,
+            budget,
+            operation="m365.service_health.list",
+            limit=min(50, settings.graph_max_page_size),
+        )
+        issues = await _page(
+            graph_connector,
+            budget,
+            operation="m365.exchange_issues.list",
+            limit=min(issue_limit, settings.graph_max_page_size),
+        )
+        inbound = await _page(
+            exchange_connector,
+            budget,
+            operation="exchange.inbound_connectors.list",
+            limit=min(connector_limit, settings.exchange_max_page_size),
+        )
+        outbound = await _page(
+            exchange_connector,
+            budget,
+            operation="exchange.outbound_connectors.list",
+            limit=min(connector_limit, settings.exchange_max_page_size),
+        )
+        accepted = await _page(
+            exchange_connector,
+            budget,
+            operation="exchange.accepted_domains.list",
+            limit=min(domain_limit, settings.exchange_max_page_size),
+        )
+        remote = await _page(
+            exchange_connector,
+            budget,
+            operation="exchange.remote_domains.list",
+            limit=min(domain_limit, settings.exchange_max_page_size),
+        )
+        output = {
+            "organization": organization,
+            "transportConfig": transport,
+            "serviceHealth": health,
+            "exchangeServiceIssues": issues,
+            "inboundConnectors": inbound,
+            "outboundConnectors": outbound,
+            "acceptedDomains": accepted,
+            "remoteDomains": remote,
+        }
+        return _response(
+            "exchange-m365.diagnostics.bundle",
+            actor=actor,
+            reason=reason,
+            correlation_id=correlation_id,
+            output=output,
+            budget=budget,
+        )
 
+    register_mailbox_debug_tools(mcp, settings)
+    register_mailbox_management_tools(mcp, settings)
     return mcp
 
 
