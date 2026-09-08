@@ -21,7 +21,9 @@ from mcp_common.operations import (
 
 from .config import Settings
 
-_SMTP_RE = re.compile(r"^[^@\s]{1,64}@([A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?)$")
+_SMTP_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}@([A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?)$"
+)
 
 
 class ExchangeMailboxDebugError(RuntimeError):
