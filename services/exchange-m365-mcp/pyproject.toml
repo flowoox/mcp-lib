@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "flowoox-mcp-exchange-m365"
-version = "0.1.0"
-description = "Product-neutral, bounded read-only MCP diagnostics for Exchange Online and Microsoft 365 service health."
+version = "0.2.0"
+description = "Bounded Exchange Online and Microsoft 365 MCP diagnostics with optional approved shared-mailbox management."
 readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}
