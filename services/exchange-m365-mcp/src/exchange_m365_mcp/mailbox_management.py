@@ -28,7 +28,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .config import Settings
 
 _ALIAS_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-_SMTP_RE = re.compile(r"^[^@\s]{1,64}@([A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?)$")
+_SMTP_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}@([A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?)$"
+)
 
 
 class ExchangeManagementError(RuntimeError):
@@ -70,7 +72,11 @@ class SharedMailboxPlanRequest(BaseModel):
     @field_validator("idempotency_key")
     @classmethod
     def validate_idempotency_key(cls, value: str) -> str:
-        context = OperationContext(actor="validation", source="exchange-m365-mcp", idempotency_key=value)
+        context = OperationContext(
+            actor="validation",
+            source="exchange-m365-mcp",
+            idempotency_key=value,
+        )
         if context.idempotency_key is None:  # pragma: no cover
             raise ValueError("idempotency_key is required")
         return context.idempotency_key
@@ -243,7 +249,10 @@ if ($null -eq $mailbox) {
             raise ExchangeManagementError("Exchange returned an invalid mailbox object")
         return {str(key): value for key, value in payload.items()}
 
-    async def create_shared_mailbox(self, request: SharedMailboxPlanRequest) -> dict[str, Any]:
+    async def create_shared_mailbox(
+        self,
+        request: SharedMailboxPlanRequest,
+    ) -> dict[str, Any]:
         payload = await self._invoke(
             commands=("Get-Mailbox", "New-Mailbox"),
             environment={
