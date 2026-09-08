@@ -5,8 +5,8 @@ from typing import Any
 from mcp_common.query_budget import QueryBudgetLimits
 from mcp_common.read_only_connector import ReadOnlyConnectorPolicy, redacted_connector_metadata
 
-CONTRACT_NAME = "flowoox.exchange-m365-diagnostics"
-CONTRACT_VERSION = "1.0"
+CONTRACT_NAME = "flowoox.exchange-m365"
+CONTRACT_VERSION = "1.1"
 
 
 def capabilities(
@@ -15,11 +15,13 @@ def capabilities(
     budget_limits: QueryBudgetLimits,
     *,
     return_domain_names: bool,
+    mailbox_debug_enabled: bool = False,
+    writes_enabled: bool = False,
 ) -> dict[str, Any]:
     return {
         "contract": CONTRACT_NAME,
         "version": CONTRACT_VERSION,
-        "mode": "read_only",
+        "mode": "approved_management" if writes_enabled else "read_only",
         "backends": {
             "exchangeOnline": redacted_connector_metadata(
                 exchange_policy,
@@ -31,7 +33,8 @@ def capabilities(
                     "commandImportAllowlisted": True,
                     "arbitraryPowerShellAllowed": False,
                     "previewAdminApiUsed": False,
-                    "writeToolsRegistered": False,
+                    "mailboxDebugEnabled": mailbox_debug_enabled,
+                    "writeToolsRegistered": writes_enabled,
                 },
             ),
             "microsoftGraph": redacted_connector_metadata(
@@ -45,6 +48,17 @@ def capabilities(
                 },
             ),
         },
+        "mailboxManagement": {
+            "enabled": writes_enabled,
+            "mailboxTypes": ["shared"] if writes_enabled else [],
+            "separateManagementIdentityRequired": True,
+            "exchangeApplicationRbacAttestationRequired": True,
+            "exactDomainAllowlistRequired": True,
+            "idempotencyRequired": True,
+            "signedApprovalRequired": True,
+            "postChangeVerificationRequired": True,
+            "arbitraryRecipientMutationAllowed": False,
+        },
         "queryBudget": budget_limits.model_dump(mode="json"),
         "safety": {
             "aggregateBeforeFanOut": True,
@@ -54,12 +68,13 @@ def capabilities(
             "certificateSubjectsReturned": False,
             "smartHostsReturned": False,
             "mailboxRecipientsEnumerated": False,
+            "mailboxDebugExactIdentityOnly": mailbox_debug_enabled,
             "messageBodiesReturned": False,
             "attachmentsReturned": False,
             "mailboxExportOrEdiscoveryExposed": False,
             "messageTraceExposed": False,
             "callerSelectedPowerShell": False,
             "callerSelectedGraphPathsOrFilters": False,
-            "mutationsExposed": False,
+            "mutationsExposed": writes_enabled,
         },
     }
