@@ -9,11 +9,9 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from mcp.server.auth.provider import AccessToken
-
 from mcp_common import mcp_security
 from mcp_common.mcp_security import OidcJwtTokenVerifier, build_mcp_server_security
 from mcp_common.operations import OperationContext
-
 
 ISSUER = "https://idp.example.test"
 RESOURCE = "https://mcp.example.test/mcp"
