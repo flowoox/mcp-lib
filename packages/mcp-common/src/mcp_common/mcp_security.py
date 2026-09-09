@@ -30,14 +30,14 @@ _OIDC_ALGORITHMS = ("RS256", "ES256")
 _OIDC_METADATA_MAX_BYTES = 262_144
 _OIDC_CACHE_SECONDS = 300.0
 _SERVICE_SCOPES: dict[str, tuple[str, ...]] = {
-    "mcp-fileshare": ("mcp.files.read",),
-    "mcp-network": ("mcp.network.debug",),
-    "mcp-veeam": ("mcp.infrastructure.observe",),
-    "mcp-wazuh": ("mcp.infrastructure.observe",),
-    "mcp-checkmk": ("mcp.infrastructure.observe",),
-    "mcp-prtg": ("mcp.infrastructure.observe",),
-    "mcp-hyperv": ("mcp.infrastructure.observe",),
-    "mcp-windows": ("mcp.infrastructure.observe",),
+    "mcp-fileshare": ("mcp.files.read", "mcp.files.search"),
+    "mcp-network": ("mcp.network.core.debug",),
+    "mcp-veeam": ("mcp.infra.observe",),
+    "mcp-wazuh": ("mcp.infra.observe",),
+    "mcp-checkmk": ("mcp.infra.observe",),
+    "mcp-prtg": ("mcp.infra.observe",),
+    "mcp-hyperv": ("mcp.infra.observe",),
+    "mcp-windows": ("mcp.infra.observe",),
 }
 
 
@@ -377,7 +377,7 @@ def build_mcp_server_security(
                 derived_scopes.append(
                     "mcp.exchange.manage"
                     if bool(getattr(settings, "exchange_writes_enabled", False))
-                    else "mcp.infrastructure.observe"
+                    else "mcp.infra.observe"
                 )
             else:
                 derived_scopes.extend(_SERVICE_SCOPES.get(service_host, ("mcp",)))
