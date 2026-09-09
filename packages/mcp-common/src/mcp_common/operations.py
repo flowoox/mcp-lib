@@ -8,6 +8,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from mcp_common.mcp_security import authenticated_actor
+
 _IDEMPOTENCY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{7,127}$")
 
 
@@ -51,6 +53,15 @@ class OperationContext(StrictModel):
     actor: str = Field(min_length=1, max_length=200)
     source: str = Field(min_length=1, max_length=100)
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=128)
+
+    @model_validator(mode="before")
+    @classmethod
+    def bind_authenticated_actor(cls, value: Any) -> Any:
+        if not isinstance(value, dict) or "actor" not in value:
+            return value
+        bound = dict(value)
+        bound["actor"] = authenticated_actor(str(value["actor"]))
+        return bound
 
     @field_validator("actor", "source")
     @classmethod
