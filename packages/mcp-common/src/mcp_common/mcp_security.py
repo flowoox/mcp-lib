@@ -212,7 +212,7 @@ class OidcJwtTokenVerifier(TokenVerifier):
             raise ValueError("OIDC discovery/JWKS response exceeded the size limit")
         payload = response.json()
         if not isinstance(payload, dict):
-            raise ValueError("OIDC discovery/JWKS response must be a JSON object")
+            raise TypeError("OIDC discovery/JWKS response must be a JSON object")
         return payload
 
     async def _refresh_jwks(self) -> None:
@@ -232,7 +232,7 @@ class OidcJwtTokenVerifier(TokenVerifier):
             for url in dict.fromkeys(discovery_urls):
                 try:
                     candidate = await self._fetch_json(url)
-                except (httpx.HTTPError, ValueError):
+                except (httpx.HTTPError, TypeError, ValueError):
                     continue
                 if str(candidate.get("issuer", "")).rstrip("/") != self._issuer:
                     continue
