@@ -10,19 +10,43 @@ Internal network reachability is not authorization. Keep these services unpublis
 
 ## External or tenant-crossing deployments
 
-Set all of the following explicitly:
+External mode always requires an explicit HTTPS `MCP_PUBLIC_URL` for non-loopback deployments plus explicit Host/Origin allowlists. Authentication has two deliberately separate modes; configuring both fails closed.
+
+### Bootstrap / single trusted technical client
+
+Use the static bearer only for a lab/bootstrap or one trusted technical client:
 
 ```text
 MCP_TRUST_BOUNDARY=external
 MCP_PUBLIC_URL=https://mcp.example.test/mcp
 MCP_AUTH_TOKEN=<runtime secret>
+MCP_ISSUER_URL=
 MCP_ALLOWED_HOSTS=mcp.example.test,mcp.example.test:*
 MCP_ALLOWED_ORIGINS=https://trusted-ui.example.test
 ```
 
-External mode fails closed if `MCP_PUBLIC_URL` or `MCP_AUTH_TOKEN` is missing, and non-loopback external URLs must use HTTPS. The configured bearer token is only verified server-side and is never returned by an MCP tool. `MCP_ISSUER_URL` may be supplied when the authorization issuer differs from the resource URL.
+The configured bearer token is verified only at the MCP resource server and is never returned by a tool. This mode is not an employee identity or multi-user RBAC boundary.
 
-For multi-user/public deployments, prefer a real OAuth/OIDC verifier at the gateway or replace the static resource-server token with an identity-aware verifier rather than sharing one token across tenants.
+### Multi-user OAuth/OIDC resource server
+
+Administrative employee access must use OIDC mode instead of a shared bearer:
+
+```text
+MCP_TRUST_BOUNDARY=external
+MCP_PUBLIC_URL=https://mcp.example.test/mcp
+MCP_AUTH_TOKEN=
+MCP_ISSUER_URL=https://idp.example.test/tenant
+MCP_ALLOWED_HOSTS=mcp.example.test,mcp.example.test:*
+MCP_ALLOWED_ORIGINS=https://trusted-ui.example.test
+```
+
+OIDC mode validates an allowlisted signing algorithm, JWT signature, exact issuer, expiry/not-before, one exact audience/resource and the service's required scopes/application roles. A token with a different audience, a multi-valued audience, insufficient scope, invalid time window or unsigned/unapproved algorithm fails closed. Authorization-server discovery and JWKS retrieval do not follow redirects, are response-size bounded and must remain on the configured issuer origin.
+
+Known administrative service tiers use explicit deny-by-default scopes such as `mcp.files.read`/`mcp.files.search`, `mcp.infra.observe`, `mcp.exchange.manage` and `mcp.network.core.debug`. OIDC deployments for a service without a known tier must provide explicit non-generic `required_scopes`; the generic `mcp` scope is bootstrap-only and is not accepted as a multi-user authorization tier.
+
+The trusted audit actor is derived from validated OIDC identity claims. Caller-supplied `actor` fields cannot replace that identity in OIDC mode. Employee access tokens must never be forwarded to Exchange, firewalls, switches or other downstream systems; those connectors retain separate server-side credentials and their own least-privilege authorization controls.
+
+For production administrative tiers, keep the endpoint behind private ingress/VPN/tunnel where practical, enforce rate/connection limits at ingress, use short-lived tokens and centralized audit logging without secrets, and test removed-role, wrong-audience, wrong-scope and actor-forgery denial through the real identity-provider and ingress path before rollout.
 
 ## Traxx credential destination policy
 
