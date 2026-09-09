@@ -31,7 +31,7 @@ def _token(
     private_key: Any,
     *,
     issuer: str = ISSUER,
-    audience: str = RESOURCE,
+    audience: str | list[str] = RESOURCE,
     scope: str | None = "mcp.files.read",
     roles: list[str] | None = None,
     expires_in: int = 300,
@@ -96,6 +96,10 @@ def test_oidc_verifier_accepts_exact_signed_resource_scope() -> None:
     [
         ({"issuer": "https://wrong-issuer.example.test"}, "mcp.files.read"),
         ({"audience": "https://other-resource.example.test/mcp"}, "mcp.files.read"),
+        (
+            {"audience": [RESOURCE, "https://other-resource.example.test/mcp"]},
+            "mcp.files.read",
+        ),
         ({"expires_in": -30}, "mcp.files.read"),
         ({"not_before_in": 300}, "mcp.files.read"),
         ({"scope": "mcp.infra.observe"}, "mcp.files.read"),
@@ -256,10 +260,38 @@ def test_exchange_write_boundary_requires_manage_scope() -> None:
 
 def test_static_token_remains_bootstrap_mode_with_tier_scope() -> None:
     security = build_mcp_server_security(
-        _settings(mcp_auth_token="bootstrap-secret"),
+        _settings(mcp_auth_token="bootstrap-secret", mcp_issuer_url=""),
         service_hosts=("mcp-network",),
     )
 
     assert security.auth is not None
     assert security.auth.required_scopes == ["mcp.network.core.debug"]
     assert not isinstance(security.token_verifier, OidcJwtTokenVerifier)
+
+
+def test_external_auth_rejects_ambiguous_static_and_oidc_modes() -> None:
+    with pytest.raises(ValueError, match="configure either MCP_AUTH_TOKEN"):
+        build_mcp_server_security(
+            _settings(mcp_auth_token="bootstrap-secret", mcp_issuer_url=ISSUER),
+            service_hosts=("mcp-network",),
+        )
+
+
+def test_oidc_unknown_service_rejects_generic_scope_fallback() -> None:
+    with pytest.raises(ValueError, match="explicit tier scopes"):
+        build_mcp_server_security(
+            _settings(),
+            service_hosts=("mcp-unknown-admin",),
+        )
+
+
+def test_oidc_unknown_service_accepts_explicit_non_generic_scope() -> None:
+    security = build_mcp_server_security(
+        _settings(),
+        service_hosts=("mcp-unknown-observe",),
+        required_scopes=("mcp.infra.observe",),
+    )
+
+    assert security.auth is not None
+    assert security.auth.required_scopes == ["mcp.infra.observe"]
+    assert isinstance(security.token_verifier, OidcJwtTokenVerifier)
