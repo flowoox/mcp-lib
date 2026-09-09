@@ -101,7 +101,7 @@ async def test_oidc_verifier_accepts_exact_signed_resource_scope() -> None:
         ({"audience": "https://other-resource.example.test/mcp"}, "mcp.files.read"),
         ({"expires_in": -30}, "mcp.files.read"),
         ({"not_before_in": 300}, "mcp.files.read"),
-        ({"scope": "mcp.infrastructure.observe"}, "mcp.files.read"),
+        ({"scope": "mcp.infra.observe"}, "mcp.files.read"),
     ],
 )
 async def test_oidc_verifier_rejects_invalid_claim_boundary(
@@ -229,16 +229,16 @@ def _settings(**overrides: Any) -> SimpleNamespace:
 
 
 @pytest.mark.parametrize(
-    ("service_host", "expected_scope"),
+    ("service_host", "expected_scopes"),
     [
-        ("mcp-fileshare", "mcp.files.read"),
-        ("mcp-veeam", "mcp.infrastructure.observe"),
-        ("mcp-network", "mcp.network.debug"),
+        ("mcp-fileshare", ["mcp.files.read", "mcp.files.search"]),
+        ("mcp-veeam", ["mcp.infra.observe"]),
+        ("mcp-network", ["mcp.network.core.debug"]),
     ],
 )
 def test_service_access_tiers_are_deny_default(
     service_host: str,
-    expected_scope: str,
+    expected_scopes: list[str],
 ) -> None:
     security = build_mcp_server_security(
         _settings(),
@@ -246,7 +246,7 @@ def test_service_access_tiers_are_deny_default(
     )
 
     assert security.auth is not None
-    assert security.auth.required_scopes == [expected_scope]
+    assert security.auth.required_scopes == expected_scopes
     assert isinstance(security.token_verifier, OidcJwtTokenVerifier)
 
 
@@ -267,5 +267,5 @@ def test_static_token_remains_bootstrap_mode_with_tier_scope() -> None:
     )
 
     assert security.auth is not None
-    assert security.auth.required_scopes == ["mcp.network.debug"]
+    assert security.auth.required_scopes == ["mcp.network.core.debug"]
     assert not isinstance(security.token_verifier, OidcJwtTokenVerifier)
