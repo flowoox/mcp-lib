@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from types import SimpleNamespace
@@ -76,10 +77,9 @@ def _verifier(
     return verifier
 
 
-@pytest.mark.asyncio
-async def test_oidc_verifier_accepts_exact_signed_resource_scope() -> None:
+def test_oidc_verifier_accepts_exact_signed_resource_scope() -> None:
     private_key, public_jwk = _key_material()
-    access = await _verifier(public_jwk).verify_token(_token(private_key))
+    access = asyncio.run(_verifier(public_jwk).verify_token(_token(private_key)))
 
     assert access is not None
     assert access.subject == "subject-123"
@@ -91,7 +91,6 @@ async def test_oidc_verifier_accepts_exact_signed_resource_scope() -> None:
     assert access.claims["oid"] == "object-456"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("token_kwargs", "required_scope"),
     [
@@ -102,18 +101,17 @@ async def test_oidc_verifier_accepts_exact_signed_resource_scope() -> None:
         ({"scope": "mcp.infra.observe"}, "mcp.files.read"),
     ],
 )
-async def test_oidc_verifier_rejects_invalid_claim_boundary(
+def test_oidc_verifier_rejects_invalid_claim_boundary(
     token_kwargs: dict[str, Any],
     required_scope: str,
 ) -> None:
     private_key, public_jwk = _key_material()
     verifier = _verifier(public_jwk, scope=required_scope)
 
-    assert await verifier.verify_token(_token(private_key, **token_kwargs)) is None
+    assert asyncio.run(verifier.verify_token(_token(private_key, **token_kwargs))) is None
 
 
-@pytest.mark.asyncio
-async def test_oidc_verifier_accepts_explicit_application_role_as_scope() -> None:
+def test_oidc_verifier_accepts_explicit_application_role_as_scope() -> None:
     private_key, public_jwk = _key_material()
     verifier = _verifier(public_jwk, scope="mcp.exchange.manage")
     token = _token(
@@ -122,14 +120,13 @@ async def test_oidc_verifier_accepts_explicit_application_role_as_scope() -> Non
         roles=["mcp.exchange.manage"],
     )
 
-    access = await verifier.verify_token(token)
+    access = asyncio.run(verifier.verify_token(token))
 
     assert access is not None
     assert "mcp.exchange.manage" in access.scopes
 
 
-@pytest.mark.asyncio
-async def test_oidc_verifier_rejects_unsigned_token() -> None:
+def test_oidc_verifier_rejects_unsigned_token() -> None:
     private_key, public_jwk = _key_material()
     del private_key
     unsigned = jwt.encode(
@@ -145,11 +142,10 @@ async def test_oidc_verifier_rejects_unsigned_token() -> None:
         headers={"kid": "test-key"},
     )
 
-    assert await _verifier(public_jwk).verify_token(unsigned) is None
+    assert asyncio.run(_verifier(public_jwk).verify_token(unsigned)) is None
 
 
-@pytest.mark.asyncio
-async def test_oidc_discovery_rejects_cross_origin_jwks(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_oidc_discovery_rejects_cross_origin_jwks(monkeypatch: pytest.MonkeyPatch) -> None:
     verifier = OidcJwtTokenVerifier(
         issuer=ISSUER,
         audience=RESOURCE,
@@ -168,7 +164,7 @@ async def test_oidc_discovery_rejects_cross_origin_jwks(monkeypatch: pytest.Monk
     monkeypatch.setattr(verifier, "_fetch_json", fake_fetch)
 
     with pytest.raises(ValueError, match="configured issuer origin"):
-        await verifier._refresh_jwks()
+        asyncio.run(verifier._refresh_jwks())
 
 
 def test_operation_context_ignores_caller_actor_under_oidc(
