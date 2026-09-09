@@ -309,6 +309,8 @@ class OidcJwtTokenVerifier(TokenVerifier):
             )
             if not isinstance(claims, dict):
                 return None
+            if claims.get("aud") != self._audience:
+                return None
 
             scopes = _token_scopes(claims)
             if not self._required_scopes.issubset(scopes):
@@ -360,9 +362,9 @@ def build_mcp_server_security(
     """Build an explicit FastMCP transport/auth trust boundary.
 
     Internal deployments still get DNS-rebinding Host/Origin checks. External
-    deployments require either a static bootstrap token or an OAuth/OIDC issuer.
-    OIDC mode is selected by leaving MCP_AUTH_TOKEN empty and configuring
-    MCP_ISSUER_URL; tokens are then signature/issuer/time/audience/scope checked.
+    deployments require exactly one authentication mode: either a static bootstrap
+    token for a single trusted client or an OAuth/OIDC issuer for multi-user access.
+    OIDC tokens are signature/issuer/time/exact-audience/scope checked.
     """
 
     trust_boundary = str(getattr(settings, "mcp_trust_boundary", "internal")).strip().lower()
@@ -428,13 +430,16 @@ def build_mcp_server_security(
 
     token = str(getattr(settings, "mcp_auth_token", "") or "").strip()
     issuer_setting = str(getattr(settings, "mcp_issuer_url", "") or "").strip()
+    if token and issuer_setting:
+        raise ValueError(
+            "External MCP auth is ambiguous: configure either MCP_AUTH_TOKEN for "
+            "bootstrap/single-client use or MCP_ISSUER_URL for OAuth/OIDC, not both"
+        )
 
     if token:
-        # Backwards-compatible bootstrap/single-client mode. This is not an
-        # employee identity boundary; multi-user administrative deployments use OIDC.
-        issuer_url = issuer_setting or public_origin
+        # Bootstrap/single-client mode only. This is not an employee identity boundary.
         auth = AuthSettings(
-            issuer_url=issuer_url,
+            issuer_url=public_origin,
             resource_server_url=public_url,
             required_scopes=scopes,
         )
@@ -452,6 +457,11 @@ def build_mcp_server_security(
         raise ValueError(
             "External MCP trust boundary requires MCP_AUTH_TOKEN for bootstrap "
             "or MCP_ISSUER_URL for OAuth/OIDC"
+        )
+    if "mcp" in scopes:
+        raise ValueError(
+            "OIDC MCP authentication requires explicit tier scopes; generic 'mcp' "
+            "authorization is bootstrap-only"
         )
     issuer_url = _issuer_url(issuer_setting)
     audience = str(getattr(settings, "mcp_oidc_audience", "") or "").strip() or public_url
