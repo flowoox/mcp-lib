@@ -29,6 +29,16 @@ LOCAL_ORIGINS = (
 _OIDC_ALGORITHMS = ("RS256", "ES256")
 _OIDC_METADATA_MAX_BYTES = 262_144
 _OIDC_CACHE_SECONDS = 300.0
+_SERVICE_SCOPES: dict[str, tuple[str, ...]] = {
+    "mcp-fileshare": ("mcp.files.read",),
+    "mcp-network": ("mcp.network.debug",),
+    "mcp-veeam": ("mcp.infrastructure.observe",),
+    "mcp-wazuh": ("mcp.infrastructure.observe",),
+    "mcp-checkmk": ("mcp.infrastructure.observe",),
+    "mcp-prtg": ("mcp.infrastructure.observe",),
+    "mcp-hyperv": ("mcp.infrastructure.observe",),
+    "mcp-windows": ("mcp.infrastructure.observe",),
+}
 
 
 def _csv(value: str | Iterable[str] | None) -> list[str]:
@@ -345,7 +355,7 @@ def build_mcp_server_security(
     settings: Any,
     *,
     service_hosts: Iterable[str],
-    required_scopes: Iterable[str] = ("mcp",),
+    required_scopes: Iterable[str] | None = None,
 ) -> McpServerSecurity:
     """Build an explicit FastMCP transport/auth trust boundary.
 
@@ -359,7 +369,21 @@ def build_mcp_server_security(
     if trust_boundary not in {"internal", "external"}:
         raise ValueError("MCP_TRUST_BOUNDARY must be either 'internal' or 'external'")
 
-    scopes = list(dict.fromkeys(_csv(required_scopes)))
+    service_hosts = tuple(_csv(service_hosts))
+    if required_scopes is None:
+        derived_scopes: list[str] = []
+        for service_host in service_hosts:
+            if service_host == "mcp-exchange-m365":
+                derived_scopes.append(
+                    "mcp.exchange.manage"
+                    if bool(getattr(settings, "exchange_writes_enabled", False))
+                    else "mcp.infrastructure.observe"
+                )
+            else:
+                derived_scopes.extend(_SERVICE_SCOPES.get(service_host, ("mcp",)))
+        scopes = list(dict.fromkeys(derived_scopes))
+    else:
+        scopes = list(dict.fromkeys(_csv(required_scopes)))
     if not scopes:
         raise ValueError("MCP required scopes must not be empty")
 
